@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+.env
+.env.local
+*.log
+data/*.db
+data/*.sqlite
+data/fms-reports/
+**/secrets/
+**/*.pem
+**/*.key

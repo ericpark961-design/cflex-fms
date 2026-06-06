@@ -1,0 +1,1157 @@
+{
+  "generatedBy": "scripts/gen_sample_readings.py",
+  "ts": "2026-06-05T18:30:00Z",
+  "statusSummary": {
+    "normal": 37,
+    "critical": 2,
+    "warning": 4,
+    "offline": 1
+  },
+  "updates": [
+    {
+      "deviceId": "AQ2431394623",
+      "label": "HMA UPS PG-A (10.112.0.76)",
+      "icon": "srt3000",
+      "site": "HMA",
+      "host": "10.112.0.76",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2209,
+        "batteryTempC": 25,
+        "outputLoadPct": 19,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 3000",
+        "deviceId": "AQ2431394623",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2507193255",
+      "label": "HMA UPS PG-B (10.112.0.77)",
+      "icon": "srt3000",
+      "site": "HMA",
+      "host": "10.112.0.77",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1401,
+        "batteryTempC": 27,
+        "outputLoadPct": 26,
+        "outputVoltage": 208.0,
+        "inputVoltage": 207.4,
+        "model": "Smart-UPS SRT 3000",
+        "deviceId": "AS2507193255",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2535170150",
+      "label": "HMA UPS PG-A2",
+      "icon": "srt5000",
+      "site": "HMA",
+      "host": NaN,
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2285,
+        "batteryTempC": 32,
+        "outputLoadPct": 23,
+        "outputVoltage": 208.0,
+        "inputVoltage": 206.8,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2535170150",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2535170812",
+      "label": "HMA UPS PG-B2",
+      "icon": "srt5000",
+      "site": "HMA",
+      "host": NaN,
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 965,
+        "batteryTempC": 24,
+        "outputLoadPct": 23,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2535170812",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2314170047",
+      "label": "HMA UPS TC-A (10.112.5.21)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.5.21",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1376,
+        "batteryTempC": 32,
+        "outputLoadPct": 56,
+        "outputVoltage": 208.0,
+        "inputVoltage": 207.4,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2314170047",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2513273579",
+      "label": "HMA UPS TC-B (10.112.5.20)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.5.20",
+      "status": "critical",
+      "reasons": [
+        "Overload 104%"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2049,
+        "batteryTempC": 27,
+        "outputLoadPct": 104,
+        "outputVoltage": 208.0,
+        "inputVoltage": 206.8,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2513273579",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2535281778",
+      "label": "IDF UPS 1W-A (10.112.3.155)",
+      "icon": "srt5000",
+      "site": "HMA",
+      "host": NaN,
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1351,
+        "batteryTempC": 31,
+        "outputLoadPct": 55,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2535281778",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2535281781",
+      "label": "IDF UPS 1W-B (10.112.3.169)",
+      "icon": "srt5000",
+      "site": "HMA",
+      "host": NaN,
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 913,
+        "batteryTempC": 26,
+        "outputLoadPct": 62,
+        "outputVoltage": 208.0,
+        "inputVoltage": 206.8,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2535281781",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2535281782",
+      "label": "IDF UPS 2E-A (10.112.7.21)",
+      "icon": "srt5000",
+      "site": "HMA",
+      "host": NaN,
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1596,
+        "batteryTempC": 28,
+        "outputLoadPct": 27,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2535281782",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2535281786",
+      "label": "IDF UPS 2E-B (10.112.7.20)",
+      "icon": "srt5000",
+      "site": "HMA",
+      "host": NaN,
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1589,
+        "batteryTempC": 25,
+        "outputLoadPct": 23,
+        "outputVoltage": 208.0,
+        "inputVoltage": 206.8,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2535281786",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2535281805",
+      "label": "IDF UPS 2W-A (10.112.9.39)",
+      "icon": "srt5000",
+      "site": "HMA",
+      "host": NaN,
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1098,
+        "batteryTempC": 29,
+        "outputLoadPct": 40,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2535281805",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2535281806",
+      "label": "IDF UPS 2W-B (10.112.9.50)",
+      "icon": "srt5000",
+      "site": "HMA",
+      "host": NaN,
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 988,
+        "batteryTempC": 31,
+        "outputLoadPct": 52,
+        "outputVoltage": 208.0,
+        "inputVoltage": 207.4,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2535281806",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2426371407",
+      "label": "IDF UPS 3E-A (10.112.11.139)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.11.139",
+      "status": "warning",
+      "reasons": [
+        "Replace battery"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 2,
+        "runtimeRemainingSec": 1675,
+        "batteryTempC": 25,
+        "outputLoadPct": 53,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2426371407",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2513273554",
+      "label": "IDF UPS 3E-B (10.112.11.40)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.11.40",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2187,
+        "batteryTempC": 33,
+        "outputLoadPct": 41,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2513273554",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2314170090",
+      "label": "IDF UPS 3W-A (10.112.13.44)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.13.44",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2342,
+        "batteryTempC": 25,
+        "outputLoadPct": 20,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2314170090",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2513273586",
+      "label": "IDF UPS 3W-B (10.112.13.19)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.13.19",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1492,
+        "batteryTempC": 25,
+        "outputLoadPct": 32,
+        "outputVoltage": 208.0,
+        "inputVoltage": 207.4,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2513273586",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2314170043",
+      "label": "IDF UPS 4E-A (10.112.15.74)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.15.74",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1678,
+        "batteryTempC": 28,
+        "outputLoadPct": 47,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2314170043",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2513273582",
+      "label": "IDF UPS 4E-B (10.112.15.15)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.15.15",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1233,
+        "batteryTempC": 29,
+        "outputLoadPct": 40,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2513273582",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2426371356",
+      "label": "IDF UPS 4W-A (10.112.17.186)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.17.186",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2272,
+        "batteryTempC": 28,
+        "outputLoadPct": 62,
+        "outputVoltage": 208.0,
+        "inputVoltage": 207.4,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2426371356",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2426371319",
+      "label": "IDF UPS 4W-B (10.112.17.208)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.17.208",
+      "status": "warning",
+      "reasons": [
+        "Software Bypass"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 6,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2147,
+        "batteryTempC": 26,
+        "outputLoadPct": 55,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2426371319",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2426371406",
+      "label": "IDF UPS 5E-A (10.112.19.136)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.19.136",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1234,
+        "batteryTempC": 31,
+        "outputLoadPct": 42,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2426371406",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2513273581",
+      "label": "IDF UPS 5E-B (10.112.19.180)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.19.180",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2210,
+        "batteryTempC": 32,
+        "outputLoadPct": 32,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2513273581",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2409172590",
+      "label": "IDF UPS 5W-A (10.112.21.157)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.21.157",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1014,
+        "batteryTempC": 27,
+        "outputLoadPct": 20,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2409172590",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2513273553",
+      "label": "IDF UPS 5W-B (10.112.21.187)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.21.187",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1721,
+        "batteryTempC": 28,
+        "outputLoadPct": 22,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2513273553",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2426371414",
+      "label": "IDF UPS 6E-A (10.112.23.155)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.23.155",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2061,
+        "batteryTempC": 29,
+        "outputLoadPct": 31,
+        "outputVoltage": 208.0,
+        "inputVoltage": 206.8,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2426371414",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2513273552",
+      "label": "IDF UPS 6E-B (10.112.23.2)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.23.2",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1710,
+        "batteryTempC": 31,
+        "outputLoadPct": 27,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2513273552",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2426271303",
+      "label": "IDF UPS 6W-A (10.112.25.32)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.25.32",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1185,
+        "batteryTempC": 27,
+        "outputLoadPct": 53,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2426271303",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2513273580",
+      "label": "IDF UPS 6W-B (10.112.25.20)",
+      "icon": "srt8000",
+      "site": "HMA",
+      "host": "10.112.25.20",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2097,
+        "batteryTempC": 30,
+        "outputLoadPct": 55,
+        "outputVoltage": 208.0,
+        "inputVoltage": 206.8,
+        "model": "Smart-UPS SRT 8000",
+        "deviceId": "AS2513273580",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "5D2249T04846",
+      "label": "MPOE UPS 1E-A (10.112.5.34)",
+      "icon": "symmetra_lx",
+      "site": "HMA",
+      "host": "10.112.5.34",
+      "status": "warning",
+      "reasons": [
+        "Self-test running"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 15,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1641,
+        "batteryTempC": 27,
+        "outputLoadPct": 26,
+        "outputVoltage": 208.0,
+        "inputVoltage": 206.8,
+        "model": "Symmetra LX 16000 RM",
+        "deviceId": "5D2249T04846",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AD2514220017",
+      "label": "MPOE UPS 1E-B (10.112.5.19)",
+      "icon": "modular15k",
+      "site": "HMA",
+      "host": "10.112.5.19",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1086,
+        "batteryTempC": 24,
+        "outputLoadPct": 25,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS Modular Ultra 15kW",
+        "deviceId": "AD2514220017",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2523192628",
+      "label": "6th FLOOR BOARDROOM UPS",
+      "icon": "srt3000",
+      "site": "HMA",
+      "host": NaN,
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2185,
+        "batteryTempC": 26,
+        "outputLoadPct": 61,
+        "outputVoltage": 208.0,
+        "inputVoltage": 206.8,
+        "model": "Smart-UPS SRT 3000",
+        "deviceId": "AS2523192628",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS1936371898",
+      "label": "IDF1 (10.119.141.25)",
+      "icon": "srt5000",
+      "site": "KUS",
+      "host": "10.119.141.25",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2121,
+        "batteryTempC": 25,
+        "outputLoadPct": 42,
+        "outputVoltage": 208.0,
+        "inputVoltage": 206.8,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS1936371898",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS1935371831",
+      "label": "IDF2 (10.119.142.237)",
+      "icon": "srt5000",
+      "site": "KUS",
+      "host": "10.119.142.237",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2120,
+        "batteryTempC": 31,
+        "outputLoadPct": 51,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS1935371831",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AQ1834273510",
+      "label": "IDF3 (10.119.143.129)",
+      "icon": "srt5000",
+      "site": "KUS",
+      "host": "10.119.143.129",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2033,
+        "batteryTempC": 24,
+        "outputLoadPct": 61,
+        "outputVoltage": 208.0,
+        "inputVoltage": 207.4,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AQ1834273510",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS1936371879",
+      "label": "IDF4 (10.119.144.7)",
+      "icon": "srt5000",
+      "site": "KUS",
+      "host": "10.119.144.7",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2296,
+        "batteryTempC": 32,
+        "outputLoadPct": 35,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS1936371879",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS1935171944",
+      "label": "IDF5 (10.119.145.9)",
+      "icon": "srt5000",
+      "site": "KUS",
+      "host": "10.119.145.9",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1128,
+        "batteryTempC": 28,
+        "outputLoadPct": 45,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS1935171944",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS1935371827",
+      "label": "IDF6 (10.119.146.135)",
+      "icon": "srt5000",
+      "site": "KUS",
+      "host": "10.119.146.135",
+      "status": "warning",
+      "reasons": [
+        "Charge 41%"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 41,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 360,
+        "batteryTempC": 24,
+        "outputLoadPct": 34,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS1935371827",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS1936371900",
+      "label": "IDF7 (10.119.147.21)",
+      "icon": "srt5000",
+      "site": "KUS",
+      "host": "10.119.147.21",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1939,
+        "batteryTempC": 25,
+        "outputLoadPct": 58,
+        "outputVoltage": 208.0,
+        "inputVoltage": 209.0,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS1936371900",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2528170119",
+      "label": "HAEA-IDF2-UPS (10.189.193.210)",
+      "icon": "srt5000",
+      "site": "HAEA_HQ",
+      "host": "10.189.193.210",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2208,
+        "batteryTempC": 32,
+        "outputLoadPct": 56,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2528170119",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2528281659",
+      "label": "HAEA-IDF3-UPS (10.189.193.220)",
+      "icon": "srt5000",
+      "site": "HAEA_HQ",
+      "host": "10.189.193.220",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1213,
+        "batteryTempC": 29,
+        "outputLoadPct": 28,
+        "outputVoltage": 208.0,
+        "inputVoltage": 207.4,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2528281659",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2528281654",
+      "label": "HAEA-IDF4-UPS (10.189.193.230)",
+      "icon": "srt5000",
+      "site": "HAEA_HQ",
+      "host": "10.189.193.230",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 2126,
+        "batteryTempC": 29,
+        "outputLoadPct": 49,
+        "outputVoltage": 208.0,
+        "inputVoltage": 207.4,
+        "model": "Smart-UPS SRT 5000",
+        "deviceId": "AS2528281654",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AS2528280276",
+      "label": "HAEA-IDF5-UPS (10.189.193.240)",
+      "icon": "srt5000",
+      "site": "HAEA_HQ",
+      "host": "10.189.193.240",
+      "status": "offline",
+      "reasons": [
+        "SNMP unreachable"
+      ],
+      "reading": {
+        "reachable": false,
+        "outputStatus": null,
+        "batteryStatus": null,
+        "batteryCapacity": null,
+        "batteryReplace": null,
+        "runtimeRemainingSec": null,
+        "batteryTempC": null,
+        "outputLoadPct": null,
+        "outputVoltage": null,
+        "inputVoltage": null,
+        "model": null,
+        "error": "request timed out",
+        "deviceId": "AS2528280276",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AD2520120007",
+      "label": "HAEA-MDF-UPS-A (10.189.193.196)",
+      "icon": "modular20k",
+      "site": "HAEA_HQ",
+      "host": "10.189.193.196",
+      "status": "critical",
+      "reasons": [
+        "On battery"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 3,
+        "batteryStatus": 2,
+        "batteryCapacity": 78,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 540,
+        "batteryTempC": 27,
+        "outputLoadPct": 54,
+        "outputVoltage": 208.0,
+        "inputVoltage": 0.0,
+        "model": "Smart-UPS Modular Ultra 20kW",
+        "deviceId": "AD2520120007",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    },
+    {
+      "deviceId": "AD2520120012",
+      "label": "HAEA-MDF-UPS-B (10.189.193.197)",
+      "icon": "modular20k",
+      "site": "HAEA_HQ",
+      "host": "10.189.193.197",
+      "status": "normal",
+      "reasons": [
+        "Online"
+      ],
+      "reading": {
+        "reachable": true,
+        "outputStatus": 2,
+        "batteryStatus": 2,
+        "batteryCapacity": 100,
+        "batteryReplace": 1,
+        "runtimeRemainingSec": 1075,
+        "batteryTempC": 31,
+        "outputLoadPct": 22,
+        "outputVoltage": 208.0,
+        "inputVoltage": 208.1,
+        "model": "Smart-UPS Modular Ultra 20kW",
+        "deviceId": "AD2520120012",
+        "ts": "2026-06-05T18:30:00Z"
+      }
+    }
+  ]
+}
