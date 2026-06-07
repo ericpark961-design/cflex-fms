@@ -165,7 +165,135 @@ async function dispatchSlack({ target, msg, alert }) {
   }
 }
 
-const dispatchers = { line: dispatchLine, sms: dispatchSms, teams: dispatchTeams, email: dispatchEmail, slack: dispatchSlack };
+async function dispatchDiscord({ target, msg, alert }) {
+  if (!/^https:\/\/discord(?:app)?\.com\/api\/webhooks\//i.test(String(target))) {
+    return { ok: false, channel: 'discord', error: 'invalid webhook URL' };
+  }
+  try {
+    const sev = (alert && alert.priority) || 'P3';
+    const colorMap = { P1: 0xda1e28, P2: 0xf1c21b, P3: 0x0f62fe, P4: 0x24a148 };
+    const emojiMap = { P1: '🚨', P2: '⚠️', P3: 'ℹ️', P4: '✅' };
+    const payload = {
+      username: 'C-Flex FMS',
+      embeds: [{
+        title: `${emojiMap[sev] || '🔔'} ${msg.head}`,
+        description: msg.body,
+        color: colorMap[sev] || 0x525252,
+        fields: [
+          msg.where ? { name: 'Location', value: msg.where, inline: true } : null,
+          msg.detail ? { name: 'Detail', value: msg.detail, inline: false } : null,
+        ].filter(Boolean),
+        footer: { text: 'C-Flex FMS · cflex.runless.co.uk' },
+        timestamp: new Date().toISOString(),
+      }],
+    };
+    const r = await axios.post(target, payload, { timeout: 10000 });
+    return { ok: r.status >= 200 && r.status < 300, channel: 'discord' };
+  } catch (e) {
+    return { ok: false, channel: 'discord', error: (e.response && e.response.data) || e.message };
+  }
+}
+
+async function dispatchPagerDuty({ target, msg, alert }) {
+  // target = PagerDuty Events API v2 routing key (integration key, 32 chars)
+  // https://developer.pagerduty.com/docs/events-api-v2/
+  const routingKey = String(target || '').trim();
+  if (routingKey.length < 16 || routingKey.length > 64) {
+    return { ok: false, channel: 'pagerduty', error: 'invalid routing key' };
+  }
+  try {
+    const sev = (alert && alert.priority) || 'P3';
+    const pdSev = { P1: 'critical', P2: 'warning', P3: 'info', P4: 'info' }[sev] || 'warning';
+    const dedup = `cflex-${alert?.tenant_id || 0}-${alert?.device_id || 'x'}-${alert?.metric || 'x'}`;
+    const r = await axios.post('https://events.pagerduty.com/v2/enqueue', {
+      routing_key: routingKey,
+      event_action: 'trigger',
+      dedup_key: dedup,
+      payload: {
+        summary: msg.head + (msg.where ? ' — ' + msg.where : ''),
+        source: 'C-Flex FMS',
+        severity: pdSev,
+        component: alert?.metric || 'ups',
+        group: msg.where || '',
+        class: alert?.priority || 'P3',
+        custom_details: { body: msg.body, detail: msg.detail, alertId: alert?.id, deviceId: alert?.device_id },
+      },
+      client: 'C-Flex FMS',
+      client_url: 'https://cflex.runless.co.uk/fms',
+    }, { timeout: 12000 });
+    return { ok: r.status === 202, channel: 'pagerduty', dedup_key: r.data?.dedup_key };
+  } catch (e) {
+    return { ok: false, channel: 'pagerduty', error: (e.response && e.response.data) || e.message };
+  }
+}
+
+async function dispatchServiceNow({ target, msg, alert }) {
+  // target format: https://<instance>.service-now.com/api/now/table/incident|<basic_b64>
+  // The basic auth is appended after a pipe so a single column can carry the URL and creds.
+  // (Phase 2: move creds to fms_control_config or per-route secret store.)
+  const [url, basicB64] = String(target || '').split('|');
+  if (!/^https:\/\/.+\.service-now\.com\/api\/now\/table\/incident/i.test(url || '')) {
+    return { ok: false, channel: 'servicenow', error: 'invalid SNOW URL' };
+  }
+  if (!basicB64) {
+    return { ok: false, channel: 'servicenow', error: 'missing basic_b64 after | delimiter' };
+  }
+  try {
+    const sev = (alert && alert.priority) || 'P3';
+    const impact   = { P1: 1, P2: 2, P3: 3, P4: 4 }[sev] || 3;
+    const urgency  = impact;
+    const body = {
+      short_description: msg.head + (msg.where ? ' — ' + msg.where : ''),
+      description: [msg.body, msg.detail].filter(Boolean).join('\n\n'),
+      impact: String(impact),
+      urgency: String(urgency),
+      caller_id: 'cflex-fms',
+      category: 'hardware',
+      subcategory: 'ups',
+      cmdb_ci: alert?.device_id || '',
+      u_alert_id: alert?.id || '',
+      u_source: 'C-Flex FMS',
+    };
+    const r = await axios.post(url, body, {
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json',
+                 'Authorization': 'Basic ' + basicB64 },
+      timeout: 15000,
+    });
+    return { ok: r.status >= 200 && r.status < 300, channel: 'servicenow',
+             sys_id: r.data?.result?.sys_id, number: r.data?.result?.number };
+  } catch (e) {
+    return { ok: false, channel: 'servicenow', error: (e.response && e.response.data) || e.message };
+  }
+}
+
+async function dispatchWebhook({ target, msg, alert }) {
+  // Generic JSON webhook for Zapier, IFTTT, n8n, Make, custom endpoints.
+  if (!/^https:\/\//.test(String(target))) {
+    return { ok: false, channel: 'webhook', error: 'invalid URL' };
+  }
+  try {
+    const payload = {
+      source: 'cflex-fms',
+      sent_at: new Date().toISOString(),
+      alert: {
+        id: alert?.id, tenant_id: alert?.tenant_id, device_id: alert?.device_id,
+        priority: alert?.priority, metric: alert?.metric, message: alert?.message,
+        value: alert?.value, threshold: alert?.threshold,
+      },
+      formatted: {
+        title: msg.head, location: msg.where, body: msg.body, detail: msg.detail,
+      },
+      dashboard_url: 'https://cflex.runless.co.uk/fms',
+    };
+    const r = await axios.post(target, payload, { timeout: 10000,
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'cflex-fms/1.0' } });
+    return { ok: r.status >= 200 && r.status < 300, channel: 'webhook', status: r.status };
+  } catch (e) {
+    return { ok: false, channel: 'webhook', error: (e.response && e.response.data) || e.message };
+  }
+}
+
+const dispatchers = { line: dispatchLine, sms: dispatchSms, teams: dispatchTeams, email: dispatchEmail, slack: dispatchSlack, discord: dispatchDiscord, pagerduty: dispatchPagerDuty, servicenow: dispatchServiceNow, webhook: dispatchWebhook };
 
 async function notify(alert) {
   try {
@@ -202,4 +330,4 @@ async function notify(alert) {
   }
 }
 
-module.exports = { notify };
+module.exports = { notify, dispatchers, formatMessage };

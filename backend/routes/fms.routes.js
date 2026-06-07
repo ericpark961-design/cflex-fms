@@ -680,4 +680,114 @@ router.put('/control/config', (req, res) => {
 });
 
 
+
+// ─── GET /v1/fms/routes ── list notification routes ───────────────
+router.get('/routes', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const rows = db.prepare(`SELECT id, channel, min_priority, target, enabled
+                           FROM fms_alarm_routes WHERE tenant_id=? ORDER BY id`).all(tid);
+  // Recent dispatch tally per channel
+  const stats = db.prepare(`SELECT channel,
+                                  COUNT(*) AS total,
+                                  SUM(CASE WHEN ok=1 THEN 1 ELSE 0 END) AS ok_count,
+                                  MAX(sent_at) AS last_at
+                           FROM fms_alarm_dispatch_log
+                           WHERE sent_at > ? GROUP BY channel`).all(Date.now() - 7*24*3600*1000);
+  res.json({ ok: true, routes: rows, stats });
+});
+
+// ─── POST /v1/fms/routes ── add notification route ────────────────
+router.post('/routes', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const { channel, target, min_priority = 'P2', enabled = 1 } = req.body || {};
+  const ALLOWED = ['line','sms','teams','email','slack','discord','pagerduty','servicenow','webhook'];
+  if (!ALLOWED.includes(channel)) return res.status(400).json({ error: `channel must be one of ${ALLOWED.join(',')}` });
+  if (!target || String(target).length < 3) return res.status(400).json({ error: 'target required' });
+  const prio = ['P1','P2','P3','P4'].includes(min_priority) ? min_priority : 'P2';
+  const r = db.prepare(`INSERT INTO fms_alarm_routes (tenant_id, channel, target, min_priority, enabled)
+                        VALUES (?,?,?,?,?)`)
+    .run(tid, channel, String(target).slice(0, 2000), prio, enabled ? 1 : 0);
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+
+// ─── PUT /v1/fms/routes/:id ── update route ───────────────────────
+router.put('/routes/:id', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const id = parseInt(req.params.id, 10);
+  const cur = db.prepare('SELECT id FROM fms_alarm_routes WHERE id=? AND tenant_id=?').get(id, tid);
+  if (!cur) return res.status(404).json({ error: 'not found' });
+  const b = req.body || {};
+  const sets = []; const vals = [];
+  if (b.channel != null)      { sets.push('channel=?');      vals.push(b.channel); }
+  if (b.target != null)       { sets.push('target=?');       vals.push(String(b.target).slice(0, 2000)); }
+  if (b.min_priority != null) { sets.push('min_priority=?'); vals.push(b.min_priority); }
+  if (b.enabled != null)      { sets.push('enabled=?');      vals.push(b.enabled ? 1 : 0); }
+  if (!sets.length) return res.status(400).json({ error: 'no fields to update' });
+  vals.push(id, tid);
+  db.prepare(`UPDATE fms_alarm_routes SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`).run(...vals);
+  res.json({ ok: true });
+});
+
+// ─── DELETE /v1/fms/routes/:id ────────────────────────────────────
+router.delete('/routes/:id', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const id = parseInt(req.params.id, 10);
+  const r = db.prepare('DELETE FROM fms_alarm_routes WHERE id=? AND tenant_id=?').run(id, tid);
+  if (r.changes === 0) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+});
+
+// ─── POST /v1/fms/routes/:id/test ── send test message to one route ─
+router.post('/routes/:id/test', async (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const id = parseInt(req.params.id, 10);
+  const route = db.prepare('SELECT * FROM fms_alarm_routes WHERE id=? AND tenant_id=?').get(id, tid);
+  if (!route) return res.status(404).json({ error: 'not found' });
+  try {
+    const notifier = require('../services/alarm-notifier');
+    const fake = {
+      id: 0, tenant_id: tid,
+      device_id: 'TEST',
+      priority: req.body?.priority || 'P2',
+      metric: 'test',
+      message: req.body?.message || 'C-Flex FMS 테스트 알람입니다',
+      value: 99,
+      threshold: 50,
+      received_at: Date.now(),
+    };
+    // Temporarily insert a single-route entry by calling internal notify path
+    // We bypass routing rules and dispatch this one route directly.
+    const r = await notifier._dispatchOne ? notifier._dispatchOne(route, fake) : null;
+    if (r) return res.json({ ok: r.ok, result: r });
+    // Fallback — use notify() but only one route was activated; this requires
+    // the route to already be enabled.
+    return res.json({ ok: false, error: 'test endpoint requires alarm-notifier._dispatchOne — using fallback', note: 'route must be enabled for notify() to pick it up' });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── POST /v1/fms/routes/simulate ── fire a fake alarm through the pipeline ─
+router.post('/routes/simulate', async (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  try {
+    const notifier = require('../services/alarm-notifier');
+    const fake = {
+      id: 0, tenant_id: tid,
+      device_id: req.body?.device_id || 'TEST',
+      priority: req.body?.priority || 'P2',
+      metric: req.body?.metric || 'battery_pct',
+      message: req.body?.message || 'C-Flex FMS 테스트 알람',
+      value: req.body?.value ?? 28,
+      threshold: req.body?.threshold ?? 50,
+      received_at: Date.now(),
+    };
+    const results = await notifier.notify(fake);
+    res.json({ ok: true, results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 module.exports = router;

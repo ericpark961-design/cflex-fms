@@ -67,6 +67,7 @@ const api = {
   get: (p) => fetch(p, { headers: auth() }).then(r => r.json()),
   post: (p, body) => fetch(p, { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth() }, body: JSON.stringify(body) }).then(r => r.json()),
   put: (p, body) => fetch(p, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...auth() }, body: JSON.stringify(body) }).then(r => r.json()),
+  del: (p) => fetch(p, { method: 'DELETE', headers: auth() }).then(r => r.json()),
 };
 
 const fmtTime = (ms) => {
@@ -1519,16 +1520,7 @@ function Admin({ user }) {
 
       {tab === 'reports' && <ReportsAdmin user={user} />}
 
-      {tab === 'channels' && (
-        <Section title={tx('알림 채널 (알람용)', 'Notification channels (for alarms)')}>
-          <div style={{ background: C.card, border: `1px solid ${C.hairline}`, padding: 16, fontSize: 13, color: C.inkMuted }}>
-            💬 Microsoft Teams · 📱 SMS (Twilio, TCR 검수중) · 🟩 LINE · ✉ Email
-            <div style={{ marginTop: 8, fontSize: 11, color: C.inkSubtle }}>
-              {tx('사용자별 채널 설정은 Phase 2에서 제공됩니다.', 'Per-user channel preferences in Phase 2.')}
-            </div>
-          </div>
-        </Section>
-      )}
+      {tab === 'channels' && <ChannelsAdmin />}
 
       {tab === 'control' && <ControlAdmin />}
     </div>
@@ -2029,6 +2021,305 @@ function ConfirmActionModal({ action, enabled, onCancel, onConfirm }) {
           <CheckCircle2 size={13} /> {enabled ? tx('실행', 'Execute') : tx('Dry-run', 'Dry-run')}
         </button>
       </div>
+    </Modal>
+  );
+}
+
+// ─── Admin → Channels subtab ─ notification route CRUD + test/simulate ─
+const CHANNEL_META = {
+  line:       { label: 'LINE Notify',       dot: '#06c755', help: { ko: 'notify-bot.line.me 에서 발급한 Personal/Group Access Token', en: 'Personal/Group token from notify-bot.line.me' }, placeholder: 'NOTIFY_TOKEN_xxxx' },
+  sms:        { label: 'SMS',               dot: '#0f62fe', help: { ko: '+E.164 형식의 휴대전화 번호 (예: +14155551212)', en: 'Phone number in E.164 format (e.g. +14155551212)' }, placeholder: '+14155551212' },
+  teams:      { label: 'Microsoft Teams',   dot: '#5059c9', help: { ko: 'Incoming Webhook URL 또는 Power Automate Workflow URL. 폴백: teamId/channelId (AAD Bot 필요)', en: 'Incoming Webhook URL or Power Automate Workflow URL. Fallback: teamId/channelId (needs AAD bot)' }, placeholder: 'https://prod-xx.westus.logic.azure.com/workflows/...' },
+  email:      { label: 'Email (SMTP)',      dot: '#ff8389', help: { ko: '쉼표로 다중 수신자 지정 가능', en: 'Comma-separated for multiple recipients' }, placeholder: 'ops@example.com, oncall@example.com' },
+  slack:      { label: 'Slack',             dot: '#611f69', help: { ko: 'Slack 워크스페이스 → Apps → Incoming Webhooks 에서 발급', en: 'Slack workspace → Apps → Incoming Webhooks' }, placeholder: 'https://hooks.slack.com/services/T.../B.../...' },
+  discord:    { label: 'Discord',           dot: '#5865f2', help: { ko: '채널 설정 → 연동 → 웹훅 에서 URL 발급', en: 'Channel settings → Integrations → Webhooks' }, placeholder: 'https://discord.com/api/webhooks/.../...' },
+  pagerduty:  { label: 'PagerDuty',         dot: '#06ac38', help: { ko: 'Service → Integrations → Events API v2 의 32자리 Integration Key (routing key)', en: 'Service → Integrations → Events API v2 Integration Key (routing key)' }, placeholder: 'R0UTING_KEY_32_CHARS_XXXXXXXXXXX' },
+  servicenow: { label: 'ServiceNow',        dot: '#293e40', help: { ko: 'URL|BASE64(user:password) 형식. 예: https://<instance>.service-now.com/api/now/table/incident|dXNlcjpwYXNz', en: 'URL|BASE64(user:password). e.g. https://<instance>.service-now.com/api/now/table/incident|dXNlcjpwYXNz' }, placeholder: 'https://acme.service-now.com/api/now/table/incident|dXNlcjpwYXNz' },
+  webhook:    { label: 'Webhook (Generic)', dot: '#525252', help: { ko: 'Zapier / IFTTT / n8n / Make / 자체 엔드포인트. JSON POST 수신', en: 'Zapier / IFTTT / n8n / Make / custom endpoint. Receives JSON POST' }, placeholder: 'https://hooks.zapier.com/hooks/catch/.../...' },
+};
+
+function ChannelsAdmin() {
+  const [routes, setRoutes] = useState([]);
+  const [stats, setStats]   = useState([]);
+  const [busy, setBusy]     = useState(false);
+  const [msg, setMsg]       = useState(null);
+  const [form, setForm]     = useState({ channel: 'slack', target: '', min_priority: 'P2', enabled: true });
+  const [editingId, setEditingId] = useState(null);
+  const [editBuf, setEditBuf]     = useState({});
+  const [showSim, setShowSim]     = useState(false);
+
+  const reload = () => api.get('/v1/fms/routes').then(d => {
+    if (d?.ok) { setRoutes(d.routes || []); setStats(d.stats || []); }
+  });
+  useEffect(() => { reload(); }, []);
+
+  const statFor = (ch) => stats.find(s => s.channel === ch) || {};
+
+  const addRoute = async () => {
+    if (!form.target.trim()) { setMsg({ ok: false, text: tx('대상(target)을 입력하세요.', 'Enter a target.') }); return; }
+    setBusy(true); setMsg(null);
+    const r = await api.post('/v1/fms/routes', form);
+    setBusy(false);
+    if (r?.ok) {
+      setMsg({ ok: true, text: tx('라우트가 추가되었습니다.', 'Route added.') });
+      setForm({ channel: form.channel, target: '', min_priority: 'P2', enabled: true });
+      reload();
+    } else {
+      setMsg({ ok: false, text: r?.error || tx('추가 실패', 'Add failed') });
+    }
+  };
+
+  const startEdit = (r) => {
+    setEditingId(r.id);
+    setEditBuf({ channel: r.channel, target: r.target, min_priority: r.min_priority, enabled: !!r.enabled });
+  };
+  const saveEdit = async () => {
+    const r = await api.put(`/v1/fms/routes/${editingId}`, editBuf);
+    if (r?.ok) { setEditingId(null); reload(); } else { setMsg({ ok: false, text: r?.error || tx('저장 실패', 'Save failed') }); }
+  };
+  const removeRoute = async (id) => {
+    if (!confirm(tx('이 라우트를 삭제할까요?', 'Delete this route?'))) return;
+    const r = await api.del(`/v1/fms/routes/${id}`);
+    if (r?.ok) reload(); else setMsg({ ok: false, text: r?.error || tx('삭제 실패', 'Delete failed') });
+  };
+  const toggleEnabled = async (row) => {
+    const r = await api.put(`/v1/fms/routes/${row.id}`, { enabled: !row.enabled });
+    if (r?.ok) reload();
+  };
+
+  const testRoute = async (row) => {
+    setBusy(true); setMsg(null);
+    // Use /routes/:id/test if available; otherwise the simulate endpoint
+    const r = await api.post(`/v1/fms/routes/${row.id}/test`, {
+      priority: row.min_priority,
+      message: tx('C-Flex FMS 테스트 알람입니다.', 'C-Flex FMS test alarm.'),
+    });
+    setBusy(false);
+    if (r?.ok) {
+      setMsg({ ok: true, text: `[${row.channel}] ${tx('테스트 전송 성공', 'Test sent OK')}` });
+    } else {
+      setMsg({ ok: false, text: `[${row.channel}] ${r?.error || tx('테스트 실패', 'Test failed')}` });
+    }
+  };
+
+  const cur = CHANNEL_META[form.channel] || {};
+
+  return (
+    <>
+      <Section title={tx('알림 채널 라우트 추가', 'Add notification route')}>
+        <div style={{ background: C.card, border: `1px solid ${C.hairline}`, padding: 18 }}>
+          <div style={{ fontSize: 12, color: C.inkMuted, marginBottom: 14 }}>
+            {tx('알람이 발생하면 등록된 채널로 자동 전송됩니다. 우선순위 P1~P4 별로 다른 채널을 라우팅할 수 있습니다.', 'Alarms are auto-dispatched to registered channels. You can route different priorities (P1–P4) to different channels.')}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 100px 100px auto', gap: 10, alignItems: 'flex-end' }}>
+            <div>
+              <div style={labelStyle}>{tx('채널', 'Channel')}</div>
+              <select value={form.channel} onChange={e => setForm({ ...form, channel: e.target.value, target: '' })} style={fieldStyle}>
+                {Object.keys(CHANNEL_META).map(k => <option key={k} value={k}>{CHANNEL_META[k].label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={labelStyle}>{tx('대상 (URL/주소/키)', 'Target (URL/address/key)')}</div>
+              <input value={form.target} onChange={e => setForm({ ...form, target: e.target.value })} style={fieldStyle} placeholder={cur.placeholder || ''} />
+            </div>
+            <div>
+              <div style={labelStyle}>{tx('최소 우선순위', 'Min priority')}</div>
+              <select value={form.min_priority} onChange={e => setForm({ ...form, min_priority: e.target.value })} style={fieldStyle}>
+                {['P1','P2','P3','P4'].map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={labelStyle}>{tx('활성', 'Enabled')}</div>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 10px', border: `1px solid ${C.hairline}` }}>
+                <input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} />
+                <span style={{ fontSize: 12 }}>{form.enabled ? tx('켜짐', 'On') : tx('꺼짐', 'Off')}</span>
+              </label>
+            </div>
+            <button onClick={addRoute} disabled={busy}
+              style={{ height: 36, padding: '0 18px', background: C.primary, color: '#fff', border: 'none', cursor: busy ? 'wait' : 'pointer', fontWeight: 600 }}>
+              {tx('추가', 'Add')}
+            </button>
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: C.inkSubtle, lineHeight: 1.5 }}>
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 8, background: cur.dot || C.inkSubtle, marginRight: 6 }} />
+            {cur.help ? tx(cur.help.ko, cur.help.en) : ''}
+          </div>
+          {msg && (
+            <div style={{ marginTop: 12, padding: '8px 12px', fontSize: 12,
+                          background: msg.ok ? C.okSoft : C.criticalSoft,
+                          color: msg.ok ? C.ok : C.critical, border: `1px solid ${msg.ok ? C.ok : C.critical}` }}>
+              {msg.text}
+            </div>
+          )}
+        </div>
+      </Section>
+
+      <Section title={`${tx('등록된 라우트', 'Registered routes')} · ${routes.length}`}>
+        <div style={{ background: C.card, border: `1px solid ${C.hairline}` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr 90px 90px 180px 220px',
+                        gap: 8, padding: '10px 14px', fontSize: 11, fontWeight: 700, color: C.inkMuted,
+                        textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: `1px solid ${C.hairline}` }}>
+            <div>{tx('채널', 'Channel')}</div>
+            <div>{tx('대상', 'Target')}</div>
+            <div>{tx('최소', 'Min')}</div>
+            <div>{tx('상태', 'State')}</div>
+            <div>{tx('최근 7일 전송', 'Last 7d sent')}</div>
+            <div style={{ textAlign: 'right' }}>{tx('동작', 'Actions')}</div>
+          </div>
+          {routes.length === 0 && (
+            <div style={{ padding: 24, fontSize: 12, color: C.inkSubtle, textAlign: 'center' }}>
+              {tx('등록된 라우트가 없습니다. 위에서 추가하세요.', 'No routes yet. Add one above.')}
+            </div>
+          )}
+          {routes.map(r => {
+            const m = CHANNEL_META[r.channel] || { label: r.channel, dot: C.inkSubtle };
+            const s = statFor(r.channel);
+            const isEdit = editingId === r.id;
+            return (
+              <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '160px 1fr 90px 90px 180px 220px',
+                                       gap: 8, padding: '10px 14px', alignItems: 'center',
+                                       borderBottom: `1px solid ${C.hairline}`, fontSize: 13 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 8, background: m.dot }} />
+                  <span style={{ fontWeight: 500 }}>{m.label}</span>
+                </div>
+                {isEdit ? (
+                  <input style={{ ...fieldStyle, fontSize: 12 }} value={editBuf.target}
+                         onChange={e => setEditBuf({ ...editBuf, target: e.target.value })} />
+                ) : (
+                  <div style={{ fontFamily: 'monospace', fontSize: 11, color: C.inkMuted,
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                       title={r.target}>{r.target}</div>
+                )}
+                {isEdit ? (
+                  <select style={fieldStyle} value={editBuf.min_priority}
+                          onChange={e => setEditBuf({ ...editBuf, min_priority: e.target.value })}>
+                    {['P1','P2','P3','P4'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                ) : (
+                  <div style={{ fontWeight: 600, color: sevColor(r.min_priority).fg }}>{r.min_priority}+</div>
+                )}
+                <button onClick={() => toggleEnabled(r)}
+                        style={{ height: 24, padding: '0 8px', fontSize: 11, fontWeight: 600,
+                                 background: r.enabled ? C.okSoft : '#f4f4f4',
+                                 color: r.enabled ? C.ok : C.inkMuted,
+                                 border: `1px solid ${r.enabled ? C.ok : C.hairline}`,
+                                 cursor: 'pointer' }}>
+                  {r.enabled ? tx('활성', 'ENABLED') : tx('비활성', 'DISABLED')}
+                </button>
+                <div style={{ fontSize: 11, color: C.inkMuted }}>
+                  {s.total ? (
+                    <>
+                      <span style={{ color: C.ink, fontWeight: 600 }}>{s.ok_count || 0}/{s.total}</span>
+                      <span style={{ color: C.inkSubtle }}> · {fmtTime(s.last_at)}</span>
+                    </>
+                  ) : <span style={{ color: C.inkSubtle }}>—</span>}
+                </div>
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                  {isEdit ? (
+                    <>
+                      <button onClick={saveEdit} style={btnPrimaryMini}>{tx('저장', 'Save')}</button>
+                      <button onClick={() => setEditingId(null)} style={btnGhostMini}>{tx('취소', 'Cancel')}</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => testRoute(r)} disabled={busy} style={btnGhostMini}>{tx('테스트', 'Test')}</button>
+                      <button onClick={() => startEdit(r)} style={btnGhostMini}>{tx('수정', 'Edit')}</button>
+                      <button onClick={() => removeRoute(r.id)} style={btnDangerMini}>{tx('삭제', 'Delete')}</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+
+      <Section title={tx('파이프라인 시뮬레이션', 'Pipeline simulation')}>
+        <div style={{ background: C.card, border: `1px solid ${C.hairline}`, padding: 18 }}>
+          <div style={{ fontSize: 12, color: C.inkMuted, marginBottom: 12 }}>
+            {tx('가상 알람을 알림 파이프라인 전체에 통과시켜 활성화된 모든 라우트가 정상 작동하는지 확인합니다.',
+                'Fires a fake alarm through the whole pipeline and verifies every enabled route dispatches OK.')}
+          </div>
+          <button onClick={() => setShowSim(true)}
+                  style={{ height: 36, padding: '0 18px', background: C.primary, color: '#fff',
+                           border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+            {tx('시뮬레이션 실행', 'Run simulation')}
+          </button>
+        </div>
+      </Section>
+
+      {showSim && <SimulateAlarmModal onClose={() => setShowSim(false)} />}
+    </>
+  );
+}
+
+const btnPrimaryMini = { height: 26, padding: '0 10px', fontSize: 11, fontWeight: 600, background: C.primary, color: '#fff', border: 'none', cursor: 'pointer' };
+const btnGhostMini   = { height: 26, padding: '0 10px', fontSize: 11, fontWeight: 500, background: '#fff', color: C.ink, border: `1px solid ${C.hairline}`, cursor: 'pointer' };
+const btnDangerMini  = { height: 26, padding: '0 10px', fontSize: 11, fontWeight: 600, background: '#fff', color: C.critical, border: `1px solid ${C.critical}`, cursor: 'pointer' };
+
+function SimulateAlarmModal({ onClose }) {
+  const [form, setForm] = useState({ priority: 'P2', metric: 'battery_pct', value: 28, threshold: 50, device_id: 'TEST',
+                                     message: tx('C-Flex FMS 시뮬레이션 알람', 'C-Flex FMS simulated alarm') });
+  const [busy, setBusy]       = useState(false);
+  const [results, setResults] = useState(null);
+  const run = async () => {
+    setBusy(true);
+    const r = await api.post('/v1/fms/routes/simulate', form);
+    setBusy(false);
+    setResults(r);
+  };
+  return (
+    <Modal title={tx('알림 파이프라인 시뮬레이션', 'Notification pipeline simulation')} onClose={onClose} width={720}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+        <Field label={tx('우선순위', 'Priority')}>
+          <select style={fieldStyle} value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}>
+            {['P1','P2','P3','P4'].map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </Field>
+        <Field label={tx('지표', 'Metric')}>
+          <input style={fieldStyle} value={form.metric} onChange={e => setForm({ ...form, metric: e.target.value })} />
+        </Field>
+        <Field label={tx('값', 'Value')}>
+          <input type="number" style={fieldStyle} value={form.value} onChange={e => setForm({ ...form, value: parseFloat(e.target.value) })} />
+        </Field>
+        <Field label={tx('임계', 'Threshold')}>
+          <input type="number" style={fieldStyle} value={form.threshold} onChange={e => setForm({ ...form, threshold: parseFloat(e.target.value) })} />
+        </Field>
+        <Field label={tx('장치 ID', 'Device ID')}>
+          <input style={fieldStyle} value={form.device_id} onChange={e => setForm({ ...form, device_id: e.target.value })} />
+        </Field>
+        <Field label={tx('메시지', 'Message')}>
+          <input style={fieldStyle} value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} />
+        </Field>
+      </div>
+      <button onClick={run} disabled={busy}
+              style={{ height: 36, padding: '0 18px', background: C.primary, color: '#fff', border: 'none',
+                       cursor: busy ? 'wait' : 'pointer', fontWeight: 600 }}>
+        {busy ? tx('전송 중…', 'Sending…') : tx('시뮬레이션 발사', 'Fire simulation')}
+      </button>
+      {results && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>{tx('결과', 'Results')}</div>
+          {(results.results || []).length === 0 && (
+            <div style={{ padding: 14, fontSize: 12, color: C.inkSubtle, background: '#f4f4f4' }}>
+              {tx('일치하는 활성 라우트가 없습니다.', 'No enabled routes matched.')}
+            </div>
+          )}
+          {(results.results || []).map((r, i) => (
+            <div key={i} style={{ padding: '8px 12px', fontSize: 12, marginBottom: 4,
+                                  background: r.ok ? C.okSoft : C.criticalSoft,
+                                  color: r.ok ? C.ok : C.critical, border: `1px solid ${r.ok ? C.ok : C.critical}` }}>
+              <strong>{r.channel}</strong> · {r.ok ? 'OK' : (typeof r.error === 'string' ? r.error : JSON.stringify(r.error || r))}
+            </div>
+          ))}
+          {results.error && (
+            <div style={{ padding: 12, fontSize: 12, color: C.critical, background: C.criticalSoft, border: `1px solid ${C.critical}` }}>
+              {results.error}
+            </div>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }
