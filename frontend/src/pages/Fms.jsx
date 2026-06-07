@@ -2329,8 +2329,59 @@ function ChannelsAdmin() {
         </div>
       </Section>
 
+      <ActiveMutesPanel />
+
       {showSim && <SimulateAlarmModal onClose={() => setShowSim(false)} />}
     </>
+  );
+}
+
+function ActiveMutesPanel() {
+  const [mutes, setMutes] = useState([]);
+  const reload = () => api.get('/v1/fms/mutes').then(d => { if (d?.ok) setMutes(d.mutes || []); });
+  useEffect(() => { reload(); const id = setInterval(reload, 60000); return () => clearInterval(id); }, []);
+  const unmute = async (id) => {
+    if (!confirm(tx('이 음소거를 해제할까요?', 'Clear this mute?'))) return;
+    const r = await api.del(`/v1/fms/mutes/${id}`);
+    if (r?.ok) reload();
+  };
+  if (!mutes.length) return null;
+  return (
+    <Section title={`${tx('활성 음소거', 'Active mutes')} · ${mutes.length}`}>
+      <div style={{ background: C.card, border: `1px solid ${C.hairline}` }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 150px 1fr 150px 100px',
+                      gap: 8, padding: '10px 14px', fontSize: 11, fontWeight: 700, color: C.inkMuted,
+                      textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: `1px solid ${C.hairline}` }}>
+          <div>{tx('장치', 'Device')}</div>
+          <div>{tx('지표', 'Metric')}</div>
+          <div>{tx('해제 예정', 'Expires')}</div>
+          <div>{tx('음소거한 사람', 'Muted by')}</div>
+          <div>{tx('출처', 'Source')}</div>
+          <div></div>
+        </div>
+        {mutes.map(m => {
+          const remaining = m.muted_until - Date.now();
+          const mins = Math.max(0, Math.ceil(remaining / 60000));
+          return (
+            <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 150px 1fr 150px 100px',
+                                     gap: 8, padding: '10px 14px', alignItems: 'center',
+                                     borderBottom: `1px solid ${C.hairline}`, fontSize: 12 }}>
+              <div style={{ fontFamily: 'monospace', color: C.ink }}>{m.device_id}</div>
+              <div style={{ fontFamily: 'monospace', color: C.inkMuted }}>{m.metric || tx('전체', '*')}</div>
+              <div style={{ color: C.inkMuted }}>
+                {mins > 60 ? `${Math.round(mins/60)}h` : `${mins}m`}
+                <span style={{ color: C.inkSubtle, fontSize: 11 }}> · {fmtAbs(m.muted_until)}</span>
+              </div>
+              <div style={{ color: C.inkMuted }}>{m.muted_by || '—'}</div>
+              <div style={{ fontSize: 11, color: C.inkSubtle, textTransform: 'uppercase' }}>{m.muted_via || '—'}</div>
+              <div style={{ textAlign: 'right' }}>
+                <button onClick={() => unmute(m.id)} style={btnDangerMini}>{tx('해제', 'Unmute')}</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
   );
 }
 

@@ -306,9 +306,28 @@ async function dispatchWebhook({ target, msg, alert }) {
 
 const dispatchers = { line: dispatchLine, sms: dispatchSms, teams: dispatchTeams, email: dispatchEmail, slack: dispatchSlack, discord: dispatchDiscord, pagerduty: dispatchPagerDuty, servicenow: dispatchServiceNow, webhook: dispatchWebhook };
 
+function isMuted(alert) {
+  try {
+    const now = Date.now();
+    const m = db.prepare(`
+      SELECT 1 FROM fms_alarm_mutes
+      WHERE (tenant_id=? OR tenant_id IS NULL)
+        AND device_id=?
+        AND (metric IS NULL OR metric=?)
+        AND muted_until > ?
+      LIMIT 1
+    `).get(alert.tenant_id, alert.device_id, alert.metric || '', now);
+    return !!m;
+  } catch (_) { return false; }
+}
+
 async function notify(alert) {
   try {
     if (!alert || !alert.tenant_id) return;
+    if (isMuted(alert)) {
+      console.log('[alarm-notifier]', alert.id, 'muted — skipping dispatch');
+      return [{ ok: true, channel: 'muted', skipped: true }];
+    }
     const rules = db.prepare(
       'SELECT channel, min_priority, target FROM fms_alarm_routes WHERE tenant_id = ? AND enabled = 1'
     ).all(alert.tenant_id);
