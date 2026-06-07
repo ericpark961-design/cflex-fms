@@ -51,18 +51,59 @@ async function dispatchSms({ target, msg }) {
   }
 }
 
-async function dispatchTeams({ target, msg }) {
+async function dispatchTeams({ target, msg, alert }) {
+  // Dual mode: if target is an Incoming Webhook or Power Automate workflow URL,
+  // POST an Adaptive Card directly (no AAD app required). Otherwise treat target
+  // as teamId/channelId and go through runless-uc (Graph API, needs Bot creds).
+  const t = String(target || '');
+  const isWebhook = /^https:\/\/(?:[a-z0-9-]+\.webhook\.office\.com|outlook\.office\.com\/webhook|prod-[a-z0-9-]+\.[a-z]+\.logic\.azure\.com)/i.test(t);
+
+  if (isWebhook) {
+    try {
+      const sev = (alert && alert.priority) || 'P3';
+      const colorMap = { P1: 'attention', P2: 'warning', P3: 'accent', P4: 'good' };
+      const accent = colorMap[sev] || 'default';
+      const dashUrl = 'https://cflex.runless.co.uk/fms';
+      const body = [
+        { type: 'TextBlock', size: 'Medium', weight: 'Bolder', color: accent, text: `🚨 ${msg.head}` },
+      ];
+      if (msg.where) body.push({ type: 'TextBlock', isSubtle: true, spacing: 'None', text: msg.where, wrap: true });
+      body.push({ type: 'TextBlock', text: msg.body, wrap: true, spacing: 'Small' });
+      if (msg.detail) body.push({ type: 'TextBlock', isSubtle: true, size: 'Small', text: msg.detail, wrap: true, spacing: 'Small' });
+      const card = {
+        type: 'message',
+        attachments: [{
+          contentType: 'application/vnd.microsoft.card.adaptive',
+          contentUrl: null,
+          content: {
+            type: 'AdaptiveCard',
+            $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+            version: '1.4',
+            msteams: { width: 'Full' },
+            body,
+            actions: [{ type: 'Action.OpenUrl', title: 'Open in C-Flex', url: dashUrl }],
+          },
+        }],
+      };
+      const r = await axios.post(t, card, { timeout: 12000, headers: { 'Content-Type': 'application/json' } });
+      return { ok: r.status >= 200 && r.status < 300, channel: 'teams', mode: 'webhook' };
+    } catch (e) {
+      return { ok: false, channel: 'teams', mode: 'webhook', error: (e.response && e.response.data) || e.message };
+    }
+  }
+
+  // Fallback to runless-uc Graph API path
   if (!UC_INTERNAL_KEY) return { ok: false, channel: 'teams', error: 'INTERNAL_API_KEY not set' };
   try {
-    const [teamId, channelId] = String(target).split('/');
-    if (!teamId || !channelId) return { ok: false, channel: 'teams', error: 'target must be teamId/channelId' };
+    const [teamId, channelId] = t.split('/');
+    if (!teamId || !channelId) return { ok: false, channel: 'teams', error: 'target must be webhook URL or teamId/channelId' };
     const text = `🚨 **${msg.head}**\n_${msg.where}_\n${msg.body}${msg.detail ? '\n\n' + msg.detail : ''}`;
     const r = await axios.post(`${UC_URL}/v1/teams/post-message`,
       { teamId, channelId, body: text },
       { headers: { 'X-Internal-API-Key': UC_INTERNAL_KEY }, timeout: 12000 });
-    return { ok: true, channel: 'teams', id: r.data?.messageId };
+    return { ok: true, channel: 'teams', mode: 'graph', id: r.data?.messageId };
   } catch (e) {
-    return { ok: false, channel: 'teams', error: e.message };
+    return { ok: false, channel: 'teams', mode: 'graph', error: e.message };
   }
 }
 
