@@ -2,6 +2,7 @@
 // Fire-and-forget. Per-tenant routing rules in `fms_alarm_routes`.
 const axios = require('axios');
 const db = require('../config/database');
+const expoPush = require('./expo-push-notifier');
 
 const SC_URL = process.env.SC_INTERNAL_URL || 'http://localhost:3200';
 const UC_URL = process.env.RUNLESS_UC_URL || 'http://localhost:3100';
@@ -89,7 +90,41 @@ async function dispatchEmail({ target, msg }) {
   }
 }
 
-const dispatchers = { line: dispatchLine, sms: dispatchSms, teams: dispatchTeams, email: dispatchEmail };
+async function dispatchSlack({ target, msg, alert }) {
+  // target = full Slack Incoming Webhook URL
+  if (!/^https:\/\/hooks\.slack\.com\/services\//.test(String(target))) {
+    return { ok: false, channel: 'slack', error: 'invalid webhook URL' };
+  }
+  try {
+    const emojiMap = { P1: ':rotating_light:', P2: ':warning:', P3: ':information_source:', P4: ':white_check_mark:' };
+    const colorMap = { P1: '#da1e28', P2: '#f1c21b', P3: '#0f62fe', P4: '#24a148' };
+    const prio = (alert && alert.priority) || 'P3';
+    const emoji = emojiMap[prio] || ':bell:';
+    const color = colorMap[prio] || '#525252';
+    const dashUrl = 'https://cflex.runless.co.uk/fms';
+    const blocks = [
+      { type: 'section', text: { type: 'mrkdwn', text: '*' + emoji + ' ' + msg.head + '*' } },
+    ];
+    if (msg.where) blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: ':round_pushpin: ' + msg.where }] });
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '> ' + msg.body } });
+    if (msg.detail) blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: msg.detail }] });
+    blocks.push({ type: 'actions', elements: [
+      { type: 'button', text: { type: 'plain_text', text: 'Open in C-Flex' }, url: dashUrl, style: 'primary' },
+    ] });
+    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: 'C-Flex FMS - <' + dashUrl + '|cflex.runless.co.uk>' }] });
+
+    const r = await axios.post(target, {
+      text: emoji + ' ' + msg.head + ' - ' + msg.body,
+      blocks,
+      attachments: [{ color, blocks: [] }],
+    }, { timeout: 10000 });
+    return { ok: r.status >= 200 && r.status < 300, channel: 'slack' };
+  } catch (e) {
+    return { ok: false, channel: 'slack', error: (e.response && e.response.data) || e.message };
+  }
+}
+
+const dispatchers = { line: dispatchLine, sms: dispatchSms, teams: dispatchTeams, email: dispatchEmail, slack: dispatchSlack };
 
 async function notify(alert) {
   try {
@@ -110,7 +145,7 @@ async function notify(alert) {
       if (!shouldSend(rule, alert.priority)) continue;
       const fn = dispatchers[rule.channel];
       if (!fn) continue;
-      const r = await fn({ target: rule.target, msg });
+      const r = await fn({ target: rule.target, msg, alert });
       results.push(r);
       try {
         db.prepare(
@@ -119,6 +154,7 @@ async function notify(alert) {
       } catch (_) {}
       console.log('[alarm-notifier]', alert.id, rule.channel, '→', r.ok ? 'OK' : ('FAIL ' + r.error));
     }
+    try { await expoPush.dispatch(alert, asset); } catch (e) { console.error("[alarm-notifier] expo-push:", e.message); }
     return results;
   } catch (e) {
     console.error('[alarm-notifier] error:', e.message);
