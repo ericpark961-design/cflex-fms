@@ -2041,6 +2041,7 @@ const CHANNEL_META = {
 function ChannelsAdmin() {
   const [routes, setRoutes] = useState([]);
   const [stats, setStats]   = useState([]);
+  const [health, setHealth] = useState(null);
   const [busy, setBusy]     = useState(false);
   const [msg, setMsg]       = useState(null);
   const [form, setForm]     = useState({ channel: 'slack', target: '', min_priority: 'P2', enabled: true });
@@ -2048,9 +2049,12 @@ function ChannelsAdmin() {
   const [editBuf, setEditBuf]     = useState({});
   const [showSim, setShowSim]     = useState(false);
 
-  const reload = () => api.get('/v1/fms/routes').then(d => {
-    if (d?.ok) { setRoutes(d.routes || []); setStats(d.stats || []); }
-  });
+  const reload = () => {
+    api.get('/v1/fms/routes').then(d => {
+      if (d?.ok) { setRoutes(d.routes || []); setStats(d.stats || []); }
+    });
+    api.get('/v1/fms/channels/health').then(d => { if (d?.ok) setHealth(d); });
+  };
   useEffect(() => { reload(); }, []);
 
   const statFor = (ch) => stats.find(s => s.channel === ch) || {};
@@ -2234,6 +2238,82 @@ function ChannelsAdmin() {
           })}
         </div>
       </Section>
+
+      {health && health.channels && health.channels.length > 0 && (
+        <Section title={tx('채널 헬스 (롤링 24h / 7d / 30d)', 'Channel health (rolling 24h / 7d / 30d)')}>
+          <div style={{ background: C.card, border: `1px solid ${C.hairline}` }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '160px 120px 1fr 1fr 1fr 150px',
+                          gap: 8, padding: '10px 14px', fontSize: 11, fontWeight: 700, color: C.inkMuted,
+                          textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: `1px solid ${C.hairline}` }}>
+              <div>{tx('채널', 'Channel')}</div>
+              <div>{tx('상태', 'State')}</div>
+              <div>24h</div>
+              <div>7d</div>
+              <div>30d</div>
+              <div>{tx('마지막 성공/실패', 'Last OK / Fail')}</div>
+            </div>
+            {health.channels.map(c => {
+              const m = CHANNEL_META[c.channel] || { label: c.channel, dot: C.inkSubtle };
+              const stateColor = c.status === 'healthy'  ? C.ok
+                              : c.status === 'degraded' ? C.warn
+                              : c.status === 'failing'  ? C.critical
+                              : C.inkSubtle;
+              const stateLabel = { healthy: tx('정상', 'HEALTHY'), degraded: tx('저하', 'DEGRADED'),
+                                   failing: tx('실패', 'FAILING'), idle: tx('대기', 'IDLE') }[c.status] || c.status;
+              const cellBucket = (b) => b.total === 0
+                ? <span style={{ color: C.inkSubtle }}>—</span>
+                : (
+                  <span>
+                    <span style={{ fontWeight: 600, color: b.ratio === 100 ? C.ok : b.ratio >= 90 ? C.warn : C.critical }}>
+                      {b.ratio}%
+                    </span>
+                    <span style={{ color: C.inkSubtle, fontSize: 11 }}> ({b.ok}/{b.total})</span>
+                  </span>
+                );
+              return (
+                <div key={c.channel} style={{ display: 'grid', gridTemplateColumns: '160px 120px 1fr 1fr 1fr 150px',
+                                              gap: 8, padding: '10px 14px', alignItems: 'center',
+                                              borderBottom: `1px solid ${C.hairline}`, fontSize: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 8, background: m.dot }} />
+                    <span style={{ fontWeight: 500 }}>{m.label}</span>
+                  </div>
+                  <div>
+                    <span style={{ padding: '2px 8px', fontSize: 10, fontWeight: 700,
+                                   background: stateColor + '22', color: stateColor,
+                                   border: `1px solid ${stateColor}` }}>{stateLabel}</span>
+                  </div>
+                  <div>{cellBucket(c.h24)}</div>
+                  <div>{cellBucket(c.d7)}</div>
+                  <div>{cellBucket(c.d30)}</div>
+                  <div style={{ fontSize: 11, color: C.inkMuted }}>
+                    {c.last_ok_at ? <><span style={{ color: C.ok }}>✓</span> {fmtTime(c.last_ok_at)}</> : '—'}
+                    <br/>
+                    {c.last_fail_at ? <><span style={{ color: C.critical }}>✗</span> {fmtTime(c.last_fail_at)}</> : ''}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {health.recent_failures && health.recent_failures.length > 0 && (
+            <details style={{ marginTop: 10, padding: 12, background: C.criticalSoft, border: `1px solid ${C.critical}` }}>
+              <summary style={{ cursor: 'pointer', fontWeight: 600, color: C.critical, fontSize: 12 }}>
+                {tx('최근 실패', 'Recent failures')} · {health.recent_failures.length}
+              </summary>
+              <div style={{ marginTop: 8, fontSize: 11, fontFamily: 'monospace', maxHeight: 200, overflow: 'auto' }}>
+                {health.recent_failures.map((f, i) => (
+                  <div key={i} style={{ padding: '4px 0', borderBottom: `1px solid ${C.critical}22` }}>
+                    <span style={{ color: C.inkMuted }}>{fmtTime(f.sent_at)}</span>
+                    {' · '}<strong>{f.channel}</strong>
+                    {' · '}<span style={{ color: C.inkSubtle }}>{(f.target || '').slice(0, 40)}</span>
+                    {' · '}<span style={{ color: C.critical }}>{(f.error || '').slice(0, 120)}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </Section>
+      )}
 
       <Section title={tx('파이프라인 시뮬레이션', 'Pipeline simulation')}>
         <div style={{ background: C.card, border: `1px solid ${C.hairline}`, padding: 18 }}>

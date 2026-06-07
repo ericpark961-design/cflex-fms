@@ -149,8 +149,19 @@ async function dispatchSlack({ target, msg, alert }) {
     if (msg.where) blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: ':round_pushpin: ' + msg.where }] });
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '> ' + msg.body } });
     if (msg.detail) blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: msg.detail }] });
-    blocks.push({ type: 'actions', elements: [
-      { type: 'button', text: { type: 'plain_text', text: 'Open in C-Flex' }, url: dashUrl, style: 'primary' },
+    const alertId  = alert?.id || 0;
+    const deviceId = alert?.device_id || '';
+    const metric   = alert?.metric || '';
+    const ackUrl   = dashUrl + '?alarm=' + alertId;
+    blocks.push({ type: 'actions', block_id: 'cflex_alarm_' + alertId, elements: [
+      { type: 'button', action_id: 'cflex_ack',
+        text: { type: 'plain_text', text: '✅ Acknowledge' },
+        value: JSON.stringify({ alertId, deviceId }), style: 'primary' },
+      { type: 'button', action_id: 'cflex_mute_1h',
+        text: { type: 'plain_text', text: '🔕 Mute 1h' },
+        value: JSON.stringify({ alertId, deviceId, metric, minutes: 60 }) },
+      { type: 'button', action_id: 'cflex_open',
+        text: { type: 'plain_text', text: 'Open in C-Flex' }, url: ackUrl },
     ] });
     blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: 'C-Flex FMS - <' + dashUrl + '|cflex.runless.co.uk>' }] });
 

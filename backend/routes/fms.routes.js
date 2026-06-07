@@ -789,5 +789,72 @@ router.post('/routes/simulate', async (req, res) => {
   }
 });
 
+// ─── GET /v1/fms/channels/health — per-channel rolling success ratios ─
+router.get('/channels/health', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const now    = Date.now();
+  const w24h   = now - 24 * 3600 * 1000;
+  const w7d    = now - 7  * 24 * 3600 * 1000;
+  const w30d   = now - 30 * 24 * 3600 * 1000;
+  const buckets = db.prepare(`
+    SELECT channel,
+           SUM(CASE WHEN sent_at>? AND ok=1 THEN 1 ELSE 0 END) AS ok_24h,
+           SUM(CASE WHEN sent_at>? THEN 1 ELSE 0 END)          AS n_24h,
+           SUM(CASE WHEN sent_at>? AND ok=1 THEN 1 ELSE 0 END) AS ok_7d,
+           SUM(CASE WHEN sent_at>? THEN 1 ELSE 0 END)          AS n_7d,
+           SUM(CASE WHEN sent_at>? AND ok=1 THEN 1 ELSE 0 END) AS ok_30d,
+           SUM(CASE WHEN sent_at>? THEN 1 ELSE 0 END)          AS n_30d,
+           MAX(sent_at)                                        AS last_at,
+           MAX(CASE WHEN ok=1 THEN sent_at ELSE 0 END)         AS last_ok_at,
+           MAX(CASE WHEN ok=0 THEN sent_at ELSE 0 END)         AS last_fail_at
+    FROM fms_alarm_dispatch_log
+    WHERE tenant_id=? AND sent_at>?
+    GROUP BY channel`).all(w24h, w24h, w7d, w7d, w30d, w30d, tid, w30d);
+
+  const recentFails = db.prepare(`
+    SELECT channel, target, error, sent_at
+    FROM fms_alarm_dispatch_log
+    WHERE tenant_id=? AND ok=0 AND sent_at>?
+    ORDER BY sent_at DESC LIMIT 20`).all(tid, w7d);
+
+  const channels = buckets.map(b => ({
+    channel: b.channel,
+    last_at: b.last_at,
+    last_ok_at: b.last_ok_at || null,
+    last_fail_at: b.last_fail_at || null,
+    h24: { ok: b.ok_24h || 0, total: b.n_24h || 0,
+           ratio: b.n_24h ? Math.round(100 * b.ok_24h / b.n_24h) : null },
+    d7:  { ok: b.ok_7d  || 0, total: b.n_7d  || 0,
+           ratio: b.n_7d  ? Math.round(100 * b.ok_7d  / b.n_7d ) : null },
+    d30: { ok: b.ok_30d || 0, total: b.n_30d || 0,
+           ratio: b.n_30d ? Math.round(100 * b.ok_30d / b.n_30d) : null },
+    status: b.n_24h > 0
+      ? (b.ok_24h === b.n_24h ? 'healthy'
+        : b.ok_24h / b.n_24h >= 0.9 ? 'degraded' : 'failing')
+      : 'idle',
+  }));
+  res.json({ ok: true, generated_at: now, channels, recent_failures: recentFails });
+});
+
+// ─── GET /v1/fms/mutes — list active alarm mutes ─────────────────────
+router.get('/mutes', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const now = Date.now();
+  const rows = db.prepare(`SELECT id, device_id, metric, muted_until, muted_by, muted_via, created_at
+                           FROM fms_alarm_mutes
+                           WHERE (tenant_id=? OR tenant_id IS NULL) AND muted_until>?
+                           ORDER BY muted_until DESC`).all(tid, now);
+  res.json({ ok: true, mutes: rows });
+});
+
+// ─── DELETE /v1/fms/mutes/:id — unmute ────────────────────────────────
+router.delete('/mutes/:id', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const id = parseInt(req.params.id, 10);
+  const r = db.prepare('DELETE FROM fms_alarm_mutes WHERE id=? AND (tenant_id=? OR tenant_id IS NULL)').run(id, tid);
+  if (r.changes === 0) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+});
+
 
 module.exports = router;
