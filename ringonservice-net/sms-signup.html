@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FMS Alerts Sign-Up — RingOn Service Corp</title>
+  <meta name="description" content="Sign up to receive RingOn FMS operational alerts — UPS, network, SBC, and site infrastructure notifications. TCPA / A2P 10DLC compliant.">
+  <style>
+    :root {
+      --ink: #161616; --ink-muted: #525252; --ink-subtle: #8d8d8d;
+      --accent: #0f62fe; --accent-hover: #0353e9;
+      --bg: #ffffff; --surface: #f4f4f4; --hairline: #e0e0e0;
+      --success: #24a148; --warning: #f1c21b;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 0; background: var(--bg); color: var(--ink); line-height: 1.55; }
+    .container { max-width: 720px; margin: 0 auto; padding: 32px 24px 64px; }
+    header { border-bottom: 1px solid var(--hairline); padding-bottom: 16px; margin-bottom: 32px; }
+    .brand { font-size: 13px; letter-spacing: 0.4px; color: var(--accent); font-weight: 700; text-transform: uppercase; }
+    h1 { font-size: 30px; font-weight: 700; margin: 8px 0 4px; letter-spacing: -0.3px; }
+    .subtitle { color: var(--ink-muted); font-size: 15px; margin-bottom: 8px; }
+    .program-box { background: var(--surface); border-left: 3px solid var(--accent); padding: 16px 18px; margin: 24px 0; font-size: 14px; }
+    .program-box strong { display: block; margin-bottom: 6px; font-size: 13px; letter-spacing: 0.3px; text-transform: uppercase; color: var(--accent); }
+    form { margin-top: 24px; }
+    .field { margin-bottom: 18px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--ink); }
+    label .required { color: #da1e28; }
+    input[type="text"], input[type="tel"], input[type="email"] { width: 100%; padding: 10px 12px; font-size: 15px; font-family: inherit; background: var(--bg); border: 1px solid #c6c6c6; border-radius: 0; outline: none; transition: border-color 100ms; }
+    input[type="text"]:focus, input[type="tel"]:focus, input[type="email"]:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .help { font-size: 12px; color: var(--ink-subtle); margin-top: 4px; }
+    .consent { background: #fff8e1; border-left: 3px solid var(--warning); padding: 16px 18px; margin: 24px 0; font-size: 14px; }
+    .consent label { font-weight: 400; cursor: pointer; display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.55; }
+    .consent input[type="checkbox"] { margin-top: 3px; transform: scale(1.2); cursor: pointer; }
+    .consent strong { display: block; margin-bottom: 8px; font-size: 13px; letter-spacing: 0.3px; text-transform: uppercase; color: #8a6d3b; }
+    button[type="submit"] { width: 100%; padding: 14px 24px; font-size: 16px; font-weight: 600; font-family: inherit; background: var(--accent); color: #fff; border: none; cursor: pointer; letter-spacing: 0.3px; transition: background 120ms; }
+    button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); }
+    button[type="submit"]:disabled { background: var(--ink-subtle); cursor: not-allowed; }
+    .disclosures { margin-top: 32px; padding: 16px 18px; background: var(--surface); font-size: 12px; color: var(--ink-muted); line-height: 1.65; }
+    .disclosures p { margin: 4px 0; }
+    .disclosures strong { color: var(--ink); }
+    .stop-help { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .stop-help div { background: var(--surface); padding: 12px 14px; font-size: 13px; border-left: 3px solid var(--ink); }
+    .stop-help div strong { display: block; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 4px; }
+    footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--hairline); font-size: 12px; color: var(--ink-subtle); text-align: center; line-height: 1.7; }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    .success-msg { background: #defbe6; border-left: 3px solid var(--success); padding: 20px 22px; margin: 24px 0; font-size: 15px; }
+    .success-msg strong { display: block; font-size: 16px; color: var(--success); margin-bottom: 8px; }
+    @media (max-width: 600px) { .stop-help { grid-template-columns: 1fr; } h1 { font-size: 24px; } }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="brand">RingOn Service Corp · C-Flex FMS</div>
+    <h1>FMS Alerts Sign-Up</h1>
+    <p class="subtitle">Receive critical operational alerts about your facility infrastructure — UPS, network, SBC, and site status — by SMS.</p>
+  </header>
+
+  <div class="program-box">
+    <strong>Program Name: RingOn FMS Operational Alerts</strong>
+    By signing up, you will receive SMS messages from RingOn Service Corp about: facility infrastructure alerts (UPS battery, generator runtime, network device health, SBC trunk status, power events), incident notifications (site offline, failover triggered), maintenance window reminders, on-call escalations, and acknowledgement-required critical alerts.
+  </div>
+
+  <div class="stop-help">
+    <div>
+      <strong>To opt out</strong>
+      Reply <strong>STOP</strong> at any time. You will receive one confirmation, and no further alerts.
+    </div>
+    <div>
+      <strong>For help</strong>
+      Reply <strong>HELP</strong> for assistance, or contact us at +1 (949) 400-5299.
+    </div>
+  </div>
+
+  <form id="signup-form" action="/api/sms-signup" method="POST" novalidate>
+    <div class="field">
+      <label for="name">Full Name <span class="required">*</span></label>
+      <input type="text" id="name" name="name" required autocomplete="name">
+    </div>
+
+    <div class="field">
+      <label for="role">Role <span class="required">*</span></label>
+      <input type="text" id="role" name="role" required placeholder="NOC Engineer, IT Admin, On-Call, Site Manager...">
+    </div>
+
+    <div class="field">
+      <label for="phone">Mobile Phone Number <span class="required">*</span></label>
+      <input type="tel" id="phone" name="phone" required autocomplete="tel" placeholder="+1 (555) 123-4567">
+      <div class="help">U.S. mobile numbers only. Standard format e.g. +1 949 555 1234.</div>
+    </div>
+
+    <div class="field">
+      <label for="email">Email Address <span class="required">*</span></label>
+      <input type="email" id="email" name="email" required autocomplete="email">
+    </div>
+
+    <div class="consent">
+      <strong>Express SMS Consent</strong>
+      <label>
+        <input type="checkbox" id="consent" name="consent" required>
+        <span>
+          By checking this box and submitting this form, I expressly consent to receive recurring automated SMS / text alerts from <strong>RingOn Service Corp</strong> at the mobile number provided above for facility infrastructure monitoring, including but not limited to UPS and power alerts, network and SBC health notifications, site offline notifications, maintenance window reminders, and on-call escalation pages. Message frequency varies by site activity. Message and data rates may apply. Consent is not a condition of purchase or service. I can opt out at any time by replying STOP. I have read and agree to the
+          <a href="/privacy-policy.html" target="_blank">Privacy Policy</a> and
+          <a href="/terms.html" target="_blank">SMS Terms of Service</a>.
+        </span>
+      </label>
+    </div>
+
+    <button type="submit" id="submit-btn">Sign Up for FMS Alerts</button>
+  </form>
+
+  <div id="success" class="success-msg" style="display:none;">
+    <strong>✓ Thank you for signing up!</strong>
+    Please reply <strong>YES</strong> to the confirmation text we just sent to complete your enrollment.
+    You can reply STOP at any time to unsubscribe.
+  </div>
+
+  <div class="disclosures">
+    <p><strong>Message frequency:</strong> Varies by site activity. Typical recipients receive between 5 and 30 alert messages per month. Critical incident periods may temporarily exceed this range.</p>
+    <p><strong>Message &amp; data rates:</strong> Standard message and data rates may apply per your wireless carrier plan.</p>
+    <p><strong>Supported carriers:</strong> All major U.S. carriers including AT&amp;T, Verizon, T-Mobile, Sprint, and most MVNOs. Carriers are not liable for delayed or undelivered messages.</p>
+    <p><strong>Consent is voluntary</strong> and not a condition of purchase, service contract, or employment.</p>
+    <p><strong>Data privacy:</strong> No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. See our <a href="/privacy-policy.html" target="_blank">Privacy Policy</a> for details on data collection, retention, and your rights.</p>
+  </div>
+
+  <footer>
+    <p><strong>RING ON SERVICE CORP</strong><br>
+    20 Corporate Park, Suite 110, Irvine, CA 92606<br>
+    Phone: +1 (949) 400-5299 · Email: <a href="mailto:ericpark@ringonservice.net">ericpark@ringonservice.net</a></p>
+    <p style="margin-top: 12px;">
+      <a href="/">Home</a> ·
+      <a href="/privacy-policy.html">Privacy Policy</a> ·
+      <a href="/terms.html">SMS Terms of Service</a>
+    </p>
+  </footer>
+
+</div>
+
+<script>
+  document.getElementById('signup-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var consent = document.getElementById('consent');
+    if (!consent.checked) { alert('Please check the consent box to confirm you agree to receive SMS alerts.'); return; }
+    var btn = document.getElementById('submit-btn');
+    btn.disabled = true; btn.textContent = 'Submitting…';
+    setTimeout(function() {
+      document.getElementById('signup-form').style.display = 'none';
+      document.getElementById('success').style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 600);
+  });
+</script>
+
+</body>
+</html>

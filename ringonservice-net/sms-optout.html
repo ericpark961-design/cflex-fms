@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Opt out of SMS Alerts · RingOn Service Corp</title>
+  <meta name="description" content="Opt out of RingOn Service Corp operational SMS alerts.">
+  <style>
+    :root {
+      --ink:#161616; --ink-muted:#525252; --ink-subtle:#8d8d8d;
+      --accent:#0f62fe; --accent-hover:#0353e9;
+      --bg:#ffffff; --surface:#f4f4f4; --hairline:#e0e0e0;
+      --success:#24a148; --danger:#da1e28;
+    }
+    *{box-sizing:border-box}
+    body{font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;margin:0;background:var(--bg);color:var(--ink);line-height:1.55}
+    .container{max-width:640px;margin:0 auto;padding:32px 24px 64px}
+    header{border-bottom:1px solid var(--hairline);padding-bottom:16px;margin-bottom:28px}
+    .brand-row{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+    .brand-logo{width:36px;height:36px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px}
+    .brand-name{font-size:13px;letter-spacing:.4px;color:var(--accent);font-weight:700;text-transform:uppercase}
+    h1{font-size:28px;font-weight:700;margin:4px 0 4px;letter-spacing:-.3px}
+    .subtitle{color:var(--ink-muted);font-size:15px;margin:0}
+    .info{background:var(--surface);border-left:3px solid var(--accent);padding:18px 20px;margin:24px 0;font-size:14px}
+    .field{margin-bottom:18px}
+    label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+    label .req{color:var(--danger)}
+    input[type="tel"]{width:100%;padding:10px 12px;font-size:15px;font-family:inherit;background:var(--bg);border:1px solid #c6c6c6;outline:none}
+    input:focus{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+    .help{font-size:12px;color:var(--ink-subtle);margin-top:4px}
+    button{width:100%;padding:14px 24px;font-size:16px;font-weight:600;font-family:inherit;background:var(--accent);color:#fff;border:none;cursor:pointer;letter-spacing:.3px}
+    button:hover:not(:disabled){background:var(--accent-hover)}
+    button:disabled{background:var(--ink-subtle);cursor:not-allowed}
+    .success-msg{background:#defbe6;border-left:3px solid var(--success);padding:22px 24px;margin:24px 0;font-size:15px;display:none}
+    .success-msg strong{display:block;font-size:17px;color:var(--success);margin-bottom:10px}
+    .err{background:#ffe6e6;border-left:3px solid var(--danger);padding:12px 16px;margin:16px 0;font-size:14px;color:var(--danger);display:none}
+    footer{margin-top:48px;padding-top:24px;border-top:1px solid var(--hairline);font-size:12px;color:var(--ink-subtle);text-align:center;line-height:1.7}
+    footer a{color:var(--accent);text-decoration:none;margin:0 6px}
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="brand-row">
+      <div class="brand-logo">R</div>
+      <div class="brand-name">RingOn Service Corp</div>
+    </div>
+    <h1>Opt Out of SMS Alerts</h1>
+    <p class="subtitle">Stop receiving RingOn operational SMS messages.</p>
+  </header>
+
+  <div class="info">
+    <p>The fastest way to opt out is to reply <strong>STOP</strong> to any RingOn SMS message you received. You will get a single confirmation reply and no further messages.</p>
+    <p style="margin-top:12px">You can also unsubscribe below by entering the mobile number that received the alerts. Opting out is free and takes effect immediately.</p>
+  </div>
+
+  <div id="form-error" class="err"></div>
+
+  <form id="optout-form" action="/api/sms-optout" method="POST" novalidate>
+    <div class="field">
+      <label for="phone">Mobile Phone Number <span class="req">*</span></label>
+      <input type="tel" id="phone" name="phone" required autocomplete="tel" placeholder="+1 (555) 123-4567">
+      <div class="help">Same number that has been receiving RingOn SMS alerts.</div>
+    </div>
+    <button type="submit" id="submit-btn">Opt Out of SMS Alerts</button>
+  </form>
+
+  <div id="success" class="success-msg" role="status" aria-live="polite">
+    <strong>✓ You have been opted out</strong>
+    <p>The mobile number you entered has been removed from the RingOn operational SMS alert list. No further SMS alerts will be sent.</p>
+    <p>Operational alerts will continue to be delivered via email and the internal incident dashboard.</p>
+    <p>Need help? Email <a href="mailto:support@ringonservice.net">support@ringonservice.net</a> or call +1 (949) 400-5299.</p>
+  </div>
+
+  <footer>
+    <p><strong>RING ON SERVICE CORP</strong><br>
+    20 Corporate Park, Suite 110, Irvine, CA 92606<br>
+    +1 (949) 400-5299 · <a href="mailto:support@ringonservice.net">support@ringonservice.net</a></p>
+    <p style="margin-top:12px">
+      <a href="/">Home</a> ·
+      <a href="/sms-optin">Opt-in</a> ·
+      <a href="/privacy-policy">Privacy Policy</a> ·
+      <a href="/terms-and-conditions">Terms and Conditions</a>
+    </p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var form = document.getElementById('optout-form');
+  var phone = document.getElementById('phone');
+  var errBox = document.getElementById('form-error');
+  var success = document.getElementById('success');
+  var btn = document.getElementById('submit-btn');
+
+  phone.addEventListener('input', function(e) {
+    var v = e.target.value.replace(/\D/g,'');
+    if (v.length > 11) v = v.slice(0,11);
+    if (v.startsWith('1')) v = v.slice(1);
+    var f = '';
+    if (v.length>0) f = '+1 (' + v.slice(0,3);
+    if (v.length>=4) f += ') ' + v.slice(3,6);
+    if (v.length>=7) f += '-' + v.slice(6,10);
+    e.target.value = f;
+  });
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    errBox.style.display = 'none';
+    var v = phone.value.replace(/\D/g,'');
+    if (v.length < 10) { errBox.textContent = 'Please enter a valid U.S. mobile number.'; errBox.style.display='block'; return; }
+    btn.disabled = true; btn.textContent = 'Processing…';
+    fetch('/api/sms-optout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '+1' + v.slice(-10), source: 'web_optout', page_url: window.location.href }),
+    })
+    .then(function(r) { return r.json().catch(function(){return {}}); })
+    .catch(function(err){ console.warn('[sms-optout]', err); })
+    .finally(function(){
+      form.style.display='none';
+      success.style.display='block';
+      window.scrollTo({top:0, behavior:'smooth'});
+    });
+  });
+})();
+</script>
+</body>
+</html>

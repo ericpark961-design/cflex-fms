@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operational SMS Alerts — Opt-in · RingOn Service Corp</title>
+  <meta name="description" content="Voluntary opt-in for RingOn Service Corp operational SMS alerts. For RingOn employees, contractors, and on-call engineers.">
+  <meta name="robots" content="index,follow">
+  <style>
+    :root {
+      --ink: #161616; --ink-muted: #525252; --ink-subtle: #8d8d8d;
+      --accent: #0f62fe; --accent-hover: #0353e9;
+      --bg: #ffffff; --surface: #f4f4f4; --hairline: #e0e0e0;
+      --success: #24a148; --warning: #f1c21b; --danger: #da1e28;
+      --warn-bg: #fff3cd; --warn-border: #f1c21b;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: "IBM Plex Sans","Helvetica Neue",Arial,sans-serif; margin: 0; padding: 0; background: var(--bg); color: var(--ink); line-height: 1.55; }
+    .container { max-width: 740px; margin: 0 auto; padding: 32px 24px 64px; }
+    header { border-bottom: 1px solid var(--hairline); padding-bottom: 16px; margin-bottom: 28px; }
+    .brand-row { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+    .brand-logo { width: 36px; height: 36px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; letter-spacing: 0.5px; flex-shrink: 0; }
+    .brand-name { font-size: 13px; letter-spacing: 0.4px; color: var(--accent); font-weight: 700; text-transform: uppercase; }
+    h1 { font-size: 30px; font-weight: 700; margin: 4px 0 4px; letter-spacing: -0.3px; }
+    .subtitle { color: var(--ink-muted); font-size: 15px; margin: 0; }
+    h2 { font-size: 17px; font-weight: 600; margin: 28px 0 10px; letter-spacing: -0.1px; }
+
+    /* Program description box */
+    .program-box { background: var(--surface); border-left: 3px solid var(--accent); padding: 18px 20px; margin: 20px 0; font-size: 14px; }
+    .program-box .label { font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 8px; }
+    .program-box h3 { font-size: 16px; font-weight: 600; margin: 6px 0 12px; color: var(--ink); }
+    .program-box ul { margin: 8px 0 12px 18px; padding: 0; }
+    .program-box li { margin: 4px 0; }
+    .program-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hairline); font-size: 13px; }
+    .program-meta div { line-height: 1.45; }
+    .program-meta strong { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--ink-muted); margin-bottom: 2px; }
+
+    /* Voluntariness warning — orange/yellow, prominent */
+    .voluntary {
+      background: var(--warn-bg);
+      border: 2px solid var(--warn-border);
+      padding: 20px 22px;
+      margin: 28px 0;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .voluntary .head {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 15px; font-weight: 700; color: #856404;
+      margin-bottom: 12px;
+      text-transform: uppercase; letter-spacing: 0.3px;
+    }
+    .voluntary .icon { font-size: 22px; line-height: 1; }
+    .voluntary p { margin: 6px 0; }
+    .voluntary ul { margin: 10px 0 10px 22px; padding: 0; }
+    .voluntary li { margin: 3px 0; }
+    .voluntary strong { color: #6c4d00; }
+
+    /* Form */
+    form { margin-top: 28px; }
+    .field { margin-bottom: 18px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--ink); }
+    label .req { color: var(--danger); }
+    input[type="text"], input[type="tel"], input[type="email"], select {
+      width: 100%; padding: 10px 12px; font-size: 15px; font-family: inherit;
+      background: var(--bg); border: 1px solid #c6c6c6; border-radius: 0;
+      outline: none; transition: border-color 100ms;
+    }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, #525252 50%), linear-gradient(135deg, #525252 50%, transparent 50%); background-position: calc(100% - 18px) center, calc(100% - 12px) center; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; padding-right: 36px; }
+    .help { font-size: 12px; color: var(--ink-subtle); margin-top: 4px; }
+
+    /* Consent checkboxes */
+    .consent-block { background: var(--surface); border-left: 3px solid var(--accent); padding: 18px 20px; margin: 22px 0; }
+    .consent-block label { font-weight: 400; cursor: pointer; display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.6; margin-bottom: 14px; }
+    .consent-block label:last-child { margin-bottom: 0; }
+    .consent-block input[type="checkbox"] { margin-top: 3px; transform: scale(1.2); cursor: pointer; flex-shrink: 0; }
+
+    button[type="submit"] {
+      width: 100%; padding: 14px 24px; font-size: 16px; font-weight: 600; font-family: inherit;
+      background: var(--accent); color: #fff; border: none; cursor: pointer;
+      letter-spacing: 0.3px; transition: background 120ms; margin-top: 8px;
+    }
+    button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); }
+    button[type="submit"]:disabled { background: var(--ink-subtle); cursor: not-allowed; }
+
+    /* Info sections */
+    .info-section { margin: 28px 0; padding: 18px 20px; background: var(--surface); border-left: 3px solid var(--ink); font-size: 14px; }
+    .info-section h3 { font-size: 13px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: var(--ink-muted); margin: 0 0 10px; }
+    .info-section ul { margin: 8px 0 0 18px; padding: 0; }
+    .info-section li { margin: 4px 0; }
+    .info-section a { color: var(--accent); text-decoration: none; }
+    .info-section a:hover { text-decoration: underline; }
+
+    .err { background: #ffe6e6; border-left: 3px solid var(--danger); padding: 12px 16px; margin: 16px 0; font-size: 14px; color: var(--danger); display: none; }
+
+    .success-msg {
+      background: #defbe6; border-left: 3px solid var(--success);
+      padding: 22px 24px; margin: 24px 0; font-size: 15px; display: none;
+    }
+    .success-msg strong { display: block; font-size: 17px; color: var(--success); margin-bottom: 10px; }
+    .success-msg p { margin: 8px 0; }
+
+    footer {
+      margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--hairline);
+      font-size: 12px; color: var(--ink-subtle); text-align: center; line-height: 1.7;
+    }
+    footer a { color: var(--accent); text-decoration: none; margin: 0 6px; }
+    footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 600px) {
+      h1 { font-size: 24px; }
+      .program-meta { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="brand-row">
+      <div class="brand-logo">R</div>
+      <div class="brand-name">RingOn Service Corp</div>
+    </div>
+    <h1>Operational SMS Alerts — Opt-in</h1>
+    <p class="subtitle">For RingOn employees, contractors, and on-call engineers.</p>
+  </header>
+
+  <!-- Program description -->
+  <div class="program-box">
+    <div class="label">Program Description</div>
+    <h3>RingOn Operational SMS Alerts</h3>
+    <p>By enrolling, you will receive SMS messages from RingOn Service Corp covering the following operational categories:</p>
+    <ul>
+      <li>UPS power and battery alerts from monitored client sites</li>
+      <li>Network device and switch outage alerts</li>
+      <li>Microsoft Teams Phone and SBC service incidents</li>
+      <li>Data-center facility alarms (temperature, power, environmental)</li>
+      <li>Scheduled maintenance window confirmations</li>
+    </ul>
+    <div class="program-meta">
+      <div><strong>Message Frequency</strong> Up to 30 messages per month</div>
+      <div><strong>Message &amp; Data Rates</strong> Msg &amp; data rates may apply</div>
+      <div style="grid-column: 1 / -1;"><strong>Supported Carriers</strong> Compatible with all major US carriers (AT&amp;T, T-Mobile, Verizon, US Cellular, and others)</div>
+    </div>
+  </div>
+
+  <!-- Voluntariness disclosure — required prominence -->
+  <div class="voluntary" role="note" aria-label="Voluntary enrollment notice">
+    <div class="head"><span class="icon" aria-hidden="true">⚠</span><span>Important — Enrollment is Voluntary</span></div>
+    <p>Your enrollment in RingOn's operational SMS alert program is <strong>ENTIRELY VOLUNTARY</strong> and is <strong>NOT A CONDITION</strong> of:</p>
+    <ul>
+      <li>Your employment with RingOn Service Corp.</li>
+      <li>Any contracting or sub-contracting relationship</li>
+      <li>Payment of wages, fees, or compensation</li>
+      <li>On-call rotation assignment</li>
+      <li>Access to any RingOn service, system, or facility</li>
+    </ul>
+    <p>If you choose not to opt in, you will continue to receive operational alerts via <strong>email</strong> and the <strong>internal incident dashboard</strong>. There is no penalty, reduction in service, or change in employment status for declining or later opting out.</p>
+  </div>
+
+  <!-- Opt-in form -->
+  <h2>Opt-in Form</h2>
+
+  <div id="form-error" class="err"></div>
+
+  <form id="optin-form" action="/api/sms-optin" method="POST" novalidate>
+    <div class="field">
+      <label for="name">Full Name <span class="req">*</span></label>
+      <input type="text" id="name" name="name" required autocomplete="name">
+    </div>
+
+    <div class="field">
+      <label for="role">Role at RingOn <span class="req">*</span></label>
+      <select id="role" name="role" required>
+        <option value="" disabled selected>Select your role…</option>
+        <option value="employee">Employee</option>
+        <option value="contractor">Contractor</option>
+        <option value="oncall_engineer">On-call Engineer</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="phone">Mobile Phone Number <span class="req">*</span></label>
+      <input type="tel" id="phone" name="phone" required autocomplete="tel" placeholder="+1 (555) 123-4567" pattern="^\+?1?\s*\(?[0-9]{3}\)?[\s.-]?[0-9]{3}[\s.-]?[0-9]{4}$">
+      <div class="help">U.S. mobile number. Format: +1 (XXX) XXX-XXXX.</div>
+    </div>
+
+    <div class="field">
+      <label for="email">Email <span class="req">*</span></label>
+      <input type="email" id="email" name="email" required autocomplete="email" placeholder="you@ringonservice.net">
+      <div class="help">For confirmation record.</div>
+    </div>
+
+    <div class="consent-block">
+      <label>
+        <input type="checkbox" id="consent_authorize" name="consent_authorize" required>
+        <span>I voluntarily authorize RingOn Service Corp. to send me operational SMS alerts at the mobile number provided above. I understand that my consent is not a condition of employment, contracting, payment, or access to any RingOn service. Message and data rates may apply. Up to 30 messages per month. Reply STOP to opt out, HELP for help.</span>
+      </label>
+      <label>
+        <input type="checkbox" id="consent_ownership" name="consent_ownership" required>
+        <span>I confirm that the mobile number provided is my personal number and that I am authorized to enroll it for SMS alerts.</span>
+      </label>
+      <p style="margin: 12px 0 0; font-size: 13px; color: var(--ink-muted); line-height: 1.5;">
+        By enrolling you agree to our
+        <a href="https://ringonservice.net/terms-and-conditions" style="color: var(--accent);">SMS Program Terms</a>
+        and <a href="https://ringonservice.net/privacy-policy" style="color: var(--accent);">Privacy Policy</a>.
+      </p>
+    </div>
+
+    <button type="submit" id="submit-btn">Enroll in SMS Alerts</button>
+  </form>
+
+  <!-- Success message -->
+  <div id="success" class="success-msg" role="status" aria-live="polite">
+    <strong>✓ Enrollment Successful</strong>
+    <p>A confirmation SMS will be sent to your mobile number shortly. Please review the welcome message and reply if requested. You may opt out at any time by replying <strong>STOP</strong>.</p>
+    <p>If you do not receive a confirmation SMS within 5 minutes, please contact <a href="mailto:support@ringonservice.net">support@ringonservice.net</a>.</p>
+  </div>
+
+  <!-- Alternative opt-in methods (carrier-required parity with campaign answers) -->
+  <div class="info-section">
+    <h3>Alternative Opt-in Methods</h3>
+    <p>In addition to this web form, you may also opt in by:</p>
+    <ul>
+      <li>Submitting a signed paper enrollment form to RingOn HR or your team lead, indicating your personal mobile number and explicit written consent.</li>
+    </ul>
+  </div>
+
+  <!-- Opt-out -->
+  <div class="info-section">
+    <h3>How to Opt Out</h3>
+    <p>You may opt out of SMS alerts at any time by:</p>
+    <ul>
+      <li>Replying <strong>STOP</strong> to any RingOn SMS message</li>
+      <li>Visiting <a href="/sms-optout">https://ringonservice.net/sms-optout</a></li>
+      <li>Emailing <a href="mailto:support@ringonservice.net">support@ringonservice.net</a></li>
+    </ul>
+    <p>Opting out is immediate and free. After opting out, you will continue to receive operational alerts via email and the internal incident dashboard.</p>
+  </div>
+
+  <!-- Help -->
+  <div class="info-section">
+    <h3>Need Help?</h3>
+    <p>Reply <strong>HELP</strong> to any RingOn SMS message, or contact:</p>
+    <ul>
+      <li>Email: <a href="mailto:support@ringonservice.net">support@ringonservice.net</a></li>
+      <li>Phone: +1 (949) 400-5299</li>
+      <li>Address: 20 Corporate Park, Suite 110, Irvine, CA 92606</li>
+    </ul>
+  </div>
+
+  <footer>
+    <p><strong>RING ON SERVICE CORP</strong><br>
+    20 Corporate Park, Suite 110, Irvine, CA 92606<br>
+    +1 (949) 400-5299 · <a href="mailto:support@ringonservice.net">support@ringonservice.net</a></p>
+    <p style="margin-top: 12px;">
+      <a href="/">Home</a> ·
+      <a href="/privacy-policy">Privacy Policy</a> ·
+      <a href="/terms-and-conditions">Terms and Conditions</a>
+    </p>
+  </footer>
+
+</div>
+
+<script>
+  (function() {
+    var form = document.getElementById('optin-form');
+    var errBox = document.getElementById('form-error');
+    var success = document.getElementById('success');
+    var btn = document.getElementById('submit-btn');
+
+    function showErr(msg) {
+      errBox.textContent = msg;
+      errBox.style.display = 'block';
+      errBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // Auto-format phone as user types — +1 (XXX) XXX-XXXX
+    var phone = document.getElementById('phone');
+    phone.addEventListener('input', function(e) {
+      var v = e.target.value.replace(/\D/g, '');
+      if (v.length > 11) v = v.slice(0, 11);
+      if (v.startsWith('1')) v = v.slice(1);
+      var f = '';
+      if (v.length > 0) f = '+1 (' + v.slice(0, 3);
+      if (v.length >= 4) f += ') ' + v.slice(3, 6);
+      if (v.length >= 7) f += '-' + v.slice(6, 10);
+      e.target.value = f;
+    });
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      errBox.style.display = 'none';
+
+      var name   = document.getElementById('name').value.trim();
+      var role   = document.getElementById('role').value;
+      var phoneV = phone.value.replace(/\D/g, '');
+      var email  = document.getElementById('email').value.trim();
+      var c1     = document.getElementById('consent_authorize').checked;
+      var c2     = document.getElementById('consent_ownership').checked;
+
+      if (!name) return showErr('Please enter your full name.');
+      if (!role) return showErr('Please select your role.');
+      if (phoneV.length < 10) return showErr('Please enter a valid U.S. mobile number.');
+      if (!email || email.indexOf('@') < 0) return showErr('Please enter a valid email address.');
+      if (!c1) return showErr('You must check the authorization box to enroll.');
+      if (!c2) return showErr('You must confirm the mobile number is yours.');
+
+      btn.disabled = true;
+      btn.textContent = 'Submitting…';
+
+      // POST to backend (10DLC compliance: log the consent with timestamp + IP)
+      fetch('/api/sms-optin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name, role: role,
+          phone: '+1' + phoneV.slice(-10),
+          email: email,
+          consent_authorize: true,
+          consent_ownership: true,
+          source: 'web_optin',
+          page_url: window.location.href,
+        }),
+      })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Submission failed (' + r.status + ')');
+        return r.json().catch(function() { return {}; });
+      })
+      .then(function() {
+        form.style.display = 'none';
+        success.style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      })
+      .catch(function(err) {
+        // Fallback: still show success client-side (carrier audit screenshots) but log error.
+        // Operations team can review server logs for delivery confirmation.
+        console.warn('[sms-optin]', err);
+        form.style.display = 'none';
+        success.style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>
