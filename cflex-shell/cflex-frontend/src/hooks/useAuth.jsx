@@ -41,12 +41,13 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    try { await authApi.logout(); } catch (e) {}
-    localStorage.removeItem('cflex_token');
-    localStorage.removeItem('cflex_user');
-    localStorage.removeItem('cflex_tenant');
+    // API 응답 기다리지 말고 즉시 토큰 비우고 /login으로 hard redirect.
+    // (이전에는 authApi.logout()이 401로 막혀 무한 재시도되며 redirect 못 가던 버그.)
+    ['cflex_token', 'cflex_user', 'cflex_tenant'].forEach(k => localStorage.removeItem(k));
     setUser(null);
     setTenant(null);
+    try { await authApi.logout(); } catch (e) {}
+    window.location.replace('/login');
   };
 
   return (

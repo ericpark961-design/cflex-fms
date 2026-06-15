@@ -5,6 +5,22 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './styles/index.css';
 
+// 앱 부팅 시 1회 설치. 모든 raw fetch의 401/403을 한 곳에서 처리.
+// FMS/Sentinel/cflex shell 전 portals 공통 — /v1/* 응답이 401/403이면 토큰을
+// 즉시 비우고 /login으로 hard redirect (재시도 루프 방지).
+const _fetch = window.fetch;
+window.fetch = async (...a) => {
+  const res = await _fetch(...a);
+  try {
+    const url = typeof a[0] === 'string' ? a[0] : (a[0]?.url || '');
+    if ((res.status === 401 || res.status === 403) && url.includes('/v1/')) {
+      ['cflex_token', 'cflex_user', 'cflex_tenant'].forEach(k => localStorage.removeItem(k));
+      if (!location.pathname.startsWith('/login')) location.replace('/login');
+    }
+  } catch {}
+  return res;
+};
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
