@@ -17,15 +17,40 @@ export function AuthProvider({ children }) {
     const savedUser = localStorage.getItem('cflex_user');
     const savedTenant = localStorage.getItem('cflex_tenant');
 
-    if (token && savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-        if (savedTenant) setTenant(JSON.parse(savedTenant));
-      } catch (e) {
-        localStorage.clear();
-      }
+    if (!token || !savedUser) {
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    // 캐시로 즉각 셋업 (UI 첫 렌더).
+    try {
+      setUser(JSON.parse(savedUser));
+      if (savedTenant) setTenant(JSON.parse(savedTenant));
+    } catch (e) {
+      localStorage.clear();
+      setLoading(false);
+      return;
+    }
+
+    // /v1/me 선검증 — 토큰이 만료/무효면 main.jsx fetch wrapper가 401/403 받아
+    // localStorage 비우고 /login으로 자동 redirect. '셸 깜빡' 제거.
+    fetch('/v1/me', {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (data?.user) {
+          setUser(data.user);
+          localStorage.setItem('cflex_user', JSON.stringify(data.user));
+        }
+        if (data?.tenant) {
+          setTenant(data.tenant);
+          localStorage.setItem('cflex_tenant', JSON.stringify(data.tenant));
+        }
+      })
+      .catch(() => {})   // network err → 캐시값 유지 (오프라인 내성)
+      .finally(() => setLoading(false));
   }, []);
 
   const login = async (email, password) => {
