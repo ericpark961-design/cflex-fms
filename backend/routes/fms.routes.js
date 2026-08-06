@@ -5,6 +5,16 @@ const db = require('../config/database');
 
 router.use(express.json({ limit: '2mb' }));
 
+// 지시서_FMS상태색상_정합 §할것 #1 — 신선도 게이트.
+// last_polled가 5분 이내일 때만 DB의 status 사용. 아니면 nodata(회색).
+// 연결 전 = 모든 장비 nodata. "정상 3" 같은 거짓 안심 차단.
+const STALE_MS = 5 * 60 * 1000;
+const FRESH_PRED = '(last_polled IS NOT NULL AND last_polled > ?)';
+function effStatusExpr() {
+  // CASE WHEN fresh THEN status ELSE 'nodata' END
+  return `CASE WHEN ${FRESH_PRED} THEN status ELSE 'nodata' END`;
+}
+
 function tenantOf(req) {
   if (!req.user) return null;
   if (req.user.role === 'super_admin' || req.user.role === 'admin') {
@@ -24,36 +34,74 @@ function cbuFilter(req) {
 router.get('/summary', (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
   const now = Date.now();
+  const freshSince = now - STALE_MS;
   const cf = cbuFilter(req);
-  const cnt = (sql, ...extra) => db.prepare(sql + cf.clause).get(tid, ...extra, ...cf.params).c;
+  // 신선도 게이트가 적용된 effective_status로 카운트.
+  // status 컬럼이 'ok'라도 last_polled가 5분 전이면 nodata로 강등 → "정상 3" 거짓 안심 차단.
+  const eff = effStatusExpr();
+  // cnt 시그니처: (sql, [추가 파라미터들]). 첫 ? = freshSince (eff), 그 다음 tenantId, 그 다음 cbuFilter 파라미터.
+  const cnt = (statusVal) =>
+    db.prepare(
+      `SELECT COUNT(*) c FROM ups_devices
+       WHERE tenant_id=? AND decommissioned_at IS NULL
+         AND (${eff})=?` + cf.clause,
+    ).get(tid, freshSince, statusVal, ...cf.params).c;
 
-  const total = cnt('SELECT COUNT(*) c FROM ups_devices WHERE tenant_id=? AND decommissioned_at IS NULL');
-  const polling = cnt('SELECT COUNT(*) c FROM ups_devices WHERE tenant_id=? AND polling_enabled=1');
-  const online = cnt('SELECT COUNT(*) c FROM ups_devices WHERE tenant_id=? AND polling_enabled=1 AND last_polled > ?', now - 5*60*1000);
-  const unreachable = cnt("SELECT COUNT(*) c FROM ups_devices WHERE tenant_id=? AND status='unreachable'");
-  const critical = cnt("SELECT COUNT(*) c FROM ups_devices WHERE tenant_id=? AND status='critical'");
-  const warn = cnt("SELECT COUNT(*) c FROM ups_devices WHERE tenant_id=? AND status='warn'");
-  const ok = cnt("SELECT COUNT(*) c FROM ups_devices WHERE tenant_id=? AND status='ok'");
+  const total = db.prepare(
+    'SELECT COUNT(*) c FROM ups_devices WHERE tenant_id=? AND decommissioned_at IS NULL' + cf.clause,
+  ).get(tid, ...cf.params).c;
+  const polling = db.prepare(
+    'SELECT COUNT(*) c FROM ups_devices WHERE tenant_id=? AND polling_enabled=1' + cf.clause,
+  ).get(tid, ...cf.params).c;
+
+  const ok = cnt('ok');
+  const warn = cnt('warn');
+  const critical = cnt('critical');
+  const unreachable = cnt('unreachable');
+  // nodata = total - (ok+warn+critical+unreachable). 신선도 미통과·null status 전부 흡수.
+  const nodata = total - (ok + warn + critical + unreachable);
+  const online = ok;            // 외부 호환 — 'online'은 'ok'와 동의어
+  // 정합 가드 — 합이 total과 다르면 로그.
+  const sum = ok + warn + critical + unreachable + nodata;
+  if (sum !== total) {
+    console.warn('[fms.summary] count mismatch', { tid, sum, total,
+                  ok, warn, critical, unreachable, nodata });
+  }
   const alerts24h = db.prepare('SELECT COUNT(*) c FROM alerts WHERE tenant_id=? AND received_at > ?').get(tid, now - 24*3600*1000).c;
   const openTickets = db.prepare("SELECT COUNT(*) c FROM tickets WHERE tenant_id=? AND status NOT IN ('closed','resolved')").get(tid).c;
   const p1 = db.prepare("SELECT COUNT(*) c FROM tickets WHERE tenant_id=? AND priority='P1' AND status NOT IN ('closed','resolved')").get(tid).c;
-  const sites = cnt("SELECT COUNT(DISTINCT location) c FROM ups_devices WHERE tenant_id=? AND location != ''");
+  const sites = db.prepare(
+    "SELECT COUNT(DISTINCT location) c FROM ups_devices WHERE tenant_id=? AND location != ''" + cf.clause,
+  ).get(tid, ...cf.params).c;
 
-  // CBU breakdown — always returns full list regardless of filter
+  // CBU breakdown — 신선도 게이트 적용된 effective_status 기반.
+  // 연결 안 된 장비는 무조건 nodata 카운트로. critical/warn/ok는 last_polled 신선해야만.
+  // 최상위 critical = Σ(CBU critical) 동일 정의 (양쪽 다 effective_status).
   const cbuList = db.prepare(`SELECT COALESCE(cbu,'unknown') AS cbu, COUNT(*) AS total,
                                     SUM(CASE WHEN polling_enabled=1 THEN 1 ELSE 0 END) AS polling,
-                                    SUM(CASE WHEN status='critical' OR status='unreachable' THEN 1 ELSE 0 END) AS critical,
-                                    SUM(CASE WHEN status='warn' THEN 1 ELSE 0 END) AS warn
+                                    SUM(CASE WHEN ${FRESH_PRED} AND status='critical' THEN 1 ELSE 0 END) AS critical,
+                                    SUM(CASE WHEN ${FRESH_PRED} AND status='warn' THEN 1 ELSE 0 END) AS warn,
+                                    SUM(CASE WHEN ${FRESH_PRED} AND status='unreachable' THEN 1 ELSE 0 END) AS unreachable,
+                                    SUM(CASE WHEN ${FRESH_PRED} AND status='ok' THEN 1 ELSE 0 END) AS ok,
+                                    SUM(CASE WHEN NOT ${FRESH_PRED}
+                                              OR status IS NULL
+                                              OR status NOT IN ('ok','warn','critical','unreachable')
+                                              THEN 1 ELSE 0 END) AS nodata
                              FROM ups_devices WHERE tenant_id=? AND decommissioned_at IS NULL
-                             GROUP BY cbu ORDER BY cbu`).all(tid);
+                             GROUP BY cbu ORDER BY cbu`).all(
+    // ? = freshSince × 5 (critical, warn, unreachable, ok, nodata 5종) + tid × 1
+    freshSince, freshSince, freshSince, freshSince, freshSince, tid,
+  );
 
   res.json({
     ok: true,
-    devices: { total, polling, online, unreachable, critical, warn, normal: ok },
+    devices: { total, polling, online, unreachable, nodata, critical, warn, normal: ok },
     alerts_24h: alerts24h,
     tickets: { open: openTickets, p1 },
     sites,
     cbu_list: cbuList,
+    // 검증용 정합 sum (프론트 디버그 표시 가능)
+    _sum_check: ok + warn + critical + unreachable + nodata,
   });
 });
 
@@ -62,17 +110,26 @@ router.get('/fleet-live', (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
   const minutes = Math.max(5, Math.min(180, parseInt(req.query.minutes || '30', 10)));
   const cutoff = Date.now() - minutes * 60 * 1000;
+  const freshSince = Date.now() - STALE_MS;
   const cf = cbuFilter(req);
 
+  // 신선도 게이트 적용: critical/warn/ok는 last_polled 신선해야만 카운트.
   const fleet = db.prepare(`SELECT COUNT(*) total,
                                    SUM(CASE WHEN polling_enabled=1 THEN 1 ELSE 0 END) polling,
-                                   SUM(CASE WHEN status='critical' OR status='unreachable' THEN 1 ELSE 0 END) critical,
-                                   SUM(CASE WHEN status='warn' THEN 1 ELSE 0 END) warn,
-                                   AVG(CASE WHEN polling_enabled=1 THEN battery_pct END) avg_battery,
-                                   AVG(CASE WHEN polling_enabled=1 THEN load_pct END) avg_load,
-                                   MAX(CASE WHEN polling_enabled=1 THEN temp_c END) max_temp,
+                                   SUM(CASE WHEN ${FRESH_PRED} AND status='critical' THEN 1 ELSE 0 END) critical,
+                                   SUM(CASE WHEN ${FRESH_PRED} AND status='warn' THEN 1 ELSE 0 END) warn,
+                                   SUM(CASE WHEN ${FRESH_PRED} AND status='unreachable' THEN 1 ELSE 0 END) unreachable,
+                                   SUM(CASE WHEN NOT ${FRESH_PRED}
+                                             OR status IS NULL
+                                             OR status NOT IN ('ok','warn','critical','unreachable')
+                                             THEN 1 ELSE 0 END) nodata,
+                                   AVG(CASE WHEN polling_enabled=1 AND ${FRESH_PRED} THEN battery_pct END) avg_battery,
+                                   AVG(CASE WHEN polling_enabled=1 AND ${FRESH_PRED} THEN load_pct END) avg_load,
+                                   MAX(CASE WHEN polling_enabled=1 AND ${FRESH_PRED} THEN temp_c END) max_temp,
                                    MAX(last_polled) last_polled
-                            FROM ups_devices WHERE tenant_id=? AND decommissioned_at IS NULL` + cf.clause).get(tid, ...cf.params);
+                            FROM ups_devices WHERE tenant_id=? AND decommissioned_at IS NULL` + cf.clause).get(
+    freshSince, freshSince, freshSince, freshSince, freshSince, freshSince, freshSince, tid, ...cf.params,
+  );
 
   const rows = db.prepare(`SELECT (m.ts / 60000) * 60000 AS bucket,
                                   AVG(m.battery_pct) AS avg_battery,
@@ -91,28 +148,32 @@ router.get('/fleet-live', (req, res) => {
 router.get('/floor', (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
   const cf = cbuFilter(req);
-  const rows = db.prepare(`SELECT id, label, location, room, rack, status, health_score, battery_pct, load_pct, temp_c, last_polled
-                           FROM ups_devices WHERE tenant_id=? AND decommissioned_at IS NULL` + cf.clause).all(tid, ...cf.params);
-  // Build tree
+  const freshSince = Date.now() - STALE_MS;
+  // 신선도 게이트 — last_polled 신선하지 않으면 status를 'nodata'로 override해서 JS로 전달.
+  const rows = db.prepare(`SELECT id, label, location, room, rack,
+                                  CASE WHEN ${FRESH_PRED} THEN status ELSE 'nodata' END AS status,
+                                  health_score, battery_pct, load_pct, temp_c, last_polled, lat, lng
+                           FROM ups_devices WHERE tenant_id=? AND decommissioned_at IS NULL` + cf.clause)
+                  .all(freshSince, tid, ...cf.params);
   const tree = {};
   for (const r of rows) {
     const loc = r.location || 'Unknown Location';
     const room = r.room || 'Default Room';
     const rack = r.rack || 'Default Rack';
-    if (!tree[loc]) tree[loc] = { name: loc, rooms: {}, count: 0, critical: 0, warn: 0, ok: 0, lat: r.lat, lng: r.lng };
-    if (!tree[loc].rooms[room]) tree[loc].rooms[room] = { name: room, racks: {}, count: 0, critical: 0, warn: 0, ok: 0 };
-    if (!tree[loc].rooms[room].racks[rack]) tree[loc].rooms[room].racks[rack] = { name: rack, devices: [], count: 0, critical: 0, warn: 0, ok: 0 };
+    const initNode = (extra) => ({ count: 0, critical: 0, warn: 0, ok: 0, unreachable: 0, nodata: 0, ...extra });
+    if (!tree[loc]) tree[loc] = initNode({ name: loc, rooms: {}, lat: r.lat, lng: r.lng });
+    if (!tree[loc].rooms[room]) tree[loc].rooms[room] = initNode({ name: room, racks: {} });
+    if (!tree[loc].rooms[room].racks[rack]) tree[loc].rooms[room].racks[rack] = initNode({ name: rack, devices: [] });
     tree[loc].rooms[room].racks[rack].devices.push(r);
     tree[loc].rooms[room].racks[rack].count++;
     tree[loc].rooms[room].count++;
     tree[loc].count++;
-    if (r.status === 'critical' || r.status === 'unreachable') {
-      tree[loc].critical++; tree[loc].rooms[room].critical++; tree[loc].rooms[room].racks[rack].critical++;
-    } else if (r.status === 'warn') {
-      tree[loc].warn++; tree[loc].rooms[room].warn++; tree[loc].rooms[room].racks[rack].warn++;
-    } else if (r.status === 'ok') {
-      tree[loc].ok++; tree[loc].rooms[room].ok++; tree[loc].rooms[room].racks[rack].ok++;
-    }
+    const bump = (k) => { tree[loc][k]++; tree[loc].rooms[room][k]++; tree[loc].rooms[room].racks[rack][k]++; };
+    if (r.status === 'critical') bump('critical');
+    else if (r.status === 'warn') bump('warn');
+    else if (r.status === 'unreachable') bump('unreachable');
+    else if (r.status === 'ok') bump('ok');
+    else bump('nodata');
   }
   res.json({ ok: true, tree });
 });
@@ -126,14 +187,23 @@ const CBU_ADDRESS = {
 };
 router.get('/sites-map', (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const freshSince = Date.now() - STALE_MS;
+  // 신선도 게이트 — critical/warn/ok는 last_polled 신선해야만. 나머지는 nodata.
   const rows = db.prepare(`SELECT cbu, AVG(lat) AS lat, AVG(lng) AS lng,
                                   COUNT(*) AS total,
-                                  SUM(CASE WHEN status='critical' OR status='unreachable' THEN 1 ELSE 0 END) AS critical,
-                                  SUM(CASE WHEN status='warn' THEN 1 ELSE 0 END) AS warn,
-                                  SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END) AS ok
+                                  SUM(CASE WHEN ${FRESH_PRED} AND status='critical' THEN 1 ELSE 0 END) AS critical,
+                                  SUM(CASE WHEN ${FRESH_PRED} AND status='warn' THEN 1 ELSE 0 END) AS warn,
+                                  SUM(CASE WHEN ${FRESH_PRED} AND status='unreachable' THEN 1 ELSE 0 END) AS unreachable,
+                                  SUM(CASE WHEN ${FRESH_PRED} AND status='ok' THEN 1 ELSE 0 END) AS ok,
+                                  SUM(CASE WHEN NOT ${FRESH_PRED}
+                                            OR status IS NULL
+                                            OR status NOT IN ('ok','warn','critical','unreachable')
+                                            THEN 1 ELSE 0 END) AS nodata
                            FROM ups_devices
                            WHERE tenant_id=? AND cbu IS NOT NULL AND lat IS NOT NULL
-                           GROUP BY cbu`).all(tid);
+                           GROUP BY cbu`).all(
+    freshSince, freshSince, freshSince, freshSince, freshSince, tid,
+  );
   const buildingsByCbu = db.prepare(`SELECT cbu, location, COUNT(*) AS total
                                      FROM ups_devices
                                      WHERE tenant_id=? AND cbu IS NOT NULL AND location != ''
@@ -148,7 +218,8 @@ router.get('/sites-map', (req, res) => {
       address: addr.full,
       city: addr.display,
       lat: r.lat, lng: r.lng,
-      total: r.total, critical: r.critical, warn: r.warn, ok: r.ok,
+      total: r.total, critical: r.critical, warn: r.warn,
+      unreachable: r.unreachable, nodata: r.nodata, ok: r.ok,
       buildings,
     };
   });
@@ -156,21 +227,45 @@ router.get('/sites-map', (req, res) => {
 });
 
 // ─── GET /v1/fms/assets ─────────────────────────────────────────
+// 신선도 게이트 — status/health_score 모두 신선할 때만 노출.
+// 연결 안 된 장비는 status='nodata', health_score=null → 화면 회색.
 router.get('/assets', (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
   const cf = cbuFilter(req);
-  const rows = db.prepare(`SELECT id, label, location, room, rack, ip, vendor, model, status, health_score,
-                                  battery_pct, load_pct, temp_c, runtime_min, output_v, input_v, output_status, battery_status,
+  const freshSince = Date.now() - STALE_MS;
+  const rows = db.prepare(`SELECT id, label, location, room, rack, ip, vendor, model,
+                                  CASE WHEN ${FRESH_PRED} THEN status       ELSE 'nodata' END AS status,
+                                  CASE WHEN ${FRESH_PRED} THEN health_score ELSE NULL     END AS health_score,
+                                  CASE WHEN ${FRESH_PRED} THEN battery_pct  ELSE NULL     END AS battery_pct,
+                                  CASE WHEN ${FRESH_PRED} THEN load_pct     ELSE NULL     END AS load_pct,
+                                  CASE WHEN ${FRESH_PRED} THEN temp_c       ELSE NULL     END AS temp_c,
+                                  CASE WHEN ${FRESH_PRED} THEN runtime_min  ELSE NULL     END AS runtime_min,
+                                  CASE WHEN ${FRESH_PRED} THEN output_v     ELSE NULL     END AS output_v,
+                                  CASE WHEN ${FRESH_PRED} THEN input_v      ELSE NULL     END AS input_v,
+                                  output_status, battery_status,
                                   last_polled, polling_enabled, consecutive_fails, poll_error, criticality, muted_until, cbu
                            FROM ups_devices WHERE tenant_id=? AND decommissioned_at IS NULL` + cf.clause + `
-                           ORDER BY label`).all(tid, ...cf.params);
+                           ORDER BY label`).all(
+    freshSince, freshSince, freshSince, freshSince, freshSince, freshSince, freshSince, freshSince,
+    tid, ...cf.params,
+  );
   res.json({ ok: true, count: rows.length, assets: rows });
 });
 
 // ─── GET /v1/fms/assets/:id ─────────────────────────────────────
 router.get('/assets/:id', (req, res) => {
   const tid = tenantOf(req); const id = parseInt(req.params.id, 10);
-  const asset = db.prepare('SELECT * FROM ups_devices WHERE id=? AND tenant_id=?').get(id, tid);
+  const freshSince = Date.now() - STALE_MS;
+  // 단건도 동일 신선도 게이트.
+  const asset = db.prepare(
+    `SELECT *,
+            CASE WHEN ${FRESH_PRED} THEN status       ELSE 'nodata' END AS status,
+            CASE WHEN ${FRESH_PRED} THEN health_score ELSE NULL     END AS health_score,
+            CASE WHEN ${FRESH_PRED} THEN battery_pct  ELSE NULL     END AS battery_pct,
+            CASE WHEN ${FRESH_PRED} THEN load_pct     ELSE NULL     END AS load_pct,
+            CASE WHEN ${FRESH_PRED} THEN temp_c       ELSE NULL     END AS temp_c
+     FROM ups_devices WHERE id=? AND tenant_id=?`
+  ).get(freshSince, freshSince, freshSince, freshSince, freshSince, id, tid);
   if (!asset) return res.status(404).json({ error: 'not found' });
   const range = (req.query.range || '24h').toLowerCase();
   const rangeMs = range === '30d' ? 30*24*3600*1000 : range === '7d' ? 7*24*3600*1000 : 24*3600*1000;

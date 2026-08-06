@@ -3,6 +3,7 @@
 const axios = require('axios');
 const db = require('../config/database');
 const expoPush = require('./expo-push-notifier');
+const { sendFmsAlert, formatAlertMessage } = require('./cflex-alert');
 
 const SC_URL = process.env.SC_INTERNAL_URL || 'http://localhost:3200';
 const UC_URL = process.env.RUNLESS_UC_URL || 'http://localhost:3100';
@@ -354,6 +355,22 @@ async function notify(alert) {
       console.log('[alarm-notifier]', alert.id, rule.channel, '→', r.ok ? 'OK' : ('FAIL ' + r.error));
     }
     try { await expoPush.dispatch(alert, asset); } catch (e) { console.error("[alarm-notifier] expo-push:", e.message); }
+
+    // Fire-and-forget SMS via cflex-sms gateway (CFLEX_ALERT_TOKEN required).
+    // Independent of tenant fms_alarm_routes — always dispatched when token is set.
+    // Dedupe key = site|category so same on-battery event doesn't spam every poll.
+    try {
+      const site = asset?.location || asset?.label || 'unknown-site';
+      const category = alert.metric || alert.device_id?.replace(/^ups-.*/, 'UPS') || 'FMS';
+      const detail = [msg.body, msg.detail].filter(Boolean).join(' ');
+      const text = formatAlertMessage({ priority: alert.priority, site, category, detail });
+      const dedupeKey = `${site}|${category}`;
+      setImmediate(() => {
+        sendFmsAlert(text, { dedupeKey }).catch(e =>
+          console.error('[alarm-notifier] cflex-alert:', e.message));
+      });
+    } catch (e) { console.error('[alarm-notifier] cflex-alert build:', e.message); }
+
     return results;
   } catch (e) {
     console.error('[alarm-notifier] error:', e.message);

@@ -1,0 +1,52 @@
+# UPS 대상 장비 목록 — HAEA 44대 채울 자리.
+# 실제 IP/community는 현장 인입 시 비공개 secrets로 관리(별도 .env 또는 vault).
+# 본 파일은 형식 예시 + 가공된 대표 1~2건만.
+
+devices:
+  - id: "ups-haea-001"
+    name: "Building A - Server Room - UPS1"
+    model: "APC Smart-UPS RT 10000"
+    profile: "apc_smartups_rt"        # 모델 프로파일 — 임계·MIB 차이 반영
+    ip: "10.0.0.11"
+    snmp:
+      version: "v2c"
+      community: "public"             # v1 dev only. v3은 별도 secrets.
+      port: 161
+    polling_interval_sec: 30
+    tags: { site: "haea-amer", building: "A", critical: true }
+
+  - id: "ups-haea-002"
+    name: "Building B - DC Cooling - UPS Backup"
+    model: "Vertiv Liebert GXT5"
+    profile: "vertiv_gxt5"
+    ip: "10.0.0.12"
+    snmp:
+      version: "v3"
+      user_name: "haea-monitor"
+      auth_protocol: "SHA"
+      priv_protocol: "AES"
+      # auth/priv 비밀번호는 secrets에서 주입
+    polling_interval_sec: 60
+    tags: { site: "haea-amer", building: "B" }
+
+# 모델 프로파일 — 다른 임계/OID/단위 처리.
+profiles:
+  apc_smartups_rt:
+    mib: "PowerNet-MIB"               # APC 전용 OID. 표준 UPS-MIB도 부분 지원.
+    thresholds:
+      load_critical: 100
+      load_warn: 90
+      capacity_critical: 30
+      capacity_warn: 50
+      temp_warn_c: 45
+      runtime_warn_sec: 300
+
+  vertiv_gxt5:
+    mib: "RFC1628-UPS-MIB"            # 표준 UPS-MIB
+    thresholds:
+      load_critical: 100
+      load_warn: 88
+      capacity_critical: 25
+      capacity_warn: 45
+      temp_warn_c: 50
+      runtime_warn_sec: 300

@@ -1,0 +1,60 @@
+# Runless 프로브 설정 — HAEA 1차.
+# egress 정책은 시작 시 airgap. 추후 HAEA 허용 범위에 맞춰 토글.
+
+probe_id: "haea-probe-01"
+site: "hyundai-amer-fms"
+
+polling:
+  default_interval_sec: 30        # 장비별 override 가능 (devices.yaml)
+  jitter_pct: 10                  # 동시 폴링 방지 (±10%)
+  timeout_sec: 5
+  retries: 2
+
+buffer:
+  path: "/var/lib/cflex-probe/buffer.db"
+  retention_days: 30              # 로컬 시계열 보관
+  max_size_mb: 500
+
+state_engine:
+  # 점수 구간 → 상태 매핑 (deriveStatus와 별도, 누적 헬스 점수용)
+  thresholds:
+    ok_min: 80
+    warn_min: 50
+    critical_min: 0
+  # 데이터 신선도 — 마지막 폴링 후 이 시각 초과면 stale로 강등
+  stale_after_sec: 180
+
+inference:
+  battery_eol:
+    enabled: true
+    temp_acceleration: true       # 10°C↑ → 수명 절반 룰
+    min_samples_for_regression: 30
+  anomaly:
+    enabled: true
+    baseline_window_days: 14
+    sigma: 3.0
+  eta:
+    enabled: true
+    ewma_alpha: 0.3
+
+egress:
+  policy: "airgap"                # airgap | aggregate | federated
+  central_url: ""                 # aggregate/federated일 때만 사용
+  mtls:
+    cert_path: ""
+    key_path: ""
+    ca_path: ""
+  whitelist:                      # 정책별 노출 필드
+    aggregate: ["device_id_hash", "status", "health_score", "alarm_count", "ts"]
+    federated:
+      - "anonymous_signature"
+      - "model_telemetry"
+      - "aggregate_benchmark"
+
+ui:
+  enabled: true
+  bind: "127.0.0.1:8080"          # 내부망 전용
+
+logging:
+  level: "INFO"
+  path: "/var/log/cflex-probe/probe.log"

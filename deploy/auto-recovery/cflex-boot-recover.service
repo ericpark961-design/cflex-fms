@@ -1,0 +1,15 @@
+[Unit]
+Description=C-Flex boot-time service recovery (VM restart safety net)
+After=network-online.target nginx.service
+Wants=network-online.target
+# nginx 살아있어야 health check이 의미 있음
+Requires=nginx.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+# VM 부팅 직후 한 번 실행. pm2-cflex가 disabled여도 강제 기동.
+ExecStart=/usr/local/bin/cflex-boot-recover
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=C-Flex / StockSentinel / FMS healthcheck + self-recovery
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cflex-healthcheck
+# Run as root — needs systemctl restart privileges
+User=root
+Nice=10
+IOSchedulingClass=idle

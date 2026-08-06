@@ -1,0 +1,14 @@
+[Unit]
+Description=Run C-Flex healthcheck every 5 minutes
+
+[Timer]
+# 부팅 후 60초에 첫 실행 (서비스들이 안정화될 시간)
+OnBootSec=60
+# 그 후 5분마다
+OnUnitActiveSec=5min
+AccuracySec=15s
+Unit=cflex-healthcheck.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

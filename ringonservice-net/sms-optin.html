@@ -70,6 +70,14 @@
     select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, #525252 50%), linear-gradient(135deg, #525252 50%, transparent 50%); background-position: calc(100% - 18px) center, calc(100% - 12px) center; background-size: 6px 6px, 6px 6px; background-repeat: no-repeat; padding-right: 36px; }
     .help { font-size: 12px; color: var(--ink-subtle); margin-top: 4px; }
 
+    /* Optional-SMS notice — above consent block */
+    .sms-optional-notice {
+      background: #edf4ff; border: 1px solid #a6c8ff; border-left: 4px solid var(--accent);
+      padding: 14px 18px; margin: 22px 0 12px;
+      font-size: 14px; line-height: 1.55; color: var(--ink);
+    }
+    .sms-optional-notice strong { color: var(--accent); }
+
     /* Consent checkboxes */
     .consent-block { background: var(--surface); border-left: 3px solid var(--accent); padding: 18px 20px; margin: 22px 0; }
     .consent-block label { font-weight: 400; cursor: pointer; display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.6; margin-bottom: 14px; }
@@ -193,14 +201,20 @@
       <div class="help">For confirmation record.</div>
     </div>
 
+    <div class="sms-optional-notice" role="note" aria-label="SMS is optional">
+      <strong>SMS is completely optional.</strong>
+      You will receive operational alerts by <strong>email</strong> and the <strong>internal dashboard</strong>
+      whether or not you enable SMS. Enabling SMS below is entirely up to you.
+    </div>
+
     <div class="consent-block">
       <label>
-        <input type="checkbox" id="consent_authorize" name="consent_authorize" required>
-        <span>I voluntarily authorize RingOn Service Corp. to send me operational SMS alerts at the mobile number provided above. I understand that my consent is not a condition of employment, contracting, payment, or access to any RingOn service. Message and data rates may apply. Up to 30 messages per month. Reply STOP to opt out, HELP for help.</span>
+        <input type="checkbox" id="consent_authorize" name="consent_authorize">
+        <span>(Optional) Yes &mdash; in addition to email and the internal dashboard, I would also like to receive these operational alerts by SMS text message at the mobile number above. I understand SMS is optional and is not required to receive alerts or as a condition of employment, contracting, payment, or access to any RingOn service. Message and data rates may apply. Up to 30 messages per month. Reply STOP to opt out, HELP for help.</span>
       </label>
       <label>
-        <input type="checkbox" id="consent_ownership" name="consent_ownership" required>
-        <span>I confirm that the mobile number provided is my personal number and that I am authorized to enroll it for SMS alerts.</span>
+        <input type="checkbox" id="consent_ownership" name="consent_ownership">
+        <span>If you enabled SMS above: I confirm that the mobile number provided is my personal number and that I am authorized to enroll it for SMS alerts.</span>
       </label>
       <p style="margin: 12px 0 0; font-size: 13px; color: var(--ink-muted); line-height: 1.5;">
         By enrolling you agree to our
@@ -215,8 +229,9 @@
   <!-- Success message -->
   <div id="success" class="success-msg" role="status" aria-live="polite">
     <strong>✓ Enrollment Successful</strong>
-    <p>A confirmation SMS will be sent to your mobile number shortly. Please review the welcome message and reply if requested. You may opt out at any time by replying <strong>STOP</strong>.</p>
-    <p>If you do not receive a confirmation SMS within 5 minutes, please contact <a href="mailto:support@ringonservice.net">support@ringonservice.net</a>.</p>
+    <p id="success-sms-on" style="display:none;">A confirmation SMS will be sent to your mobile number shortly. Please review the welcome message and reply if requested. You may opt out at any time by replying <strong>STOP</strong>.</p>
+    <p id="success-sms-off" style="display:none;">You are enrolled to receive operational alerts by <strong>email</strong> and the <strong>internal incident dashboard</strong>. SMS was left disabled &mdash; you can enable it later by returning to this page.</p>
+    <p>If anything doesn't look right, please contact <a href="mailto:support@ringonservice.net">support@ringonservice.net</a>.</p>
   </div>
 
   <!-- Alternative opt-in methods (carrier-required parity with campaign answers) -->
@@ -305,13 +320,17 @@
       if (!role) return showErr('Please select your role.');
       if (phoneV.length < 10) return showErr('Please enter a valid U.S. mobile number.');
       if (!email || email.indexOf('@') < 0) return showErr('Please enter a valid email address.');
-      if (!c1) return showErr('You must check the authorization box to enroll.');
-      if (!c2) return showErr('You must confirm the mobile number is yours.');
+      // SMS opt-in (c1) is optional — form submits without it (email + dashboard channels
+      // remain active). If SMS is opted in, ownership confirmation (c2) is required so the
+      // consent record is auditable per A2P 10DLC / CTIA.
+      if (c1 && !c2) return showErr('Since you enabled SMS, please also confirm the mobile number is yours.');
 
       btn.disabled = true;
       btn.textContent = 'Submitting…';
 
-      // POST to backend (10DLC compliance: log the consent with timestamp + IP)
+      // POST to backend. sms_enabled reflects the user's actual choice.
+      // - c1 === false → email + dashboard only, no SMS channel enrollment
+      // - c1 === true  → email + dashboard + SMS channel enrollment (10DLC-audited consent)
       fetch('/api/sms-optin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -319,8 +338,9 @@
           name: name, role: role,
           phone: '+1' + phoneV.slice(-10),
           email: email,
-          consent_authorize: true,
-          consent_ownership: true,
+          sms_enabled: c1,
+          consent_authorize: c1,
+          consent_ownership: c1 ? c2 : false,
           source: 'web_optin',
           page_url: window.location.href,
         }),
@@ -330,18 +350,24 @@
         return r.json().catch(function() { return {}; });
       })
       .then(function() {
-        form.style.display = 'none';
-        success.style.display = 'block';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        showSuccess(c1);
       })
       .catch(function(err) {
         // Fallback: still show success client-side (carrier audit screenshots) but log error.
         // Operations team can review server logs for delivery confirmation.
         console.warn('[sms-optin]', err);
+        showSuccess(c1);
+      });
+
+      function showSuccess(smsOn) {
+        var onP = document.getElementById('success-sms-on');
+        var offP = document.getElementById('success-sms-off');
+        if (onP)  onP.style.display  = smsOn ? 'block' : 'none';
+        if (offP) offP.style.display = smsOn ? 'none'  : 'block';
         form.style.display = 'none';
         success.style.display = 'block';
         window.scrollTo({ top: 0, behavior: 'smooth' });
-      });
+      }
     });
   })();
 </script>

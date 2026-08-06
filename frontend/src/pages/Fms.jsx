@@ -80,13 +80,16 @@ const fmtTime = (ms) => {
 };
 const fmtAbs = (ms) => ms ? new Date(ms).toLocaleString() : '—';
 
+// 지시서_FMS상태색상_정합: 회색=데이터없음, 녹색=정상, 노랑=경고, 빨강=위험.
+// 연결 안 됐으면 무조건 회색. critical은 신선 데이터 + 위험 결함 둘 다일 때만.
 const statusColor = (s) => ({
   ok:          { bg: C.okSoft,       fg: C.ok,       label: 'NORMAL' },
   warn:        { bg: C.warnSoft,     fg: C.warn,     label: 'WARNING' },
   critical:    { bg: C.criticalSoft, fg: C.critical, label: 'CRITICAL' },
-  unreachable: { bg: '#f4f4f4',      fg: C.inkMuted, label: 'OFFLINE' },
-  unknown:     { bg: '#f4f4f4',      fg: C.inkSubtle, label: '—' },
-}[s] || { bg: '#f4f4f4', fg: C.inkSubtle, label: s || '—' });
+  unreachable: { bg: '#f4f4f4',      fg: C.inkMuted, label: '데이터없음' },
+  nodata:      { bg: '#f4f4f4',      fg: C.inkMuted, label: '데이터없음' },
+  unknown:     { bg: '#f4f4f4',      fg: C.inkSubtle, label: '데이터없음' },
+}[s] || { bg: '#f4f4f4', fg: C.inkSubtle, label: '데이터없음' });
 
 const sevColor = (p) => ({
   P1: { bg: C.criticalSoft, fg: C.critical, label: 'CRITICAL' },
@@ -365,12 +368,17 @@ function Dashboard() {
   useEffect(() => { reload(); const t = setInterval(reload, 30000); return () => clearInterval(t); }, [cbu]);
   if (!s) return <Loading />;
 
-  // KPI tiles — vivid icon + value + share-of-fleet bar
+  // KPI tiles — 사용자 지시:
+  // 1) 위험(빨강) = critical 만. unreachable/nodata는 회색으로 분리.
+  // 2) total = ok + warn + critical + unreachable + nodata. 합 = total 보장.
+  const unreachableCount = (s.devices.unreachable ?? 0);
+  const nodataCount      = (s.devices.nodata ?? 0);
+  const offlineGrey      = unreachableCount + nodataCount;
   const tiles = [
-    { label: tx('위험', 'CRITICAL'), Icon: AlertTriangle, value: s.devices.critical + s.devices.unreachable, color: C.critical, soft: C.criticalSoft, onClick: () => openDevicesByStatus('critical', tx('위험 장치', 'Critical Devices')) },
+    { label: tx('위험', 'CRITICAL'), Icon: AlertTriangle, value: s.devices.critical, color: C.critical, soft: C.criticalSoft, onClick: () => openDevicesByStatus('critical', tx('위험 장치', 'Critical Devices')) },
     { label: tx('경고', 'WARNING'),  Icon: AlertTriangle, value: s.devices.warn,    color: C.warn,    soft: C.warnSoft,     onClick: () => openDevicesByStatus('warn',    tx('경고 장치', 'Warning Devices')) },
     { label: tx('정상', 'NORMAL'),   Icon: CheckCircle2,  value: s.devices.normal,  color: C.ok,      soft: C.okSoft,        onClick: () => openDevicesByStatus('ok',      tx('정상 장치', 'Normal Devices')) },
-    { label: tx('사이트', 'SITES'),   Icon: Globe,         value: s.sites,           color: C.primary, soft: C.primarySoft,   onClick: () => openSites() },
+    { label: tx('데이터없음/대기', 'NO DATA'), Icon: Globe, value: offlineGrey, color: C.inkMuted, soft: '#f4f4f4', onClick: () => openDevicesByStatus('unreachable', tx('연결 끊김/대기', 'No data / pending')) },
   ];
 
   return (
@@ -714,10 +722,12 @@ function HoneycombGrid({ assets, onPick }) {
   // Status accent colour per cell — bold fg fill, white text, sized for ~40-60 px cells
   const cellStyle = (status) => {
     const sc = statusColor(status);
+    // 사용자 지시 #1: unreachable/nodata는 회색(중립), 빨강 아님. critical과 분리.
     const solid =
-      status === 'critical' || status === 'unreachable' ? { bg: C.critical, fg: '#fff' } :
+      status === 'critical'                              ? { bg: C.critical, fg: '#fff' } :
       status === 'warn'                                  ? { bg: C.warn,     fg: C.ink } :
       status === 'ok'                                    ? { bg: C.ok,       fg: '#fff' } :
+      status === 'unreachable'                           ? { bg: '#a8a8a8',  fg: '#fff' } :
                                                             { bg: '#e8e8e8',  fg: C.inkMuted };
     return { ...sc, solid };
   };
@@ -729,10 +739,14 @@ function HoneycombGrid({ assets, onPick }) {
           {tx('표시할 장치가 없습니다.', 'No devices to display.')}
         </div>
       ) : groups.map(({ cbu, devices }, idx) => {
-        const critical = devices.filter(d => d.status === 'critical' || d.status === 'unreachable').length;
+        // 카운트 정합 — top critical = Σ(CBU critical) 동일 정의. unreachable/nodata 회색 분리.
+        const critical = devices.filter(d => d.status === 'critical').length;
         const warn = devices.filter(d => d.status === 'warn').length;
         const ok = devices.filter(d => d.status === 'ok').length;
+        const unreachable = devices.filter(d => d.status === 'unreachable').length;
         const unknown = devices.filter(d => !['critical', 'unreachable', 'warn', 'ok'].includes(d.status)).length;
+        // 합 = devices.length 강제 (nodata 흡수)
+        const offlineGrey = unreachable + unknown;
         return (
           <div key={cbu} style={{ marginBottom: idx === groups.length - 1 ? 0 : 14, paddingBottom: idx === groups.length - 1 ? 0 : 14, borderBottom: idx === groups.length - 1 ? 'none' : `1px solid ${C.hairline}` }}>
             {/* CBU header row */}
@@ -761,10 +775,10 @@ function HoneycombGrid({ assets, onPick }) {
                   {ok} {tx('정상', 'normal')}
                 </span>
               )}
-              {unknown > 0 && (
+              {offlineGrey > 0 && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: C.inkSubtle }}>
-                  <span style={{ width: 8, height: 8, background: '#bbb', borderRadius: '50%' }} />
-                  {unknown} {tx('미확인', 'unknown')}
+                  <span style={{ width: 8, height: 8, background: '#a8a8a8', borderRadius: '50%' }} />
+                  {offlineGrey} {tx('데이터없음/대기', 'no data')}
                 </span>
               )}
             </div>
@@ -781,7 +795,7 @@ function HoneycombGrid({ assets, onPick }) {
                       cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'center',
                       alignItems: 'center', fontSize: 9, fontWeight: 700, gap: 1,
                       transition: 'transform 80ms',
-                      animation: (a.status === 'critical' || a.status === 'unreachable')
+                      animation: a.status === 'critical'
                         ? 'fmsPulse 2.4s ease-out infinite'
                         : a.status === 'warn' ? 'fmsWarnPulse 2.6s ease-out infinite' : undefined,
                     }}
@@ -859,7 +873,14 @@ function FloorLayout() {
       {level !== 'device' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
           {items.map(it => {
-            const sev = it.critical > 0 ? 'critical' : it.warn > 0 ? 'warn' : 'ok';
+            // critical만 빨강. unreachable/nodata는 회색(unknown).
+            const onlyOffline = (it.critical || 0) === 0 && (it.warn || 0) === 0 &&
+                                ((it.unreachable || 0) + (it.nodata || 0)) > 0 &&
+                                (it.ok || 0) === 0;
+            const sev = (it.critical || 0) > 0 ? 'critical'
+                       : (it.warn || 0) > 0 ? 'warn'
+                       : onlyOffline ? 'unreachable'
+                       : 'ok';
             const sc = statusColor(sev);
             return (
               <div key={it.name} onClick={() => drillDown(it.name)} style={{
@@ -3095,7 +3116,11 @@ function DevicesByStatusModal({ statusKey, title, onClose }) {
     api.get(withCbu('/v1/fms/assets', cbu)).then(d => {
       if (!d?.ok) return;
       const filtered = d.assets.filter(a => {
-        if (statusKey === 'critical') return a.status === 'critical' || a.status === 'unreachable';
+        if (statusKey === 'critical') return a.status === 'critical';
+        if (statusKey === 'unreachable') {
+          return a.status === 'unreachable' || a.status === 'nodata'
+                 || !['critical', 'warn', 'ok'].includes(a.status);
+        }
         return a.status === statusKey;
       });
       setAssets(filtered);
@@ -3415,7 +3440,7 @@ function UpsModelIcon({ model = '', size = 64, fitBox, accent, status = 'unknown
           <span aria-hidden style={{
             position: 'absolute', top: -6, right: -6, width: 14, height: 14, borderRadius: '50%',
             background: ring, boxShadow: '0 0 0 3px #fff, 0 0 8px rgba(0,0,0,0.18)',
-            animation: (status === 'critical' || status === 'unreachable' || status === 'offline')
+            animation: status === 'critical'
               ? 'fmsPulseDot 1.8s ease-in-out infinite' : undefined,
           }} />
         )}
