@@ -24,7 +24,8 @@ rsync -az --delete dist/ "$HOST:$REMOTE_DIR/"
 # Without the ^~ the existing `~* \.(html|json)$` regex location wins and every
 # /twin/ path 404s, so fail loudly here rather than after a silent reload.
 echo "==> checking nginx vhost"
-if ! ssh "$HOST" "grep -rq 'location \^~ /twin/' /etc/nginx/sites-enabled/ 2>/dev/null"; then
+# -R, not -r: sites-enabled holds symlinks, which -r skips during recursion.
+if ! ssh "$HOST" "grep -Rq 'location ^~ /twin/' /etc/nginx/sites-enabled/ 2>/dev/null"; then
   echo "ERROR: no 'location ^~ /twin/' block found in /etc/nginx/sites-enabled/ on $HOST." >&2
   echo "       Copy nginx/vm1-fms-vhost.conf from this repo to the server first." >&2
   exit 1
