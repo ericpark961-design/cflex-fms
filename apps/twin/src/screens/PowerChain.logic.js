@@ -1,0 +1,2 @@
+export const props={"accent": "#0f62fe"};
+export const source="\nclass Component extends DCLogic {\n  renderVals() {\n    const col = (kw) => kw > 6 ? '#f1c21b' : kw >= 4 ? '#08bdba' : kw >= 2 ? '#3ddbd9' : '#9ef0f0';\n    const mk = (prefix, from, vals) => vals.map((kw, i) => ({ id: prefix + String(from + i).padStart(2, '0'), kw: kw.toFixed(1), color: col(kw) }));\n    return {\n      accent: this.props.accent ?? '#0f62fe',\n      racksA: mk('B', 1, [1.8, 2.4, 3.1, 1.2, 1.6, 1.1]),\n      racksB: mk('B', 7, [6.4, 1.1, 0.8, 0.9, 0.3, 0.3])\n    };\n  }\n}\n";

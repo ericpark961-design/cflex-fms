@@ -1,0 +1,202 @@
+<div style="display:flex;flex-wrap:wrap;min-height:1180px;font-family:'IBM Plex Sans KR','IBM Plex Sans',sans-serif;color:#f4f4f4;background:#161616">
+
+  <nav aria-label="주 메뉴" style="flex:0 0 220px;background:#0b0b0b;border-right:1px solid #262626;display:flex;flex-direction:column">
+    <div style="padding:18px 16px 14px;border-bottom:1px solid #262626;display:flex;align-items:center;gap:10px">
+      <div style="width:30px;height:30px;background:{{accent}};display:grid;place-items:center;font-weight:700;font-size:15px;color:#fff;border-radius:2px">C</div>
+      <div><div style="font-size:15px;font-weight:700">C-Flex FMS <span style="font-size:11px;color:#78a9ff;font-weight:600;margin-left:4px">2.0</span></div><div style="font-size:11px;color:#8d8d8d;margin-top:1px">RingOn Service · {{tenant}}</div></div>
+    </div>
+    <div style="padding:10px 0;display:flex;flex-direction:column">
+      <a class="nav" href="#/dashboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>대시보드</a>
+      <a class="nav" href="#/powerchain"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>전력체인 트윈</a>
+      <a class="nav on" href="#/device"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="1"/><path d="M6 11h4M14 11h4"/></svg>장치</a>
+      <a class="nav" href="#/alarms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>알람 센터</a>
+      <a class="nav" href="#/twin"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18"/><path d="M3 9h18M9 21V9"/></svg>3D 트윈</a>
+      <a class="nav" href="#/powerchain?panel=copilot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/></svg>AI 코파일럿</a>
+      <a class="nav" href="#/wall"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></svg>관제 상황판</a>
+      <a class="nav" href="/fms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>FMS 1.x (관리)</a>
+    </div>
+    <div style="margin-top:auto;padding:14px 16px;border-top:1px solid #262626;font-size:12px;color:#c6c6c6">{{me.name}}<br><span style="color:#8d8d8d">{{me.email}}</span></div>
+  </nav>
+
+  <main style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 20px;background:#0b0b0b;border-bottom:1px solid #262626">
+      <nav aria-label="경로" style="font-size:12px;color:#8d8d8d;display:flex;gap:6px;flex-wrap:wrap"><a href="#/device" style="text-decoration:none">장치</a><span>›</span><span>{{d.cbu}}</span><span>›</span><span>{{d.room}}</span><span>›</span><span>{{d.rack}}</span><span>›</span><span class="mono" style="color:#f4f4f4">{{d.label}}</span></nav>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#42be65"><span style="width:8px;height:8px;border-radius:50%;background:#42be65;box-shadow:0 0 0 4px rgba(66,190,101,.18)"></span>LIVE · 마지막 폴링 {{d.lastPoll}}</span>
+        <button class="ghost" aria-label="언어 전환">KO / EN</button>
+      </div>
+    </div>
+
+    <div style="padding:20px 20px 28px;display:flex;flex-direction:column;gap:16px">
+
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px"><h1 class="mono" style="margin:0;font-size:24px;font-weight:600">{{d.label}}</h1><span class="badge" style="background:{{d.stColor}};color:#fff">{{d.stLabel}}</span><span class="badge" style="background:#393939;color:#f4f4f4">CRITICALITY A</span></div>
+          <div style="font-size:13px;color:#c6c6c6;margin-top:4px">{{d.vendor}} {{d.model}} · {{d.room}} / {{d.rack}} · {{d.location}}</div>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="ghost">임계치</button>
+          <button class="ghost">점검모드 1h</button>
+          <button class="ghost">자가진단 실행</button>
+          <a href="#/powerchain?panel=copilot" class="btn" style="background:{{accent}};color:#fff;text-decoration:none">AI RCA</a>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:260px minmax(0, 1fr) 360px;gap:12px">
+
+        <!-- Spec + illustration -->
+        <section style="background:#262626;padding:16px;min-width:0;display:flex;flex-direction:column;gap:12px">
+          <div aria-hidden="true" style="background:#1a1a1a;border:1px solid #393939;padding:14px;display:flex;justify-content:center">
+            <div style="width:150px;background:linear-gradient(180deg,#2c2c2c,#1c1c1c);border:1px solid #4a4a4a;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:9px;color:#8d8d8d;letter-spacing:.1em">SRT 5000</span><span style="width:7px;height:7px;border-radius:50%;background:#fa4d56;box-shadow:0 0 6px #fa4d56"></span></div>
+              <div class="mono" style="background:#0b2a1a;border:1px solid #1f5c3a;color:#42be65;font-size:10px;padding:6px 8px;line-height:1.4">ON BATTERY<br>RT 18 MIN · 48%</div>
+              <div style="display:flex;gap:4px"><span style="flex:1;height:5px;background:#42be65"></span><span style="flex:1;height:5px;background:#42be65"></span><span style="flex:1;height:5px;background:#42be65"></span><span style="flex:1;height:5px;background:#f1c21b"></span><span style="flex:1;height:5px;background:#393939"></span></div>
+              <div style="display:grid;grid-template-columns:repeat(6, minmax(0, 1fr));gap:3px"><span style="height:18px;background:#111;border:1px solid #333"></span><span style="height:18px;background:#111;border:1px solid #333"></span><span style="height:18px;background:#111;border:1px solid #333"></span><span style="height:18px;background:#111;border:1px solid #333"></span><span style="height:18px;background:#111;border:1px solid #333"></span><span style="height:18px;background:#111;border:1px solid #333"></span></div>
+              <div style="height:40px;background:repeating-linear-gradient(90deg,#222 0 3px,#151515 3px 6px);border:1px solid #333"></div>
+            </div>
+          </div>
+          <div>
+            <div class="kv"><span>모델</span><span>{{d.model}}</span></div>
+            <div class="kv"><span>IP</span><span class="mono">{{d.ip}}</span></div>
+            <div class="kv"><span>시리얼</span><span class="mono">{{d.serial}}</span></div>
+            <div class="kv"><span>펌웨어</span><span class="mono">{{d.firmware}}</span></div>
+            <div class="kv"><span>프로토콜</span><span>SNMP v3 · Modbus TCP</span></div>
+            <div class="kv"><span>폴링</span><span>{{d.poll}}</span></div>
+            <div class="kv"><span>설치일</span><span class="mono">2023-04-18</span></div>
+            <div class="kv"><span>배터리 교체</span><span class="mono">2023-04 (원본)</span></div>
+            <div class="kv"><span>계약</span><span>HAEA UPS PM · Q3 완료</span></div>
+          </div>
+          <div style="background:#1f1f1f;padding:12px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:#c6c6c6"><span>헬스 스코어</span><span class="mono" style="color:{{d.stColor}};font-weight:600">{{d.health}} / 100</span></div>
+            <div style="height:6px;background:#393939;margin-top:8px"><div style="width:{{d.healthPct}};height:100%;background:linear-gradient(90deg,#fa4d56,#f1c21b)"></div></div>
+            <div style="font-size:11px;color:#8d8d8d;margin-top:8px;line-height:1.5">전압 −18 · 온도 −9 · 런타임 추세 −12 · 알람 빈도 −6</div>
+          </div>
+        </section>
+
+        <!-- Gauges + trend -->
+        <section style="min-width:0;display:flex;flex-direction:column;gap:12px">
+          <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:12px">
+            <div style="background:#262626;padding:14px;display:flex;flex-direction:column;align-items:center">
+              <svg width="150" height="92" viewBox="0 0 150 92" aria-hidden="true"><path d="M15 85 A60 60 0 0 1 135 85" fill="none" stroke="#393939" stroke-width="14" stroke-linecap="round"/><path d="M15 85 A60 60 0 0 1 135 85" fill="none" stroke="#f1c21b" stroke-width="14" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="{{d.battOff}}"/><text x="75" y="74" text-anchor="middle" fill="#f4f4f4" font-family="IBM Plex Mono" font-size="26" font-weight="600">{{d.battery_pct}}%</text></svg>
+              <div style="font-size:12px;color:#c6c6c6">battery_pct</div>
+              <div class="mono" style="font-size:11px;color:#8d8d8d">배터리 {{d.battery_status}}</div>
+            </div>
+            <div style="background:#262626;padding:14px;display:flex;flex-direction:column;align-items:center">
+              <svg width="150" height="92" viewBox="0 0 150 92" aria-hidden="true"><path d="M15 85 A60 60 0 0 1 135 85" fill="none" stroke="#393939" stroke-width="14" stroke-linecap="round"/><path d="M15 85 A60 60 0 0 1 135 85" fill="none" stroke="#4589ff" stroke-width="14" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="{{d.loadOff}}"/><text x="75" y="74" text-anchor="middle" fill="#f4f4f4" font-family="IBM Plex Mono" font-size="26" font-weight="600">{{d.load_pct}}%</text></svg>
+              <div style="font-size:12px;color:#c6c6c6">load_pct</div>
+              <div class="mono" style="font-size:11px;color:#8d8d8d">헬스 {{d.health}}</div>
+            </div>
+            <div style="background:#262626;padding:14px;display:flex;flex-direction:column;align-items:center">
+              <svg width="150" height="92" viewBox="0 0 150 92" aria-hidden="true"><path d="M15 85 A60 60 0 0 1 135 85" fill="none" stroke="#393939" stroke-width="14" stroke-linecap="round"/><path d="M15 85 A60 60 0 0 1 135 85" fill="none" stroke="#ff832b" stroke-width="14" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="{{d.tempOff}}"/><text x="75" y="74" text-anchor="middle" fill="#f4f4f4" font-family="IBM Plex Mono" font-size="26" font-weight="600">{{d.temp_c}}°</text></svg>
+              <div style="font-size:12px;color:#c6c6c6">temp_c</div>
+              <div class="mono" style="font-size:11px;color:#8d8d8d">임계 30.0 °C</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:12px">
+            <div style="background:#262626;padding:10px 12px"><div style="font-size:11px;color:#8d8d8d">runtime_min</div><div class="mono" style="font-size:20px;font-weight:600;color:#f1c21b">{{d.runtime_min}}</div></div>
+            <div style="background:#262626;padding:10px 12px"><div style="font-size:11px;color:#8d8d8d">input_v</div><div class="mono" style="font-size:20px;font-weight:600">{{d.input_v}}</div></div>
+            <div style="background:#262626;padding:10px 12px"><div style="font-size:11px;color:#8d8d8d">output_v</div><div class="mono" style="font-size:20px;font-weight:600">{{d.output_v}}</div></div>
+            <div style="background:#262626;padding:10px 12px"><div style="font-size:11px;color:#8d8d8d">output_status</div><div class="mono" style="font-size:14px;font-weight:600;color:#42be65;margin-top:5px">{{d.output_status}}</div></div>
+          </div>
+
+          <div style="background:#262626;padding:16px 18px;flex:1">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px">
+              <h2 style="margin:0;font-size:15px;font-weight:600">배터리 전압 · 런타임 추세</h2>
+              <div role="group" aria-label="구간" style="margin-left:auto;display:flex;border:1px solid #393939;font-size:12px">
+                <button class="ghost" style="border:0;padding:5px 10px;background:#393939">24h</button>
+                <button class="ghost" style="border:0;border-left:1px solid #393939;padding:5px 10px">7d</button>
+                <button class="ghost" style="border:0;border-left:1px solid #393939;padding:5px 10px">30d</button>
+                <button class="ghost" style="border:0;border-left:1px solid #393939;padding:5px 10px">1y</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:18px;font-size:12px;color:#c6c6c6;margin-bottom:6px">
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#f1c21b"></span>배터리 전압 V</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#4589ff"></span>런타임 min</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;border-top:2px dashed #fa4d56"></span>P1 임계 26.0 V</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:10px;background:rgba(250,77,86,.18)"></span>알람 구간</span>
+            </div>
+            <div style="position:relative;height:200px">
+              <svg viewBox="0 0 800 200" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%" aria-hidden="true">
+                <rect x="690" y="0" width="110" height="200" fill="#fa4d56" fill-opacity="0.14"/>
+                <line x1="0" y1="50" x2="800" y2="50" stroke="#393939"/><line x1="0" y1="100" x2="800" y2="100" stroke="#393939"/><line x1="0" y1="150" x2="800" y2="150" stroke="#393939"/>
+                <line x1="0" y1="120" x2="800" y2="120" stroke="#fa4d56" stroke-dasharray="6 5"/>
+                <polyline points="0,70 60,71 120,70 180,72 240,73 300,72 360,75 420,78 480,80 540,86 600,94 660,108 700,124 740,136 800,142" fill="none" stroke="#f1c21b" stroke-width="2.4"/>
+                <polyline points="0,40 60,40 120,41 180,42 240,42 300,44 360,46 420,50 480,55 540,62 600,74 660,92 700,110 740,124 800,132" fill="none" stroke="#4589ff" stroke-width="2.4"/>
+                <circle cx="700" cy="124" r="4.5" fill="#fa4d56" stroke="#161616" stroke-width="2"/>
+              </svg>
+              <div class="mono" style="position:absolute;left:66%;top:8px;background:#0b0b0b;border:1px solid #fa4d56;padding:6px 10px;font-size:11px;line-height:1.5">14:31 P1 발생<br>25.1 V · RT 18 min</div>
+            </div>
+            <div class="mono" style="display:flex;justify-content:space-between;font-size:10px;color:#8d8d8d;margin-top:6px"><span>어제 14:30</span><span>20:00</span><span>02:00</span><span>08:00</span><span>지금</span></div>
+          </div>
+        </section>
+
+        <!-- AI prediction + RCA -->
+        <section style="min-width:0;display:flex;flex-direction:column;gap:12px">
+          <div style="background:linear-gradient(180deg,#1c2a44 0%,#262626 70%);border:1px solid #2f4470;padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#78a9ff" stroke-width="2"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/></svg><h2 style="margin:0;font-size:15px;font-weight:600">AI 배터리 수명 예측</h2></div>
+            <div style="display:flex;align-items:baseline;gap:10px;margin-top:10px"><span class="mono" style="font-size:34px;font-weight:600;color:#ff8389">7개월</span><span style="font-size:12px;color:#c6c6c6">예상 EOL 2027-05 · 신뢰도 82%</span></div>
+            <div style="position:relative;height:110px;margin-top:8px">
+              <svg viewBox="0 0 320 110" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%" aria-hidden="true">
+                <line x1="0" y1="90" x2="320" y2="90" stroke="#fa4d56" stroke-dasharray="5 4"/>
+                <polyline points="0,18 40,20 80,24 120,30 160,40 200,56" fill="none" stroke="#78a9ff" stroke-width="2.4"/>
+                <polyline points="200,56 240,70 280,82 310,90" fill="none" stroke="#78a9ff" stroke-width="2.4" stroke-dasharray="4 4"/>
+                <polygon points="200,56 240,62 280,70 320,78 320,100 280,94 240,80 200,56" fill="#78a9ff" fill-opacity="0.15"/>
+                <line x1="200" y1="0" x2="200" y2="110" stroke="#8d8d8d" stroke-dasharray="3 3"/>
+                <circle cx="200" cy="56" r="4" fill="#78a9ff" stroke="#161616" stroke-width="2"/>
+              </svg>
+              <div class="mono" style="position:absolute;left:0;bottom:0;font-size:10px;color:#8d8d8d">2023-04 설치</div>
+              <div class="mono" style="position:absolute;left:58%;top:0;font-size:10px;color:#c6c6c6">지금</div>
+              <div class="mono" style="position:absolute;right:0;bottom:0;font-size:10px;color:#ff8389">EOL 기준 RT 8 min</div>
+            </div>
+            <div style="font-size:12px;color:#c6c6c6;line-height:1.55;margin-top:8px">만충 런타임이 12개월간 31 → 18 min로 감쇠(−42%). 평균 셀 온도 27°C 노출이 수명을 약 20% 단축한 것으로 추정.</div>
+            <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+              <button class="btn" style="background:{{accent}};color:#fff;font-size:12px;padding:7px 11px">교체 MOP 초안 생성</button>
+              <button class="ghost" style="font-size:12px;padding:6px 10px">PM 일정에 반영</button>
+              <button class="ghost" style="font-size:12px;padding:6px 10px">견적 요청</button>
+            </div>
+          </div>
+
+          <div style="background:#262626;padding:16px 18px">
+            <div style="display:flex;align-items:center;gap:8px"><h2 style="margin:0;font-size:15px;font-weight:600">AI RCA</h2><span class="badge" style="background:#393939;color:#c6c6c6">14:32 생성</span></div>
+            <p style="font-size:13px;line-height:1.55;color:#e0e0e0;margin:10px 0 0">배터리 전압 저하는 외부 전원 이상이 아니라 <b>배터리 노후</b>가 원인으로 판단됨. 입력 전압은 정상 범위(118 V)이며 동일 시각 KUS 다른 UPS에 알람 없음. 런타임 감쇠 추세와 자가진단 결과(9/22 PASS, 마진 감소)가 일치.</p>
+            <div style="margin-top:10px;font-size:12px;color:#c6c6c6;line-height:1.6"><b style="color:#f4f4f4">권고</b> ① 부하 이전 없이 운전 가능(RT 18 min &gt; 전환 요구 6 min) ② 배터리 모듈 교체를 4주 내 수행 ③ 교체 전까지 P1 임계를 25.5 V로 임시 조정하고 점검모드 기록</div>
+          </div>
+
+          <div style="background:#262626;padding:16px 18px">
+            <h2 style="margin:0 0 8px;font-size:15px;font-weight:600">운영 흐름</h2>
+            <div style="display:flex;flex-direction:column;gap:0">
+              <div style="display:grid;grid-template-columns:18px 1fr;gap:10px;align-items:start"><span style="width:10px;height:10px;border-radius:50%;background:#42be65;margin-top:4px"></span><div style="font-size:12px;line-height:1.5;padding-bottom:10px;border-left:1px solid #393939;margin-left:-14px;padding-left:18px">14:31 P1 발생 · Teams/SMS 통보 (RingOn NOC, Runless)</div></div>
+              <div style="display:grid;grid-template-columns:18px 1fr;gap:10px;align-items:start"><span style="width:10px;height:10px;border-radius:50%;background:#42be65;margin-top:4px"></span><div style="font-size:12px;line-height:1.5;padding-bottom:10px;border-left:1px solid #393939;margin-left:-14px;padding-left:18px">14:33 Runless 확인(ack 2분) · 티켓 T-2026-1143</div></div>
+              <div style="display:grid;grid-template-columns:18px 1fr;gap:10px;align-items:start"><span style="width:10px;height:10px;border-radius:50%;background:#f1c21b;margin-top:4px"></span><div style="font-size:12px;line-height:1.5;padding-bottom:10px;border-left:1px solid #393939;margin-left:-14px;padding-left:18px">진행 · TCI 출동 판단 대기 (SLA 4h 내 현장)</div></div>
+              <div style="display:grid;grid-template-columns:18px 1fr;gap:10px;align-items:start"><span style="width:10px;height:10px;border-radius:50%;background:#393939;margin-top:4px"></span><div style="font-size:12px;line-height:1.5;color:#8d8d8d;margin-left:-14px;padding-left:18px">완료 보고서 → 고객 자동 발송</div></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Alarm history -->
+      <section style="background:#262626;padding:16px 18px;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h2 style="margin:0;font-size:15px;font-weight:600">알람 이력</h2><span style="font-size:11px;color:#8d8d8d">최근 30일 · 중복 제거 후 6건</span><a href="#/alarms" style="margin-left:auto;font-size:12px">알람 센터 →</a></div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;min-width:720px">
+            <thead><tr><th class="th">우선순위</th><th class="th">메시지</th><th class="th">메트릭</th><th class="th">값 / 임계</th><th class="th">발생</th><th class="th">종료</th><th class="th">처리</th></tr></thead>
+            <tbody>
+              <sc-for list="{{hist}}" as="h" hint-placeholder-count="6">
+                <tr>
+                  <td class="td"><span class="badge" style="background:{{h.bg}};color:{{h.fg}}">{{h.p}}</span></td>
+                  <td class="td">{{h.msg}}</td>
+                  <td class="td mono" style="color:#c6c6c6">{{h.metric}}</td>
+                  <td class="td mono">{{h.val}}</td>
+                  <td class="td mono" style="color:#c6c6c6">{{h.start}}</td>
+                  <td class="td mono" style="color:#c6c6c6">{{h.end}}</td>
+                  <td class="td" style="color:#c6c6c6">{{h.who}}</td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
