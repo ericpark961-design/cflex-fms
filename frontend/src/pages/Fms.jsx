@@ -1296,34 +1296,22 @@ function AlarmsView() {
 // 6) Alarm Map (multi-customer / multi-site geographic view)
 // ═══════════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════════
-// 6) Alarm Map — MapLibre GL + Carto positron raster tiles (free)
+// 6) Alarm Map — MapLibre GL + OpenFreeMap "positron" vector style
 // ═══════════════════════════════════════════════════════════════════
 //
-// Style chosen: Carto Positron (no API key, free for under 75k loads/day,
-// attribution baked into MapLibre). For on-prem packaging the tile URL
-// can be swapped to a self-hosted MBTiles+TileServerGL with no other
-// changes needed.
+// Was Carto Positron raster. CARTO put basemaps.cartocdn.com behind an API
+// key and now answers keyless requests with a normal 200 image/png whose
+// pixels read "API KEY REQUIRED" — nothing throws, the map just fills with
+// watermarks, so neither the console nor an HTTP status check catches it.
+// OpenFreeMap serves the same Positron design from OSM data with no key, no
+// usage cap and commercial use allowed. It also publishes the planet tiles,
+// so the closed-network build swaps this one URL for a self-hosted style and
+// nothing else changes.
+//
+// The style carries no attribution field, so OSM credit is supplied through
+// the AttributionControl below. Do not drop it — OSM data requires it.
 
-const POSITRON_STYLE = {
-  version: 8,
-  sources: {
-    'carto-light': {
-      type: 'raster',
-      tiles: [
-        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
-        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
-        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
-        'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
-      ],
-      tileSize: 256,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
-    },
-  },
-  layers: [
-    { id: 'bg', type: 'background', paint: { 'background-color': '#e8eef5' } },
-    { id: 'carto-light', type: 'raster', source: 'carto-light' },
-  ],
-};
+const POSITRON_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 
 function AlarmMap() {
   const { isMobile } = useViewport();
@@ -1343,7 +1331,9 @@ function AlarmMap() {
       style: POSITRON_STYLE,
       center: [-95, 37], // continental US center
       zoom: 3.2,
-      attributionControl: true,
+      attributionControl: {
+        customAttribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · <a href="https://openfreemap.org/">OpenFreeMap</a>',
+      },
       cooperativeGestures: false,
     });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
