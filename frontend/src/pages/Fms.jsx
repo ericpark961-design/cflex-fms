@@ -12,7 +12,7 @@ import {
   LayoutGrid, Map as MapIcon, Server, AlertTriangle, Globe, Settings as SettingsIcon,
   Search, Bell, LogOut, RefreshCw, ChevronRight, ArrowLeft, Volume2, VolumeX,
   Battery, Activity, Thermometer, Power, Zap, Clock,
-  Edit3, Upload, X as XIcon, Sliders, CheckCircle2, Menu,
+  Edit3, Upload, X as XIcon, Sliders, CheckCircle2, Menu, Box,
 } from 'lucide-react';
 
 // ─── Tokens ────────────────────────────────────────────────────────
@@ -202,11 +202,13 @@ export default function Fms() {
     { id: 'devices',   ko: '장치',       en: 'Devices',      Icon: Server },
     { id: 'alarms',    ko: '알람',       en: 'Alarms',       Icon: AlertTriangle },
     { id: 'alarmmap',  ko: '알람 지도',   en: 'Alarm Map',    Icon: Globe },
+    // Separate Vite app (apps/twin), so this one leaves the SPA instead of switching section.
+    { id: 'twin',      ko: '3D 트윈',    en: '3D Twin',      Icon: Box, href: '/twin/' },
     { id: 'admin',     ko: '관리',       en: 'Admin',        Icon: SettingsIcon },
   ];
 
   // Mobile: close nav drawer on section change
-  const pickSection = (id) => { setSection(id); setSelectedAssetId(null); if (isMobile) setNavOpen(false); };
+  const pickSection = (id, href) => { if (href) { window.location.href = href; return; } setSection(id); setSelectedAssetId(null); if (isMobile) setNavOpen(false); };
 
   return (
     <FmsModalCtx.Provider value={modalApi}>
@@ -235,7 +237,7 @@ export default function Fms() {
           {navItems.map(item => {
             const active = section === item.id;
             return (
-              <div key={item.id} onClick={() => pickSection(item.id)} style={{
+              <div key={item.id} onClick={() => pickSection(item.id, item.href)} style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '11px 22px', cursor: 'pointer', fontSize: 13,
                 background: active ? 'rgba(15,98,254,0.18)' : 'transparent',
                 borderLeft: active ? `3px solid ${C.primary}` : '3px solid transparent',
