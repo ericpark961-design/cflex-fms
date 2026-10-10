@@ -1,0 +1,134 @@
+{
+  "_comment": [
+    "Rule-based triage. Used whenever the AI path cannot run — kill-switch off,",
+    "budget cap reached, API error, or a model reply that fails schema validation.",
+    "v5 §2 says the card must never be empty, so this file is the floor, not a stub.",
+    "",
+    "Matching: `metric` is matched case-insensitively against alerts.metric, with",
+    "`match` as a regex alternative. The first rule whose metric or match hits",
+    "wins; `default` applies when nothing does. Eric can edit this file without a",
+    "deploy of the service — it is re-read on each call.",
+    "",
+    "Shapes mirror the triage JSON contract in v5 §3.2 exactly, so the frontend",
+    "cannot tell a rule card from an AI card apart from the `source` field."
+  ],
+  "rules": [
+    {
+      "metric": "battery_pct",
+      "severity_hint": "critical",
+      "summary": "배터리 용량이 임계 아래로 내려갔다. 정전 시 보호 시간이 없다.",
+      "hypotheses": [
+        { "id": "h1", "cause": "배터리 모듈 노후 — 설계 수명 초과로 용량 감소", "confidence": 0.5, "evidence_kinds": ["metric", "history"] },
+        { "id": "h2", "cause": "직전 정전/전환으로 방전 후 충전 미완료", "confidence": 0.3, "evidence_kinds": ["metric", "alarm"] },
+        { "id": "h3", "cause": "충전 회로 또는 셀 1개 고장", "confidence": 0.2, "evidence_kinds": ["metric"] }
+      ],
+      "actions": [
+        { "id": "a1", "type": "remote", "title": "배터리 자가진단 실행", "steps": ["NMC에서 자가진단 트리거", "결과 코드와 런타임 재측정"], "risk": "low", "control_action": "self_test" },
+        { "id": "a2", "type": "monitor", "title": "충전 회복 추이 30분 관찰", "steps": ["battery_pct 가 30분 내 상승하는지 확인"], "risk": "low" },
+        { "id": "a3", "type": "onsite", "title": "배터리 모듈 교체 검토", "steps": ["모듈 제조일·교체 이력 확인", "교체 부품 재고 확인", "무정전 교체 절차 수립"], "risk": "med" }
+      ],
+      "dispatch": { "needed": true, "skill": "UPS L2", "urgency": "4h", "eta_min": 120, "reason": "배터리 교체는 현장 작업이며 보호 시간이 0에 가깝다" },
+      "verify": { "metric": "battery_pct", "op": ">=", "value": 90, "window_min": 60 }
+    },
+    {
+      "metric": "reachability",
+      "match": "unreach|reachab|offline|timeout",
+      "severity_hint": "warn",
+      "summary": "장치가 폴링에 응답하지 않는다. 장치 장애와 통신 장애를 먼저 분리해야 한다.",
+      "hypotheses": [
+        { "id": "h1", "cause": "NMC 카드 행 또는 관리 IP 변경 — UPS 본체는 정상", "confidence": 0.45, "evidence_kinds": ["metric", "log"] },
+        { "id": "h2", "cause": "구간 네트워크/스위치 포트 장애", "confidence": 0.3, "evidence_kinds": ["alarm", "chain"] },
+        { "id": "h3", "cause": "UPS 정지 또는 입력 전원 상실", "confidence": 0.25, "evidence_kinds": ["chain", "alarm"] }
+      ],
+      "actions": [
+        { "id": "a1", "type": "remote", "title": "폴링 즉시 재시도", "steps": ["SNMP GET 재시도", "ICMP 도달성 확인"], "risk": "low", "control_action": "poll_now" },
+        { "id": "a2", "type": "monitor", "title": "같은 룸의 다른 장치 상태 비교", "steps": ["동일 룸/체인 장치가 함께 끊겼는지 확인 — 함께면 네트워크, 단독이면 장치"], "risk": "low" },
+        { "id": "a3", "type": "onsite", "title": "현장에서 UPS 전면 패널 확인", "steps": ["패널 표시 확인", "NMC 재시작", "LAN 케이블·링크 LED 확인"], "risk": "low" }
+      ],
+      "dispatch": { "needed": false, "skill": "NOC L1", "urgency": "next-day", "eta_min": null, "reason": "원격 재시도와 인접 장치 비교로 네트워크/장치 구분이 먼저" },
+      "verify": { "metric": "reachability", "op": "==", "value": 1, "window_min": 15 }
+    },
+    {
+      "metric": "temp_c",
+      "match": "temp",
+      "severity_hint": "critical",
+      "summary": "온도가 임계를 넘었다. 배터리 수명은 온도에 지수적으로 민감하다.",
+      "hypotheses": [
+        { "id": "h1", "cause": "룸 냉방(CRAC) 용량 부족 또는 정지", "confidence": 0.45, "evidence_kinds": ["metric", "alarm"] },
+        { "id": "h2", "cause": "UPS 내부 팬 고장 또는 흡기구 막힘", "confidence": 0.35, "evidence_kinds": ["metric"] },
+        { "id": "h3", "cause": "고부하로 인한 자체 발열 증가", "confidence": 0.2, "evidence_kinds": ["metric"] }
+      ],
+      "actions": [
+        { "id": "a1", "type": "monitor", "title": "같은 룸 장치의 온도 동반 상승 확인", "steps": ["동일 룸 장치 temp_c 비교 — 동반 상승이면 냉방 문제"], "risk": "low" },
+        { "id": "a2", "type": "onsite", "title": "CRAC 상태와 흡배기 확인", "steps": ["CRAC 운전/알람 확인", "필터·흡기구 막힘 확인", "핫아일 온도 실측"], "risk": "low" },
+        { "id": "a3", "type": "onsite", "title": "UPS 팬 점검", "steps": ["팬 회전 확인", "필요 시 팬 모듈 교체"], "risk": "med" }
+      ],
+      "dispatch": { "needed": true, "skill": "냉방/기계 L2", "urgency": "4h", "eta_min": 90, "reason": "냉방과 팬은 모두 현장 확인이 필요하다" },
+      "verify": { "metric": "temp_c", "op": "<=", "value": 30, "window_min": 60 }
+    },
+    {
+      "metric": "load_pct",
+      "match": "overload|load",
+      "severity_hint": "warn",
+      "summary": "부하가 임계를 넘었다. 전환 시 런타임이 설계보다 짧아진다.",
+      "hypotheses": [
+        { "id": "h1", "cause": "신규 장비 추가로 설계 부하 초과", "confidence": 0.5, "evidence_kinds": ["metric", "history"] },
+        { "id": "h2", "cause": "이중화 중 한쪽 경로 상실로 부하 집중", "confidence": 0.3, "evidence_kinds": ["chain", "alarm"] },
+        { "id": "h3", "cause": "측정 오류 또는 역률 변화", "confidence": 0.2, "evidence_kinds": ["metric"] }
+      ],
+      "actions": [
+        { "id": "a1", "type": "monitor", "title": "부하 추이와 런타임 재계산", "steps": ["load_pct 추이 확인", "현재 부하에서의 예상 런타임 확인"], "risk": "low" },
+        { "id": "a2", "type": "onsite", "title": "부하 이전 계획", "steps": ["전원 체인에서 여유 있는 경로 확인", "회로별 실측", "이전 작업 창 협의"], "risk": "high" }
+      ],
+      "dispatch": { "needed": true, "skill": "전기 L2", "urgency": "next-day", "eta_min": 180, "reason": "부하 이전은 회로 실측과 작업 창이 필요하다" },
+      "verify": { "metric": "load_pct", "op": "<=", "value": 80, "window_min": 60 }
+    },
+    {
+      "metric": "input_v",
+      "match": "input|voltage|utility|mains",
+      "severity_hint": "critical",
+      "summary": "입력 전압이 정상 범위를 벗어났다. 상위 전원 계통을 먼저 봐야 한다.",
+      "hypotheses": [
+        { "id": "h1", "cause": "상용 전원 품질 저하 또는 정전", "confidence": 0.55, "evidence_kinds": ["metric", "chain"] },
+        { "id": "h2", "cause": "상위 분전반 차단기·결선 문제", "confidence": 0.3, "evidence_kinds": ["chain"] },
+        { "id": "h3", "cause": "UPS 입력 센서 오차", "confidence": 0.15, "evidence_kinds": ["metric"] }
+      ],
+      "actions": [
+        { "id": "a1", "type": "monitor", "title": "같은 분전반 하위 장치 동반 여부 확인", "steps": ["전원 체인상 형제 장치의 input_v 비교"], "risk": "low" },
+        { "id": "a2", "type": "onsite", "title": "상위 분전반 확인", "steps": ["해당 회로 차단기 상태", "입력 전압 실측", "시설팀/전력사 확인"], "risk": "med" }
+      ],
+      "dispatch": { "needed": false, "skill": "전기 L2", "urgency": "4h", "eta_min": 60, "reason": "전원 체인상 동반 여부로 범위를 먼저 좁힌다" },
+      "verify": { "metric": "input_v", "op": ">=", "value": 100, "window_min": 30 }
+    },
+    {
+      "metric": "runtime_min",
+      "match": "runtime",
+      "severity_hint": "warn",
+      "summary": "예상 런타임이 기준 아래다. 부하 또는 배터리 용량 둘 중 하나다.",
+      "hypotheses": [
+        { "id": "h1", "cause": "배터리 용량 감소", "confidence": 0.55, "evidence_kinds": ["metric", "history"] },
+        { "id": "h2", "cause": "부하 증가로 런타임 단축", "confidence": 0.45, "evidence_kinds": ["metric"] }
+      ],
+      "actions": [
+        { "id": "a1", "type": "remote", "title": "자가진단으로 용량 재측정", "steps": ["자가진단 실행", "런타임 재산출"], "risk": "low", "control_action": "self_test" },
+        { "id": "a2", "type": "monitor", "title": "부하 대비 런타임 곡선 확인", "steps": ["load_pct 와 runtime_min 동시 추이 확인"], "risk": "low" }
+      ],
+      "dispatch": { "needed": false, "skill": "UPS L2", "urgency": "next-day", "eta_min": null, "reason": "원격 자가진단으로 원인 구분이 가능하다" },
+      "verify": { "metric": "runtime_min", "op": ">=", "value": 10, "window_min": 60 }
+    }
+  ],
+  "default": {
+    "severity_hint": "warn",
+    "summary": "규칙표에 없는 메트릭이다. 증거를 먼저 모은 뒤 판단한다.",
+    "hypotheses": [
+      { "id": "h1", "cause": "해당 메트릭의 임계 설정이 환경과 맞지 않을 가능성", "confidence": 0.4, "evidence_kinds": ["metric"] },
+      { "id": "h2", "cause": "장치 단일 이벤트 — 추이 확인 필요", "confidence": 0.35, "evidence_kinds": ["metric", "history"] }
+    ],
+    "actions": [
+      { "id": "a1", "type": "monitor", "title": "해당 메트릭 ±2시간 추이 확인", "steps": ["알람 전후 추이와 임계선 비교"], "risk": "low" },
+      { "id": "a2", "type": "monitor", "title": "같은 룸·체인 동반 알람 확인", "steps": ["±10분 내 인접 알람 확인"], "risk": "low" }
+    ],
+    "dispatch": { "needed": false, "skill": "NOC L1", "urgency": "next-day", "eta_min": null, "reason": "원인 범위가 좁혀지지 않았다" },
+    "verify": null
+  }
+}

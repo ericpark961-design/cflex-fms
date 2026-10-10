@@ -33,6 +33,11 @@ function statements(sql) {
   return sql
     .split('\n')
     .filter(l => !/^\s*--/.test(l))
+    // Trailing `-- ...` comments are stripped too: a semicolon inside one used
+    // to split the statement it was attached to, which surfaces as a baffling
+    // "incomplete input" from SQLite. Only done on lines with no quotes, so a
+    // string literal containing `--` is never touched.
+    .map(l => (l.includes("'") || l.includes('"')) ? l : l.replace(/--.*$/, ''))
     .join('\n')
     .split(';')
     .map(s => s.trim())

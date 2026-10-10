@@ -236,39 +236,50 @@ router.post('/event', probeAuth, (req, res) => {
       const dup = db.prepare("SELECT id FROM alerts WHERE tenant_id=? AND device_id=? AND metric=? AND priority=? AND received_at > ? ORDER BY id DESC LIMIT 1").get(probe.tenant_id, 'ups-' + payload.device_id, payload.metric || null, payload.severity || 'P3', Date.now() - 10*60*1000);
       if (dup) { return res.json({ ok: true, recorded: 'alert', deduped: true }); }
       const dev = db.prepare('SELECT id, label, site FROM ups_devices WHERE id = ? AND tenant_id = ?').get(payload.device_id, probe.tenant_id);
-      db.prepare(`INSERT INTO alerts (tenant_id, device_id, site, priority, metric, message, value, threshold, received_at)
+      const alertIns = db.prepare(`INSERT INTO alerts (tenant_id, device_id, site, priority, metric, message, value, threshold, received_at)
                   VALUES (?,?,?,?,?,?,?,?,?)`).run(
         probe.tenant_id, 'ups-' + payload.device_id, dev?.site || null,
         payload.severity || 'P3', payload.metric || null, payload.message || '',
         payload.value != null ? Number(payload.value) : null,
         payload.threshold != null ? Number(payload.threshold) : null,
         ts);
-      // Auto-ticket on P1 (+ fire-and-forget AI RCA)
-      let p1TicketId = null;
-      if (payload.severity === 'P1') {
+      // P1/P2 become an incident with AI triage attached (v5 §2). This used to
+      // open a fresh ticket per P1 alarm and run RCA straight away; a flapping
+      // device therefore produced a ticket per burst, and RCA ran before anyone
+      // had looked at the fault. Now the incident is deduplicated by cause, a
+      // repeat alarm attaches to the open one, and RCA moves to the resolved
+      // transition where there is something to explain.
+      let incidentId = null;
+      const sev = payload.severity || 'P3';
+      if (sev === 'P1' || sev === 'P2') {
         try {
-          const ticketNo = 'INC' + String(now).slice(-9);
-          const r = db.prepare(`INSERT INTO tickets (tenant_id, ticket_no, site, device_id, device_label, priority, domain, title, description, alert_metric, alert_value, alert_threshold, created_at, updated_at)
-                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-            probe.tenant_id, ticketNo, dev?.site || null,
-            'ups-' + payload.device_id, dev?.label || payload.device_name || null,
-            'P1', 'UPS',
-            (payload.device_name || dev?.label || 'UPS') + ' — ' + (payload.message || payload.metric),
-            payload.message || '',
-            payload.metric || null,
-            payload.value != null ? Number(payload.value) : null,
-            payload.threshold != null ? Number(payload.threshold) : null,
-            now, now);
-          p1TicketId = r.lastInsertRowid;
-        } catch (e) { console.warn('[probe/event] auto-ticket:', e.message); }
+          const alert = {
+            id: alertIns.lastInsertRowid,
+            tenant_id: probe.tenant_id,
+            device_id: 'ups-' + payload.device_id,
+            device_label: dev?.label || payload.device_name || null,
+            site: dev?.site || null,
+            priority: sev,
+            metric: payload.metric || null,
+            message: payload.message || '',
+            value: payload.value != null ? Number(payload.value) : null,
+            threshold: payload.threshold != null ? Number(payload.threshold) : null,
+            received_at: ts,
+          };
+          const r = require('../services/fms-incident').ensureIncidentForAlert(db, alert, { device: dev });
+          incidentId = r.incidentId;
+          console.log('[incident]', sev, r.created ? 'created' : 'deduped', incidentId);
+        } catch (e) { console.warn('[probe/event] incident:', e.message); }
       }
-      if (p1TicketId) {
+      // Triage off the request path — the target is under 10 s, not inside this
+      // response. A failure here must never fail the probe's event POST.
+      if (incidentId) {
         setImmediate(() => {
           try {
-            require('../services/fms-rca').generateRcaForTicket(p1TicketId)
-              .then(r => console.log('[fms-rca]', p1TicketId, r.ok ? 'OK' : ('SKIP/ERR ' + r.error)))
-              .catch(e => console.error('[fms-rca]', e.message));
-          } catch (e) { console.error('[fms-rca] hook:', e.message); }
+            require('../services/fms-triage').triageIncident(db, incidentId)
+              .then(r => console.log('[fms-triage]', incidentId, r.ok ? r.source : ('ERR ' + r.error)))
+              .catch(e => console.error('[fms-triage]', e.message));
+          } catch (e) { console.error('[fms-triage] hook:', e.message); }
         });
       }
       // Fire-and-forget notify
