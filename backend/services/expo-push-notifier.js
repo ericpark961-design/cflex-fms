@@ -118,8 +118,8 @@ async function dispatch(alert, asset) {
     // Best-effort audit log; reuse fms_alarm_dispatch_log table if present.
     try {
       db.prepare(
-        'INSERT INTO fms_alarm_dispatch_log (alert_id, channel, target, ok, error, sent_at) VALUES (?,?,?,?,?,?)'
-      ).run(alert.id || 0, 'expo', `subs:${targets.length}`, sent > 0 ? 1 : 0, sent > 0 ? null : 'no_ok', Date.now());
+        'INSERT INTO fms_alarm_dispatch_log (alert_id, channel, target, ok, error, sent_at, tenant_id) VALUES (?,?,?,?,?,?,?)'
+      ).run(alert.id || 0, 'expo', `subs:${targets.length}`, sent > 0 ? 1 : 0, sent > 0 ? null : 'no_ok', Date.now(), alert.tenant_id ?? null);
     } catch (_) {}
 
     console.log('[expo-push]', alert.id, '→', `${sent}/${targets.length} delivered`);

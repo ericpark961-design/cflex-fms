@@ -1168,12 +1168,17 @@ router.post('/routes/simulate', async (req, res) => {
 // ─── GET /v1/fms/channels/health — per-channel rolling success ratios ─
 router.get('/channels/health', (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
-  const now    = Date.now();
-  const w24h   = now - 24 * 3600 * 1000;
-  const w7d    = now - 7  * 24 * 3600 * 1000;
-  const w30d   = now - 30 * 24 * 3600 * 1000;
-  const buckets = db.prepare(`
-    SELECT channel,
+  const now  = Date.now();
+  const w24h = now - 24 * 3600 * 1000;
+  const w7d  = now - 7  * 24 * 3600 * 1000;
+  const w30d = now - 30 * 24 * 3600 * 1000;
+
+  // This endpoint filtered on fms_alarm_dispatch_log.tenant_id, which 001 never
+  // created — so it answered 500 for its whole life and the channel-status panel
+  // was never populated. 006 adds the column. The try/catch keeps the panel
+  // working (unscoped, by the tenant's own route targets) on a server where 006
+  // has not been applied, instead of failing the whole request.
+  const AGG = `SELECT channel,
            SUM(CASE WHEN sent_at>? AND ok=1 THEN 1 ELSE 0 END) AS ok_24h,
            SUM(CASE WHEN sent_at>? THEN 1 ELSE 0 END)          AS n_24h,
            SUM(CASE WHEN sent_at>? AND ok=1 THEN 1 ELSE 0 END) AS ok_7d,
@@ -1182,37 +1187,86 @@ router.get('/channels/health', (req, res) => {
            SUM(CASE WHEN sent_at>? THEN 1 ELSE 0 END)          AS n_30d,
            MAX(sent_at)                                        AS last_at,
            MAX(CASE WHEN ok=1 THEN sent_at ELSE 0 END)         AS last_ok_at,
-           MAX(CASE WHEN ok=0 THEN sent_at ELSE 0 END)         AS last_fail_at
-    FROM fms_alarm_dispatch_log
-    WHERE tenant_id=? AND sent_at>?
-    GROUP BY channel`).all(w24h, w24h, w7d, w7d, w30d, w30d, tid, w30d);
+           MAX(CASE WHEN ok=0 THEN sent_at ELSE 0 END)         AS last_fail_at,
+           MAX(CASE WHEN ok=0 THEN error END)                  AS last_error
+    FROM fms_alarm_dispatch_log`;
+  const W = [w24h, w24h, w7d, w7d, w30d, w30d];
 
-  const recentFails = db.prepare(`
-    SELECT channel, target, error, sent_at
-    FROM fms_alarm_dispatch_log
-    WHERE tenant_id=? AND ok=0 AND sent_at>?
-    ORDER BY sent_at DESC LIMIT 20`).all(tid, w7d);
+  let buckets = [];
+  let scoped = true;
+  try {
+    buckets = db.prepare(`${AGG} WHERE tenant_id=? AND sent_at>? GROUP BY channel`).all(...W, tid, w30d);
+  } catch (e) {
+    if (!/no such column: tenant_id/.test(e.message)) throw e;
+    scoped = false;
+    buckets = db.prepare(
+      `${AGG} WHERE sent_at>? AND target IN (SELECT target FROM fms_alarm_routes WHERE tenant_id=?)
+       GROUP BY channel`).all(...W, w30d, tid);
+  }
+  const byChannel = new Map(buckets.map(b => [b.channel, b]));
 
-  const channels = buckets.map(b => ({
-    channel: b.channel,
-    last_at: b.last_at,
-    last_ok_at: b.last_ok_at || null,
-    last_fail_at: b.last_fail_at || null,
-    h24: { ok: b.ok_24h || 0, total: b.n_24h || 0,
-           ratio: b.n_24h ? Math.round(100 * b.ok_24h / b.n_24h) : null },
-    d7:  { ok: b.ok_7d  || 0, total: b.n_7d  || 0,
-           ratio: b.n_7d  ? Math.round(100 * b.ok_7d  / b.n_7d ) : null },
-    d30: { ok: b.ok_30d || 0, total: b.n_30d || 0,
-           ratio: b.n_30d ? Math.round(100 * b.ok_30d / b.n_30d) : null },
-    status: b.n_24h > 0
-      ? (b.ok_24h === b.n_24h ? 'healthy'
-        : b.ok_24h / b.n_24h >= 0.9 ? 'degraded' : 'failing')
-      : 'idle',
-  }));
-  res.json({ ok: true, generated_at: now, channels, recent_failures: recentFails });
+  // Every configured route is reported, even one that has never sent: "미설정"
+  // and "설정됐지만 한 번도 안 나감" are different states and an operator needs
+  // to tell them apart (v5 §8).
+  const routes = db.prepare(
+    `SELECT channel, min_priority, target, enabled, escalate_after_min, escalate_to
+     FROM fms_alarm_routes WHERE tenant_id=? ORDER BY channel`).all(tid);
+
+  const KNOWN = ['sms', 'email', 'teams', 'slack', 'line', 'whatsapp', 'expo'];
+  const seen = new Set(routes.map(r => r.channel));
+  const ratio = (ok, n) => (n ? Math.round((ok / n) * 1000) / 10 : null);
+
+  const channels = [];
+  for (const r of routes) {
+    const b = byChannel.get(r.channel) || {};
+    const configured = !!(r.target && String(r.target).trim());
+    channels.push({
+      channel: r.channel,
+      state: !configured ? 'unconfigured'
+        : !r.enabled ? 'disabled'
+        : b.last_fail_at && b.last_fail_at > (b.last_ok_at || 0) ? 'error'
+        : b.n_24h ? 'ok'
+        : 'idle',
+      enabled: !!r.enabled,
+      configured,
+      min_priority: r.min_priority,
+      escalate_after_min: r.escalate_after_min ?? null,
+      escalate_to: r.escalate_to ?? null,
+      success_24h: ratio(b.ok_24h, b.n_24h),
+      success_7d: ratio(b.ok_7d, b.n_7d),
+      success_30d: ratio(b.ok_30d, b.n_30d),
+      sent_24h: b.n_24h ?? 0,
+      last_at: b.last_at ?? null,
+      last_ok_at: b.last_ok_at || null,
+      last_fail_at: b.last_fail_at || null,
+      last_error: b.last_error ?? null,
+    });
+  }
+  // A channel with no route row at all is unconfigured, which is the state the
+  // operator most needs to see — Teams had no row, so it was simply absent.
+  for (const c of KNOWN) {
+    if (!seen.has(c)) {
+      channels.push({ channel: c, state: 'unconfigured', enabled: false, configured: false,
+        min_priority: null, escalate_after_min: null, escalate_to: null,
+        success_24h: null, success_7d: null, success_30d: null, sent_24h: 0,
+        last_at: null, last_ok_at: null, last_fail_at: null, last_error: null });
+    }
+  }
+
+  res.json({
+    ok: true,
+    tenant_scoped: scoped,
+    channels,
+    summary: {
+      configured: channels.filter(c => c.configured).length,
+      enabled: channels.filter(c => c.enabled && c.configured).length,
+      sending_24h: channels.filter(c => c.sent_24h > 0).length,
+      in_error: channels.filter(c => c.state === 'error').length,
+    },
+    generated_at: now,
+  });
 });
 
-// ─── GET /v1/fms/mutes — list active alarm mutes ─────────────────────
 router.get('/mutes', (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
   const now = Date.now();

@@ -349,8 +349,8 @@ async function notify(alert) {
       results.push(r);
       try {
         db.prepare(
-          'INSERT INTO fms_alarm_dispatch_log (alert_id, channel, target, ok, error, sent_at) VALUES (?,?,?,?,?,?)'
-        ).run(alert.id || 0, r.channel, rule.target, r.ok ? 1 : 0, r.error || null, Date.now());
+          'INSERT INTO fms_alarm_dispatch_log (alert_id, channel, target, ok, error, sent_at, tenant_id) VALUES (?,?,?,?,?,?,?)'
+        ).run(alert.id || 0, r.channel, rule.target, r.ok ? 1 : 0, r.error || null, Date.now(), alert.tenant_id ?? null);
       } catch (_) {}
       console.log('[alarm-notifier]', alert.id, rule.channel, '→', r.ok ? 'OK' : ('FAIL ' + r.error));
     }
