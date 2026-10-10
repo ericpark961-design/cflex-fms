@@ -760,6 +760,50 @@ router.get('/alerts/:id/ticket', (req, res) => {
 
 
 
+// ─── POST /v1/fms/demo/kmx/start | /reset ── 부록 K2 ───────────────
+// A site with no collector has no alarms and no metrics, so there is nothing to
+// open a workbench on. These write the KMX scenario with simulated=1 on every
+// row: excluded from KPIs, fleet-live, SLA and the monthly report, chipped in
+// the UI, and removable in one call. Admin-only, and the alarms take the normal
+// insert path so triage is produced by the real pipeline, not pre-written.
+function demoGuard(req, res) {
+  const role = req.user?.role;
+  if (!['super_admin', 'admin', 'fms_admin'].includes(role)) { res.status(403).json({ error: 'admin role required' }); return null; }
+  const tid = tenantOf(req);
+  if (!tid) { res.status(400).json({ error: 'tenant scope required' }); return null; }
+  return tid;
+}
+
+router.post('/demo/kmx/start', (req, res) => {
+  const tid = demoGuard(req, res); if (!tid) return;
+  try {
+    const scenario = require('../seed/kmx_demo_scenario');
+    const out = scenario.start(db, { tenantId: tid, cbu: 'KMX' });
+    // Triage runs off the request, as it does for a real alarm.
+    const triage = require('../services/fms-triage');
+    for (const i of out.incidents) {
+      setImmediate(() => {
+        triage.triageIncident(db, i.incident_id)
+          .then(r => console.log('[demo/kmx] triage', i.incident_id, r?.ok ? r.source : ('ERR ' + r?.error)))
+          .catch(e => console.error('[demo/kmx] triage', e.message));
+      });
+    }
+    res.json({ ok: true, ...out, note: 'every row is simulated=1 and excluded from KPIs, fleet-live, SLA and reports' });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.post('/demo/kmx/reset', (req, res) => {
+  const tid = demoGuard(req, res); if (!tid) return;
+  try {
+    const out = require('../seed/kmx_demo_scenario').reset(db, { tenantId: tid, cbu: 'KMX' });
+    res.json({ ok: true, removed: out });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ─── GET /v1/fms/reports/monthly/pdf?year=&month= ── download PDF ──
 router.get('/reports/monthly/pdf', async (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });

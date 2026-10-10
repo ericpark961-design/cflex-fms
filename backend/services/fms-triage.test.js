@@ -53,6 +53,12 @@ function freshDb() {
     CREATE TABLE fms_triage_feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER,
       incident_id INTEGER, hypothesis_id TEXT, cause TEXT, device_id TEXT, metric TEXT,
       outcome TEXT NOT NULL, user_id TEXT, created_at INTEGER NOT NULL);
+    CREATE TABLE fms_rooms (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, cbu TEXT,
+      location TEXT, name TEXT, cols INTEGER, rows INTEGER, tile_mm INTEGER, height_mm INTEGER,
+      note TEXT, updated_at INTEGER);
+    CREATE TABLE fms_racks (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, room_id INTEGER,
+      name TEXT, col INTEGER, row INTEGER, w INTEGER, d INTEGER, face TEXT, u_height INTEGER,
+      kind TEXT, attrs TEXT, updated_at INTEGER);
     CREATE TABLE fms_ai_log (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER,
       incident_id INTEGER, user_id TEXT, kind TEXT NOT NULL, device_id TEXT, alert_id INTEGER,
       model TEXT, question TEXT, answer TEXT, tokens_in INTEGER, tokens_out INTEGER, cost_usd REAL,

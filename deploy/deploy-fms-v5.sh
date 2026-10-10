@@ -30,8 +30,13 @@ done
 
 say() { printf '\n── %s\n' "$1"; }
 
-SERVICES="fms-incident.js fms-triage.js fms-reeval.js"
-ROUTES="incidents.routes.js probe.routes.js"
+SERVICES="fms-incident.js fms-triage.js fms-reeval.js fms-topology.js"
+ROUTES="incidents.routes.js probe.routes.js fms.routes.js"
+SEEDS="kmx_demo_scenario.js kmx_ccr_topology.json import_topology.js"
+
+# sha256 of probe.routes.js as it stands on the host before this deploy. Pinned
+# rather than derived from git, so it stays meaningful as history moves on.
+BASE_PROBE_SHA=933d2f3ed05f5602bd10f9db980180ae2558f488419de92fdc220f22c3de4cf3
 
 # ── 1. preflight ────────────────────────────────────────────────────
 say "preflight on $HOST"
@@ -42,14 +47,14 @@ ssh "$HOST" "df -h / | tail -1"      # shared VM: stock + cflex + FMS share this
 # The live probe.routes.js must match what this deploy was built against, or the
 # P1 auto-ticket block we are replacing is not the one that is running.
 LIVE_PROBE=$(ssh "$HOST" "sudo sha256sum $APP/src/routes/probe.routes.js" | cut -d' ' -f1)
-BASE_PROBE=$(git -C "$REPO" show "HEAD~1:backend/routes/probe.routes.js" 2>/dev/null | shasum -a256 | cut -d' ' -f1 || echo unknown)
+BASE_PROBE=$BASE_PROBE_SHA
 echo "live probe.routes.js : ${LIVE_PROBE:0:16}"
 echo "expected (pre-v5)    : ${BASE_PROBE:0:16}"
 if [ "$LIVE_PROBE" != "$BASE_PROBE" ]; then
   echo
   echo "  probe.routes.js on the host is not the version this change was written against."
   echo "  Diff it before continuing — the alert-insert block may have moved:"
-  echo "    ssh $HOST 'sudo cat $APP/src/routes/probe.routes.js' | diff - <(git -C $REPO show HEAD~1:backend/routes/probe.routes.js)"
+  echo "    ssh $HOST 'sudo cat $APP/src/routes/probe.routes.js' | diff - $REPO/backend/routes/probe.routes.js"
   echo
   [ "$CHECK_ONLY" = 1 ] || { echo "refusing to overwrite; re-run with --check-only to inspect" >&2; exit 3; }
 fi
@@ -68,11 +73,16 @@ ssh "$HOST" "set -e
   sudo ls -la $APP/data/cflex.db.bak.$STAMP $APP/src/server.js.bak.$STAMP"
 
 # ── 3. copy ─────────────────────────────────────────────────────────
+# Expanded locally: these are this script's variables, not the remote shell's.
+TMPLIST=""
+for f in $SERVICES $ROUTES $SEEDS; do TMPLIST="$TMPLIST /tmp/$f"; done
+
 say "copying files"
 for f in $SERVICES; do scp -q "$REPO/backend/services/$f" "$HOST:/tmp/"; done
 for f in $ROUTES;   do scp -q "$REPO/backend/routes/$f"   "$HOST:/tmp/"; done
 scp -q "$REPO/backend/migrations/005_fms_s2_workbench.sql" "$REPO/backend/migrations/apply.js" "$HOST:/tmp/"
 scp -q "$REPO/backend/triage/rules.json" "$HOST:/tmp/triage-rules.json"
+for f in $SEEDS; do scp -q "$REPO/backend/seed/$f" "$HOST:/tmp/"; done
 scp -q "$REPO/backend/incident/state_machine.js" "$HOST:/tmp/"
 
 ssh "$HOST" "set -e
@@ -85,8 +95,12 @@ ssh "$HOST" "set -e
   sudo install -o \$U -g \$G -m 644 /tmp/triage-rules.json $APP/src/triage/rules.json
   sudo install -m 644 /tmp/005_fms_s2_workbench.sql $APP/src/migrations/
   sudo install -m 644 /tmp/apply.js $APP/src/migrations/
-  rm -f /tmp/fms-incident.js /tmp/fms-triage.js /tmp/fms-reeval.js /tmp/incidents.routes.js /tmp/probe.routes.js /tmp/005_fms_s2_workbench.sql /tmp/apply.js /tmp/triage-rules.json /tmp/state_machine.js
+  sudo mkdir -p $APP/src/seed
+  for f in $SEEDS; do sudo install -o \$U -g \$G -m 644 /tmp/\$f $APP/src/seed/\$f; done
+  rm -f $TMPLIST /tmp/005_fms_s2_workbench.sql /tmp/apply.js /tmp/triage-rules.json /tmp/state_machine.js
   for f in $SERVICES; do node --check $APP/src/services/\$f; done
+  node --check $APP/src/seed/kmx_demo_scenario.js
+  node -e \"JSON.parse(require('fs').readFileSync('$APP/src/seed/kmx_ccr_topology.json','utf8')); console.log('ledger JSON parses')\"
   for f in $ROUTES;   do node --check $APP/src/routes/\$f;   done
   node --check $APP/src/incident/state_machine.js
   node -e \"JSON.parse(require('fs').readFileSync('$APP/src/triage/rules.json','utf8')); console.log('rules.json parses')\"
@@ -114,12 +128,23 @@ ssh "$HOST" "sudo sqlite3 -readonly $APP/data/cflex.db \"SELECT name FROM sqlite
   echo -n 'dedup index: '
   sudo sqlite3 -readonly $APP/data/cflex.db \"SELECT COUNT(*) FROM sqlite_master WHERE name='uq_tickets_dedup_active'\""
 
+# ── 5b. register the KMX UPS (부록 K1) ──────────────────────────────
+# Re-running the import is what moves the ledger's five UPS from fms_devices
+# into ups_devices and repairs their power links. It is idempotent.
+say "re-importing the KMX ledger so its UPS register in ups_devices"
+ssh "$HOST" "cd $APP && sudo node src/seed/import_topology.js src/seed/kmx_ccr_topology.json --tenant 10 --cbu KMX --db $APP/data/cflex.db"
+ssh "$HOST" "echo -n 'KMX in ups_devices: '; sudo sqlite3 -readonly $APP/data/cflex.db \"SELECT COUNT(*) FROM ups_devices WHERE cbu='KMX'\"
+  echo -n 'KMX left in fms_devices (network/UC only): '; sudo sqlite3 -readonly $APP/data/cflex.db \"SELECT GROUP_CONCAT(kind||'='||n) FROM (SELECT kind, COUNT(*) n FROM fms_devices WHERE cbu='KMX' GROUP BY kind)\"
+  echo -n 'dangling power links: '; sudo sqlite3 -readonly $APP/data/cflex.db \"SELECT COUNT(*) FROM fms_power_links WHERE tenant_id=10 AND ((src_type='device' AND src_id NOT IN (SELECT id FROM fms_devices)) OR (dst_type='device' AND dst_id NOT IN (SELECT id FROM fms_devices)) OR (src_type='ups_device' AND src_id NOT IN (SELECT id FROM ups_devices)) OR (dst_type='ups_device' AND dst_id NOT IN (SELECT id FROM ups_devices)))\"
+  echo -n 'CBU registry: '; sudo sqlite3 -readonly $APP/data/cflex.db \"SELECT GROUP_CONCAT(cbu||'/'||timezone, ' ') FROM fms_cbu WHERE tenant_id=10\""
+
 # ── 6. restart ──────────────────────────────────────────────────────
 say "restarting $PM2_APP"
 ssh "$HOST" "sudo -u cflex pm2 restart $PM2_APP --update-env >/dev/null && sleep 4 && sudo -u cflex pm2 list | grep -E 'name|$PM2_APP'"
 ssh "$HOST" "sudo -u cflex pm2 logs $PM2_APP --lines 25 --nostream 2>/dev/null | tail -25 || true"
 
 say "smoke test"
+ssh "$HOST" "curl -s -o /dev/null -w 'POST /v1/fms/demo/kmx/start -> %{http_code} (401 = mounted)\n' -X POST http://127.0.0.1:3000/v1/fms/demo/kmx/start"
 ssh "$HOST" "curl -s -o /dev/null -w 'GET /v1/incidents -> %{http_code} (401 = mounted and auth-guarded, 404 = NOT mounted)\n' http://127.0.0.1:3000/v1/incidents"
 
 say "done"

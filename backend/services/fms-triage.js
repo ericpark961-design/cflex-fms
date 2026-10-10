@@ -28,7 +28,13 @@ const DAY_MS = 24 * 3600 * 1000;
 
 const MODEL = process.env.FMS_TRIAGE_MODEL || 'claude-haiku-4-5-20251001';
 const CONTEXT_WINDOW_MS = 2 * 3600 * 1000;   // ±2h of metrics (v5 §1.3)
-const ADJACENT_WINDOW_MS = 10 * 60 * 1000;   // ±10min for neighbouring alarms
+// v5 §1.3 says ±10 min for neighbouring alarms, but a cooling fault leads the
+// thermal fault it causes: in the KMX scenario CRAC-2 fires 14 minutes before
+// B07, so a 10-minute window hides the single most useful piece of evidence.
+// Same-room alarms get the wider window and are reported with their lead time;
+// the tight window is still used to mark what was simultaneous.
+const ADJACENT_WINDOW_MS = 40 * 60 * 1000;
+const SIMULTANEOUS_MS = 10 * 60 * 1000;
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const clamp01 = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : null);
@@ -70,14 +76,46 @@ function collectContext(db, incidentId) {
                           ORDER BY ts`).all(devNum, at - CONTEXT_WINDOW_MS, at + CONTEXT_WINDOW_MS);
   }
 
-  // Other alarms within ±10 min — the signal that separates "this device" from
-  // "this room" or "this circuit".
-  const adjacent = db.prepare(`SELECT id, device_id, priority, metric, message, value, threshold, received_at
-                               FROM alerts
-                               WHERE tenant_id=? AND received_at BETWEEN ? AND ?
-                                 AND (device_id IS NOT ? OR metric IS NOT ?)
-                               ORDER BY received_at LIMIT 20`)
-    .all(inc.tenant_id, at - ADJACENT_WINDOW_MS, at + ADJACENT_WINDOW_MS, inc.device_id, metric);
+  // Neighbouring alarms — the signal that separates "this device" from "this
+  // room" or "this circuit". Names and rooms are resolved here: an id like
+  // "obj-86" tells the model nothing, and it cannot judge same-room without
+  // the room.
+  const myRoom = device?.room || null;
+  // The ledger join resolves an object alarm's name and room. A server without
+  // migration 004 has no such tables, and triage losing its card over a missing
+  // join would break the one rule that matters most here — so it degrades to the
+  // device-only form instead.
+  const ADJ_COLS = `a.id, a.device_id, a.priority, a.metric, a.message, a.value, a.threshold,
+                    a.received_at`;
+  const adjArgs = [inc.tenant_id, at - ADJACENT_WINDOW_MS, at + ADJACENT_WINDOW_MS, inc.device_id, metric];
+  let adjRows;
+  try {
+    adjRows = db.prepare(`SELECT ${ADJ_COLS}, a.object_id,
+                                 COALESCE(d.label, rk.name) AS name,
+                                 COALESCE(d.room, ro.name) AS room,
+                                 rk.kind AS object_kind
+                          FROM alerts a
+                          LEFT JOIN ups_devices d ON ('ups-' || d.id) = a.device_id
+                          LEFT JOIN fms_racks rk ON rk.id = a.object_id
+                          LEFT JOIN fms_rooms ro ON ro.id = rk.room_id
+                          WHERE a.tenant_id=? AND a.received_at BETWEEN ? AND ?
+                            AND NOT (a.device_id IS ? AND a.metric IS ?)
+                          ORDER BY a.received_at LIMIT 30`).all(...adjArgs);
+  } catch {
+    adjRows = db.prepare(`SELECT ${ADJ_COLS}, NULL AS object_id,
+                                 d.label AS name, d.room AS room, NULL AS object_kind
+                          FROM alerts a
+                          LEFT JOIN ups_devices d ON ('ups-' || d.id) = a.device_id
+                          WHERE a.tenant_id=? AND a.received_at BETWEEN ? AND ?
+                            AND NOT (a.device_id IS ? AND a.metric IS ?)
+                          ORDER BY a.received_at LIMIT 30`).all(...adjArgs);
+  }
+  const adjacent = adjRows
+    .map(a => ({
+      ...a,
+      lead_min: Math.round((at - a.received_at) / 60000),      // positive = before this alarm
+      same_room: !!(myRoom && a.room === myRoom),
+    }));
 
   // Power chain, when the v3 ledger knows this device.
   let chain = [];
@@ -120,24 +158,49 @@ function buildEvidence(ctx) {
   const add = (kind, label, ref) => { ev.push({ id: `e${ev.length + 1}`, kind, label, ref: ref || null }); return ev[ev.length - 1].id; };
   const m = ctx.metric;
 
-  // The alarming metric's own trajectory.
-  const series = ctx.metrics.map(r => ({ ts: r.ts, v: num(r[m]) })).filter(r => r.v != null);
+  // The alarming metric's trajectory INTO the alarm. Including samples from
+  // after it described a hotspot that climbed 24 → 29.4 and then recovered as
+  // "24.2 → 24", which reads like nothing happened.
+  const all = ctx.metrics.map(r => ({ ts: r.ts, v: num(r[m]) })).filter(r => r.v != null);
+  const series = all.filter(r => r.ts <= ctx.at);
+  const after = all.filter(r => r.ts > ctx.at);
   if (series.length >= 2) {
     const first = series[0], last = series[series.length - 1];
     const lo = series.reduce((a, b) => (b.v < a.v ? b : a));
     const hi = series.reduce((a, b) => (b.v > a.v ? b : a));
-    add('metric', `${m} ${first.v} → ${last.v} (${series.length}점, 최저 ${lo.v} / 최고 ${hi.v})`,
+    const dir = last.v > first.v ? '상승' : last.v < first.v ? '하락' : '평탄';
+    add('metric', `${m} ${first.v} → ${last.v} ${dir} (알람 직전까지 ${series.length}점, 최저 ${lo.v} / 최고 ${hi.v})`,
       { metric: m, from: first.ts, to: last.ts });
+    if (after.length >= 2) {
+      const al = after[after.length - 1];
+      add('metric', `알람 이후 ${m} ${after[0].v} → ${al.v} (${after.length}점)`,
+        { metric: m, from: after[0].ts, to: al.ts, phase: 'after' });
+    }
   } else if (ctx.incident.alert_value != null) {
     add('metric', `${m} ${ctx.incident.alert_value} (임계 ${ctx.incident.alert_threshold ?? '—'}) · 추세 데이터 없음`,
       { metric: m, from: ctx.at, to: ctx.at });
   }
 
-  // Did anything else break at the same moment?
-  const sameRoom = ctx.adjacent.filter(a => a.received_at >= ctx.at - ADJACENT_WINDOW_MS);
-  if (sameRoom.length) {
-    add('alarm', `±10분 내 다른 알람 ${sameRoom.length}건: ${sameRoom.slice(0, 3).map(a => `${a.device_id} ${a.metric}`).join(', ')}`,
-      { alarm_ids: sameRoom.map(a => a.id) });
+  // Did anything else break nearby, and did it break FIRST? A cooling fault
+  // that precedes a thermal one is the difference between "the room is hot" and
+  // "this unit is failing", so the lead time is stated rather than implied.
+  const describe = (a) => {
+    const when = a.lead_min > 0 ? `${a.lead_min}분 선행` : a.lead_min < 0 ? `${-a.lead_min}분 후행` : '동시';
+    return `${a.priority} ${a.name || a.device_id} ${a.metric || ''} (${when})`;
+  };
+  const inRoom = ctx.adjacent.filter(a => a.same_room);
+  const elsewhere = ctx.adjacent.filter(a => !a.same_room);
+  if (inRoom.length) {
+    add('alarm', `같은 룸(${ctx.device?.room || '—'}) 알람 ${inRoom.length}건: ${inRoom.slice(0, 4).map(describe).join(', ')}`,
+      { alarm_ids: inRoom.map(a => a.id), room: ctx.device?.room || null });
+  }
+  const simultaneous = elsewhere.filter(a => Math.abs(a.received_at - ctx.at) <= SIMULTANEOUS_MS);
+  if (simultaneous.length) {
+    add('alarm', `다른 룸에서 동시 발생 ${simultaneous.length}건: ${simultaneous.slice(0, 3).map(describe).join(', ')}`,
+      { alarm_ids: simultaneous.map(a => a.id) });
+  }
+  if (!inRoom.length && !simultaneous.length && ctx.adjacent.length === 0) {
+    add('alarm', '인접 알람 없음 — 이 장치 단독 이벤트', { alarm_ids: [] });
   }
 
   if (ctx.chain.length) {

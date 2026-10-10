@@ -28,6 +28,45 @@ function addTimeline(db, incidentId, { kind = 'comment', author = 'system', note
 }
 
 /**
+ * Allocate a ticket number.
+ *
+ * The probe path used `'INC' + String(Date.now()).slice(-9)`, which collides
+ * whenever two incidents are created in the same millisecond — the KMX demo
+ * scenario writes three at once and hit it immediately. ticket_no is UNIQUE, so
+ * the second insert threw.
+ *
+ * The app already has src/config/ticket-seq.js, but it needs better-sqlite3's
+ * db.transaction() (absent here and in the tests), and its counter sits at 0 on
+ * a database that has already issued CFX-…-10103 — so starting from it would
+ * eventually collide with a real ticket. This seeds past the highest number
+ * already issued, then verifies before returning.
+ */
+function allocateTicketNo(db) {
+  const yy = new Date().getFullYear();
+  const fmt = (n) => `CFX-${yy}-${String(n).padStart(5, '0')}`;
+  try {
+    db.exec('CREATE TABLE IF NOT EXISTS ticket_number_seq (id INTEGER PRIMARY KEY CHECK (id = 1), counter INTEGER NOT NULL DEFAULT 0)');
+    db.prepare('INSERT OR IGNORE INTO ticket_number_seq (id, counter) VALUES (1, 0)').run();
+    const cur = db.prepare('SELECT counter AS c FROM ticket_number_seq WHERE id=1').get()?.c ?? 0;
+    const used = db.prepare(`SELECT MAX(CAST(SUBSTR(ticket_no, 10) AS INTEGER)) AS m
+                             FROM tickets WHERE ticket_no LIKE ?`).get(`CFX-${yy}-%`)?.m ?? 0;
+    let n = Math.max(cur, used);
+    for (let i = 0; i < 50; i++) {
+      n += 1;
+      const taken = db.prepare('SELECT 1 AS x FROM tickets WHERE ticket_no=?').get(fmt(n));
+      if (!taken) {
+        db.prepare('UPDATE ticket_number_seq SET counter=? WHERE id=1').run(n);
+        return fmt(n);
+      }
+    }
+  } catch (e) {
+    console.warn('[fms-incident] ticket number sequence:', e.message);
+  }
+  // Last resort: still unique, just not sequential.
+  return `INC-${Date.now().toString(36)}-${Math.floor(Math.random() * 1296).toString(36).padStart(2, '0')}`.toUpperCase();
+}
+
+/**
  * Symptom for the dedup key. Must be a short stable identifier, never the free
  * text of the alarm — "Battery critically low (24%)" and "(23%)" are the same
  * fault and have to collapse to one incident.
@@ -70,7 +109,7 @@ function ensureIncidentForAlert(db, alert, opts = {}) {
     return { incidentId: active.id, created: false, deduped: true, dedupKey };
   }
 
-  const ticketNo = 'INC' + String(now).slice(-9);
+  const ticketNo = allocateTicketNo(db);
   const title = `${device?.label || alert.device_label || alert.device_id || 'UPS'} — ${alert.message || alert.metric || 'alarm'}`;
   const r = db.prepare(`INSERT INTO tickets
       (tenant_id, ticket_no, site, device_id, device_label, priority, domain, title, description,
@@ -148,4 +187,4 @@ function transition(db, incidentId, to, opts = {}) {
   return { ok: true, from, to };
 }
 
-module.exports = { ensureIncidentForAlert, addTimeline, transition, dedupKeyFor, symptomOf, TIMELINE_KINDS };
+module.exports = { ensureIncidentForAlert, addTimeline, transition, dedupKeyFor, symptomOf, allocateTicketNo, TIMELINE_KINDS };
