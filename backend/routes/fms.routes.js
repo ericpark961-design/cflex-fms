@@ -486,6 +486,33 @@ router.put('/assets/:id/thresholds', (req, res) => {
 
 
 
+// ─── POST /v1/fms/copilot ── Claude-backed operator Q&A ─────────
+// Backs the 전력체인·코파일럿 panel in /twin. Read-only: it answers from the
+// tenant's own rows and cannot act on anything.
+router.post('/copilot', async (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  let gate;
+  try { gate = require('/opt/cflex-shared/ai-toggle'); } catch { gate = null; }
+  // 503 with the toggle state, so the panel can tell "AI is off" from "it broke".
+  if (gate && !gate.requireEnabled(res)) return;
+  try {
+    const r = await require('../services/fms-copilot').ask({
+      tenantId: tid,
+      userKey: String(req.user?.id || req.user?.email || req.ip),
+      question: req.body?.question,
+      deviceId: req.body?.device_id,
+      lang: req.body?.lang === 'en' ? 'en' : 'ko',
+    });
+    if (!r.ok) return res.status(r.error === 'rate_limited' ? 429 : 400).json(r);
+    res.json(r);
+  } catch (e) {
+    if (e.code === 'AI_DISABLED') return res.status(503).json({ error: 'ai_disabled', message: e.message });
+    const upstream = e.response?.status;
+    console.error('[fms.copilot]', upstream || '', e.response?.data?.error?.message || e.message);
+    res.status(502).json({ error: 'copilot_failed', upstream: upstream || null });
+  }
+});
+
 // ─── POST /v1/fms/tickets/from-alert ── create ticket from alert ──
 router.post('/tickets/from-alert', (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });

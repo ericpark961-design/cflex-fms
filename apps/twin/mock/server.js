@@ -24,4 +24,20 @@ app.get('/v1/fms/assets', (q, r) => { const list = filt(q.query).map(a => ({ ...
 app.get('/v1/fms/assets/:id', (q, r) => { const a = assets.find(x => x.id === parseInt(q.params.id, 10)); if (!a) return r.status(404).json({ ok: false }); const metrics = Array.from({ length: 48 }, (_, i) => ({ ts: now - (47 - i) * 1800000, battery_pct: a.battery_pct, load_pct: a.load_pct + ((i * 7) % 5), temp_c: a.temp_c })); r.json({ ok: true, asset: { ...a, status: eff(a) }, metrics, thresholds: { battery_pct: { critical: 30, warn: 60, direction: 'below' }, load_pct: { critical: 90, warn: 75, direction: 'above' }, temp_c: { critical: 45, warn: 38, direction: 'above' } }, alerts: [] }); });
 app.get('/v1/fms/alerts', (q, r) => { const mk = (i, a, p, metric, message, value, threshold, rec) => ({ id: i, device_id: 'ups-' + a.id, site: a.location, priority: p, metric, message, value, threshold, received_at: now - i * 11 * 60000, device_label: a.label, room: a.room, rack: a.rack, muted_until: null, recurring: !!rec });
   r.json({ ok: true, alerts: [mk(1, assets[2], 'P1', 'battery_pct', '배터리 전압 저하 · 25.1 V (임계 26.0)', 25.1, 26, false), mk(2, assets[40], 'P1', 'output_status', '입력 전원 상실 · 배터리 운전', 'ON BATTERY', 'ONLINE', false), mk(3, assets[11], 'P2', 'temp_c', '온도 상승 · 38.4°C (임계 38.0)', 38.4, 38, true), mk(4, assets[17], 'P2', 'load_pct', '부하 76% · 경고 임계 초과', 76, 75, false), mk(5, assets[29], 'P3', 'load_pct', '부하 55% · 경고 임계 근접', 55, 75, false), mk(6, assets[22], 'P4', 'heartbeat', 'probe 하트비트 지연 90s', 90, 60, true), mk(7, assets[5], 'P3', 'battery_pct', '런타임 감소 추세 −18% / 90d', 21, 25, false)] }); });
+// Stub of POST /v1/fms/copilot. Shape only — no Claude call, no key needed.
+// Set MOCK_COPILOT=503|404|429 to exercise the panel's failure states.
+app.post('/v1/fms/copilot', (q, r) => {
+  const forced = parseInt(process.env.MOCK_COPILOT || '0', 10);
+  if (forced === 503) return r.status(503).json({ error: 'ai_disabled' });
+  if (forced === 404) return r.status(404).json({ error: 'not found' });
+  if (forced === 429) return r.status(429).json({ error: 'rate_limited', retry_after_s: 300 });
+  const question = String(q.body?.question || '');
+  const crit = assets.filter(a => eff(a) === 'critical');
+  r.json({ ok: true,
+    answer: `[mock] "${question}" \u2014 \uc704\ud5d8 ${crit.length}\ub300: ${crit.map(a => a.label).join(', ') || '\uc5c6\uc74c'}. ` +
+      `\uc774 \uc751\ub2f5\uc740 \ubaa9 \uc11c\ubc84\uac00 \ub9cc\ub4e0 \uac83\uc774\uace0 Claude \ud638\ucd9c\uc740 \uc5c6\uc5c8\ub2e4.`,
+    model: 'claude-opus-5', truncated: false,
+    usage: { input_tokens: 1840, output_tokens: 210 }, cost_usd: 0.0144, latency_ms: 2300,
+    grounded_on: { devices: assets.length, alerts: 7, focus: null } });
+});
 app.listen(3001, () => console.log('mock on 3001'));

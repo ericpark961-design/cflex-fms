@@ -9,6 +9,7 @@ import { render } from './tpl';
 import { store, refresh, mainData, deviceData, alarmsData, powerData, nocData } from './data';
 import { api } from './theme';
 import { devId } from './ids';
+import { mountCopilot } from './copilot';
 import Twin3D from './Twin3D';
 import { buildDemoScene } from './DemoScene';
 
@@ -113,9 +114,12 @@ export default function App() {
   useEffect(() => { if (!ready) return; if (route.path === 'device') deviceData(route.q.id).then(setDevData); }, [ready, route.path, route.q.id, tick]);
   const wire = useCallback((root) => {
     root.querySelectorAll('.cbu-btn').forEach(b => b.addEventListener('click', async () => { localStorage.setItem('fms_cbu', b.dataset.cbu); await refresh(); setTick(x => x + 1); }));
-    root.querySelectorAll('form').forEach(f => f.addEventListener('submit', e => { e.preventDefault(); location.hash = '#/powerchain?panel=copilot'; }));
+    // The copilot form is a real request; every other form in the mockup is inert
+    // and just jumps to the copilot panel.
+    mountCopilot(root, { deviceId: route.q.id });
+    root.querySelectorAll('form').forEach(f => { if (!f.dataset.wired) f.addEventListener('submit', e => { e.preventDefault(); location.hash = '#/powerchain?panel=copilot'; }); });
     if (route.q.panel === 'copilot') root.querySelector('#copilot')?.scrollIntoView({ behavior: 'smooth' });
-  }, [route.q.panel]);
+  }, [route.q.panel, route.q.id]);
   if (!ready) return <div style={{ minHeight: '100vh', background: '#161616', color: '#8d8d8d', display: 'grid', placeItems: 'center', fontFamily: 'IBM Plex Sans KR, sans-serif' }}>C-Flex FMS 2.0 불러오는 중…</div>;
   const p = route.path;
   if (p === 'twin') return <TwinScreen q={route.q} />;
