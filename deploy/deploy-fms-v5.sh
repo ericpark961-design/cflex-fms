@@ -15,7 +15,7 @@ set -euo pipefail
 
 HOST=azureuser@20.25.17.81
 APP=/opt/cflex-v2/cflex-api
-PM2_APP=cflex-api
+PM2_APP=cflex-api-v2
 CHECK_ONLY=0
 STAMP=$(date +%s)
 REPO=$(cd "$(dirname "$0")/.." && pwd)
