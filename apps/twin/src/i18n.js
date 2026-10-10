@@ -47,6 +47,8 @@ export const EN = {
     'This server has no copilot endpoint (/v1/fms/copilot) deployed yet.',
   '원장': 'Ledger',
   // #/devices inventory tree
+  '장비 인벤토리': 'Device inventory',
+  '← 장비 인벤토리': '← Device inventory',
   '각 행의 "이동"으로 장소·룸·랙을 채우면 트리에 바로 반영됩니다.': 'Use “Move” on a row to fill in its site, room and rack — the tree updates immediately.',
   '대': '',
   '랙 미지정': 'No rack',

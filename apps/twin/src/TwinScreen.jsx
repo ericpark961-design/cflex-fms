@@ -61,7 +61,7 @@ export default function TwinScreen({ q, standalone = false, tick = 0 }) {
   useEffect(() => { ledgerRef.current?.setMode(mode); }, [mode]); useEffect(() => { ledgerRef.current?.preset(view); }, [view]);
   useEffect(() => { ledgerRef.current?.setLayers(layers); }, [layers]); useEffect(() => { ledgerRef.current?.setHeat(heat); }, [heat]);
   const btn = (on) => ({ fontFamily: 'inherit', fontSize: 12, padding: '6px 11px', cursor: 'pointer', border: `1px solid ${on ? '#4589ff' : '#525252'}`, background: on ? '#1c2a44' : 'transparent', color: '#f4f4f4' });
-  const nav = [['#/dashboard', '대시보드'], ['#/powerchain', '전력체인 트윈'], ['#/device', '장치'], ['#/alarms', '알람 센터'], ['#/map', '알람 지도'], ['#/twin', '3D 트윈', true], ['#/powerchain?panel=copilot', 'AI 코파일럿'], ['#/wall', '관제 상황판'], ['/fms', 'FMS 1.x (관리)']];
+  const nav = [['#/dashboard', '대시보드'], ['#/powerchain', '전력체인 트윈'], ['#/devices', '장비 인벤토리'], ['#/alarms', '알람 센터'], ['#/map', '알람 지도'], ['#/twin', '3D 트윈', true], ['#/powerchain?panel=copilot', 'AI 코파일럿'], ['#/wall', '관제 상황판'], ['/fms', 'FMS 1.x (관리)']];
   const a = detail; const room = data.rooms[0]; const nRack = room.objects.filter(o => o.kind === 'rack').length;
   const alarms = data.alarms || [];
   return (

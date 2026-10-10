@@ -115,7 +115,7 @@ export default function MapScreen({ q = {} }) {
     else if (placed > 1) map.fitBounds(bounds, { padding: 90, maxZoom: 12, duration: 600 });
   }, [sites]);
 
-  const nav = [['#/dashboard', t('대시보드')], ['#/powerchain', t('전력체인 트윈')], ['#/device', t('장치')],
+  const nav = [['#/dashboard', t('대시보드')], ['#/powerchain', t('전력체인 트윈')], ['#/devices', t('장비 인벤토리')],
     ['#/alarms', t('알람 센터')], ['#/map', t('알람 지도'), true], ['#/twin', t('3D 트윈')],
     ['#/powerchain?panel=copilot', t('AI 코파일럿')], ['#/wall', t('관제 상황판')], ['/fms', t('FMS 1.x (관리)')]];
 

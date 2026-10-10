@@ -180,7 +180,7 @@ export default function DevicesScreen() {
         </div>
       </div>
       <div style={{ padding: '10px 0', display: 'flex', flexDirection: 'column' }}>
-        {[['#/', t('시설 대시보드')], ['#/devices', t('장비 구성')], ['#/powerchain', t('전력체인')],
+        {[['#/', t('시설 대시보드')], ['#/devices', t('장비 인벤토리')], ['#/powerchain', t('전력체인')],
           ['#/alarms', t('알람 센터')], ['#/map', t('알람 지도')], ['#/twin', t('3D 디지털트윈')], ['#/wall', t('NOC 월')]]
           .map(([h, l]) => {
             const on = h === '#/devices';
@@ -215,7 +215,7 @@ export default function DevicesScreen() {
             <div style={{ fontSize: 12, color: '#8d8d8d', letterSpacing: '.04em' }}>
               {t('CBU → 장소 → 룸 → 랙 → 장비')}
             </div>
-            <h1 style={{ margin: '4px 0 0', fontSize: 26, fontWeight: 600 }}>{t('장비 구성')}</h1>
+            <h1 style={{ margin: '4px 0 0', fontSize: 26, fontWeight: 600 }}>{t('장비 인벤토리')}</h1>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 7 }}>
             <button style={S.btn} onClick={() => setOpen(new Set([...tree.keys()].map(c => `c:${c}`)))}>{t('모두 접기')}</button>
