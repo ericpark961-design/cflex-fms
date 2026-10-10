@@ -26,8 +26,18 @@ export function cbuBarEl(onChange, { compact = false } = {}) {
     b.type = 'button';
     b.style.cssText = `${BTN};background:${c.bg};color:${c.fg}`;
     b.setAttribute('aria-pressed', String(c.cbu === getCbu()));
+    // The summary COALESCEs a NULL cbu to 'unknown', but the server filters with
+    // `AND cbu=?`, which no NULL row can match — picking it would empty every
+    // screen. Shown with its real count (it is part of 전체) and disabled until
+    // the filter is COALESCE-aware.
+    const unassigned = c.cbu === 'unknown';
+    if (unassigned) {
+      b.disabled = true;
+      b.style.cssText += ';opacity:.45;cursor:not-allowed';
+      b.title = t('서버 필터가 미지정 CBU를 아직 지원하지 않습니다');
+    }
     const label = document.createElement('span');
-    label.textContent = c.cbu === 'all' ? t('전체') : c.label;
+    label.textContent = c.cbu === 'all' ? t('전체') : unassigned ? t('미지정') : c.label;
     b.appendChild(label);
     if (c.total !== '' && c.total != null) {
       const n = document.createElement('span');
@@ -43,7 +53,7 @@ export function cbuBarEl(onChange, { compact = false } = {}) {
       b.appendChild(k);
     }
     b.addEventListener('click', async () => {
-      if (c.cbu === getCbu()) return;
+      if (c.cbu === getCbu() || b.disabled) return;
       localStorage.setItem('fms_cbu', c.cbu);
       wrap.querySelectorAll('.cbu-btn').forEach(x => { x.disabled = true; x.style.opacity = '.5'; });
       // An explicit ?cbu= in the URL would otherwise outrank the new choice.

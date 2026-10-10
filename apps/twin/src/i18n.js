@@ -46,6 +46,8 @@ export const EN = {
   '이 서버에는 아직 코파일럿 엔드포인트(/v1/fms/copilot)가 배포되지 않았습니다.':
     'This server has no copilot endpoint (/v1/fms/copilot) deployed yet.',
   '원장': 'Ledger',
+  '미지정': 'Unassigned',
+  '서버 필터가 미지정 CBU를 아직 지원하지 않습니다': 'The server filter does not support an unassigned CBU yet',
   'CBU 필터': 'CBU filter', '사이트': 'Sites', '글로벌 사이트': 'Global sites',
   '미국 3 · 멕시코 1 · 한국 1 (파일럿)': 'US 3 · Mexico 1 · Korea 1 (pilot)',
   '최근 알람': 'Recent alarms', '알람 센터 →': 'Alarm centre →', '알람 지도 →': 'Alarm map →',
