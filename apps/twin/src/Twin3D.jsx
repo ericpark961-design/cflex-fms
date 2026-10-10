@@ -31,6 +31,11 @@ export default function Twin3D({
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
+    // The canvas MUST carry its own CSS size. Without it the element's box comes
+    // from its width/height attributes, which setSize writes — inside an
+    // auto-height parent that a ResizeObserver reads back, that is a feedback
+    // loop, and it ran the live canvas up to 16,777,216px (the canvas maximum).
+    Object.assign(renderer.domElement.style, { display: 'block', width: '100%', height: '100%' });
     el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -50,6 +55,9 @@ export default function Twin3D({
     Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, far: 160 });
     sun.shadow.camera.updateProjectionMatrix();      // frustum edits are inert without this
     scene.add(sun);
+    const fill = new THREE.DirectionalLight(0xbfd4ff, 0.8);
+    fill.position.set(-10, 12, 40);
+    scene.add(fill);
 
     const world = new THREE.Group(); scene.add(world);
     const chainGroup = new THREE.Group(); scene.add(chainGroup);
@@ -116,9 +124,13 @@ export default function Twin3D({
       cbRef.current.onSelectObject?.(next.userData.objectId ?? null, next.userData);
     });
 
+    // Belt and braces for the same loop: ignore a no-op resize, and refuse a
+    // height no viewport can legitimately have.
+    let lastW = 0, lastH = 0;
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
-      if (!w || !h) return;
+      if (!w || !h || h > 4096 || (w === lastW && h === lastH)) return;
+      lastW = w; lastH = h;
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
@@ -138,6 +150,7 @@ export default function Twin3D({
     tick();
 
     state.current = { ...state.current, renderer, scene, camera, controls, world, chainGroup, pickables: [], pulse: [], fans: [] };
+    window.__twin = state.current;        // debug handle: camera / controls / pickables
     return () => {
       cancelAnimationFrame(raf); ro.disconnect(); clearHover();
       disposeTree(world); disposeTree(chainGroup); renderer.dispose(); el.innerHTML = '';

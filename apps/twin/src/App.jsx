@@ -133,7 +133,7 @@ function TwinScreen({ q }) {
         </div>
 
         <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 340px', gap: 12, padding: 16 }}>
-          <div style={{ position: 'relative', minHeight: 640, background: '#070a10', border: '1px solid #262626' }}>
+          <div style={{ position: 'relative', height: 'calc(100vh - 150px)', minHeight: 480, overflow: 'hidden', background: '#070a10', border: '1px solid #262626' }}>
             {scene === 'real'
               ? ((ledger || store.floor)
                 ? <Twin3D topology={ledger} tree={store.floor} assets={store.assets}
