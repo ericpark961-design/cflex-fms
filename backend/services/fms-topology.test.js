@@ -216,4 +216,72 @@ t('emits one cell per rack that has a reading, and skips the rest', () => {
   assert.strictEqual(T.getHeat(db, 10, 'KMX', 'temp')[0].cells[0].v, 24.5);
 });
 
+console.log('non-UPS equipment (A2)');
+t('import creates fms_devices rows and places them', () => {
+  const d7 = dbWithDevice();
+  const r7 = T.importTopology(d7, 10, {
+    cbu: 'KMX',
+    rooms: [{
+      location: 'L', name: 'R',
+      objects: [{ name: 'A01', kind: 'rack' }, { name: 'PDU-A', kind: 'pdu_cabinet' }],
+      devices: [
+        { label: 'MDF-CORE-1', kind: 'switch', model: 'Catalyst 9500', rack: 'A01', u_pos: 40, ports_total: 48, ports_up: 31 },
+        { label: 'CUCM-PUB', kind: 'server', model: 'UCS C220', rack: 'A01', u_pos: 20 },
+      ],
+      power_links: [{ src: 'MDF-CORE-1', src_type: 'device', dst: 'PDU-A', dst_type: 'object', dst_port: 'CB-9', rated_a: 16 }],
+    }],
+  });
+  assert.strictEqual(r7.devices, 2);
+  assert.deepStrictEqual(r7.unplaced, []);
+  const list = T.listDevices(d7, 10, {});
+  assert.strictEqual(list.length, 2);
+  assert.strictEqual(list.find(x => x.label === 'MDF-CORE-1').ports_up, 31);
+});
+t('a ledger cannot declare equipment healthy — status stays nodata until a collector says otherwise', () => {
+  const d8 = dbWithDevice();
+  T.importTopology(d8, 10, { cbu: 'X', rooms: [{ location: 'L', name: 'R', objects: [{ name: 'A01', kind: 'rack' }], devices: [{ label: 'SW-1', kind: 'switch', rack: 'A01', status: 'ok' }] }] });
+  assert.strictEqual(T.listDevices(d8, 10, {})[0].status, 'nodata');
+});
+t('a chain can start at a non-UPS device', () => {
+  const d9 = dbWithDevice();
+  T.importTopology(d9, 10, {
+    cbu: 'X',
+    rooms: [{
+      location: 'L', name: 'R',
+      objects: [{ name: 'PDU-A', kind: 'pdu_cabinet' }, { name: 'PANEL-1', kind: 'panel' }],
+      devices: [{ label: 'SW-1', kind: 'switch', rack: 'PDU-A' }],
+      power_links: [
+        { src: 'SW-1', src_type: 'device', dst: 'PDU-A', dst_type: 'object', rated_a: 16 },
+        { src: 'PDU-A', src_type: 'object', dst: 'PANEL-1', dst_type: 'object', rated_a: 63 },
+      ],
+    }],
+  });
+  const id = d9.prepare("SELECT id FROM fms_devices WHERE label='SW-1'").get().id;
+  assert.deepStrictEqual(T.getDevice(d9, 10, id).chain.chain.map(c => c.name), ['SW-1', 'PDU-A', 'PANEL-1']);
+});
+t('kind filter and tenant isolation hold', () => {
+  const dA = dbWithDevice();
+  T.importTopology(dA, 10, { cbu: 'X', rooms: [{ location: 'L', name: 'R', objects: [{ name: 'A01', kind: 'rack' }], devices: [{ label: 'SW-1', kind: 'switch', rack: 'A01' }, { label: 'SRV-1', kind: 'server', rack: 'A01' }] }] });
+  assert.strictEqual(T.listDevices(dA, 10, { kind: 'switch' }).length, 1);
+  assert.strictEqual(T.listDevices(dA, 99, {}).length, 0);
+  assert.strictEqual(T.getDevice(dA, 99, 1), null);
+});
+t('topology merges equipment into the rack with its kind', () => {
+  const dB = dbWithDevice();
+  T.importTopology(dB, 10, { cbu: 'X', rooms: [{ location: 'L', name: 'R', objects: [{ name: 'A01', kind: 'rack' }], devices: [{ label: 'SW-1', kind: 'switch', rack: 'A01', u_pos: 40 }] }] });
+  const rack = T.getTopology(dB, 10, 'X').rooms[0].objects[0];
+  assert.strictEqual(rack.devices.length, 1);
+  assert.strictEqual(rack.devices[0].kind, 'switch');
+  assert.strictEqual(rack.devices[0].u_pos, 40);
+});
+
+console.log('§8 response shape');
+t('topology also emits room-level devices[] and power_links[]', () => {
+  const room = T.getTopology(db, 10, 'KMX').rooms[0];
+  assert.ok(Array.isArray(room.devices), 'room.devices missing');
+  assert.ok(Array.isArray(room.power_links), 'room.power_links missing');
+  assert.strictEqual(room.power_links.length, 4);
+  assert.ok(room.power_links.every(l => l.src && l.dst), 'a link lost an endpoint name');
+});
+
 console.log(`\n${pass} passed`);

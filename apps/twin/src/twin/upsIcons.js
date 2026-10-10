@@ -20,11 +20,14 @@ export function iconIdForModel(model) {
   if (/Symmetra/i.test(m)) return 'symmetra_lx';
   return 'srt5000';
 }
-export const iconUrl = (id) => `${import.meta.env.BASE_URL}assets/ups/${id}.svg`;
+// SVGs are bundled (no network) so the twin works offline and in the standalone demo file.
+const RAW = import.meta.glob('../../public/assets/ups/*.svg', { query: '?raw', import: 'default', eager: true });
+const rawOf = (id) => RAW[`../../public/assets/ups/${id}.svg`];
+export const iconUrl = (id) => rawOf(id) ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(rawOf(id))}` : `${import.meta.env.BASE_URL}assets/ups/${id}.svg`;
 
 // SVG text cache + per-(model,status) texture cache. The #lcd-screen fill is tinted by status before rasterising.
 const svgText = new Map(); const texCache = new Map();
-async function fetchSvg(id) { if (!svgText.has(id)) svgText.set(id, fetch(iconUrl(id)).then(r => r.text())); return svgText.get(id); }
+async function fetchSvg(id) { if (!svgText.has(id)) svgText.set(id, rawOf(id) ? Promise.resolve(rawOf(id)) : fetch(`${import.meta.env.BASE_URL}assets/ups/${id}.svg`).then(r => r.text())); return svgText.get(id); }
 export async function upsTexture(model, status = 'unknown') {
   const id = iconIdForModel(model); const key = `${id}|${status}`;
   if (texCache.has(key)) return texCache.get(key);

@@ -519,6 +519,24 @@ router.get('/power-chain/:deviceId', (req, res) => {
   catch (e) { console.error('[fms.power-chain]', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// Non-UPS equipment (network / UC / server). /v1/fms/assets stays UPS-only.
+router.get('/devices', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  try {
+    const devices = topo().listDevices(db, tid, { cbu: (req.query.cbu || '').trim() || null, kind: (req.query.kind || '').trim() || null });
+    res.json({ ok: true, count: devices.length, devices });
+  } catch (e) { console.error('[fms.devices]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+router.get('/devices/:id', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  try {
+    const d = topo().getDevice(db, tid, req.params.id);
+    if (!d) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true, device: d });
+  } catch (e) { console.error('[fms.devices.get]', e.message); res.status(500).json({ error: e.message }); }
+});
+
 router.get('/topology/export', (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
   try { res.json({ ok: true, ...topo().exportTopology(db, tid, (req.query.cbu || '').trim() || null) }); }

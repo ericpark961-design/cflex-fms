@@ -1,0 +1,2421 @@
+{
+ "cbu": "KMX",
+ "rooms": [
+  {
+   "location": "KMX Pesquería",
+   "name": "CCR",
+   "cols": 24,
+   "rows": 22,
+   "tile_mm": 600,
+   "height_mm": 3000,
+   "objects": [
+    {
+     "name": "A01",
+     "kind": "rack",
+     "col": 6.82,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.8,
+      "temp_c": 23.8,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-1"
+     }
+    },
+    {
+     "name": "A02",
+     "kind": "rack",
+     "col": 7.85,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0.9,
+      "temp_c": 23.2,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-2"
+     }
+    },
+    {
+     "name": "A03",
+     "kind": "rack",
+     "col": 8.88,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.7,
+      "temp_c": 23.7,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-3"
+     }
+    },
+    {
+     "name": "A04",
+     "kind": "rack",
+     "col": 9.92,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 4.8,
+      "temp_c": 25.4,
+      "status": "hot",
+      "pdu": "PDU-A",
+      "cb": "CB-4"
+     }
+    },
+    {
+     "name": "A05",
+     "kind": "rack",
+     "col": 10.95,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0.8,
+      "temp_c": 24.4,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-5"
+     }
+    },
+    {
+     "name": "A06",
+     "kind": "rack",
+     "col": 11.98,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2,
+      "temp_c": 23.5,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-6"
+     }
+    },
+    {
+     "name": "A07",
+     "kind": "rack",
+     "col": 13.02,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.3,
+      "temp_c": 24.2,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-7"
+     }
+    },
+    {
+     "name": "A08",
+     "kind": "rack",
+     "col": 14.05,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.2,
+      "temp_c": 22.9,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-8"
+     }
+    },
+    {
+     "name": "A09",
+     "kind": "rack",
+     "col": 15.08,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0,
+      "temp_c": 23,
+      "status": "empty",
+      "pdu": "PDU-A",
+      "cb": "CB-9"
+     }
+    },
+    {
+     "name": "A10",
+     "kind": "rack",
+     "col": 16.12,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0,
+      "temp_c": 23,
+      "status": "empty",
+      "pdu": "PDU-A",
+      "cb": "CB-10"
+     }
+    },
+    {
+     "name": "A11",
+     "kind": "rack",
+     "col": 17.15,
+     "row": 3.83,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.8,
+      "temp_c": 23.2,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-11"
+     }
+    },
+    {
+     "name": "B01",
+     "kind": "rack",
+     "col": 7.32,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.2,
+      "temp_c": 23.1,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-1"
+     }
+    },
+    {
+     "name": "B02",
+     "kind": "rack",
+     "col": 8.35,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 4.3,
+      "temp_c": 25.1,
+      "status": "hot",
+      "pdu": "PDU-A",
+      "cb": "CB-2"
+     }
+    },
+    {
+     "name": "B03",
+     "kind": "rack",
+     "col": 9.38,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.9,
+      "temp_c": 23.7,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-3"
+     }
+    },
+    {
+     "name": "B04",
+     "kind": "rack",
+     "col": 10.42,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1,
+      "temp_c": 22.9,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-4"
+     }
+    },
+    {
+     "name": "B05",
+     "kind": "rack",
+     "col": 11.45,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.9,
+      "temp_c": 24.5,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-5"
+     }
+    },
+    {
+     "name": "B06",
+     "kind": "rack",
+     "col": 12.48,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0.9,
+      "temp_c": 23.6,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-6"
+     }
+    },
+    {
+     "name": "B07",
+     "kind": "rack",
+     "col": 13.52,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 6.4,
+      "temp_c": 27.9,
+      "status": "critical",
+      "pdu": "PDU-A",
+      "cb": "CB-7"
+     }
+    },
+    {
+     "name": "B08",
+     "kind": "rack",
+     "col": 14.55,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.9,
+      "temp_c": 23.1,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-8"
+     }
+    },
+    {
+     "name": "B09",
+     "kind": "rack",
+     "col": 15.58,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.6,
+      "temp_c": 23.8,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-9"
+     }
+    },
+    {
+     "name": "B10",
+     "kind": "rack",
+     "col": 16.62,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.2,
+      "temp_c": 23.3,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-10"
+     }
+    },
+    {
+     "name": "B11",
+     "kind": "rack",
+     "col": 17.65,
+     "row": 7.83,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1,
+      "temp_c": 24.6,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-11"
+     }
+    },
+    {
+     "name": "C01",
+     "kind": "rack",
+     "col": 7.33,
+     "row": 11.5,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 3.9,
+      "temp_c": 26.3,
+      "status": "warn",
+      "pdu": "PDU-A",
+      "cb": "CB-1"
+     }
+    },
+    {
+     "name": "C02",
+     "kind": "rack",
+     "col": 8.37,
+     "row": 11.5,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.7,
+      "temp_c": 23.2,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-2"
+     }
+    },
+    {
+     "name": "C03",
+     "kind": "rack",
+     "col": 9.4,
+     "row": 11.5,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 3.6,
+      "temp_c": 26.1,
+      "status": "warn",
+      "pdu": "PDU-A",
+      "cb": "CB-3"
+     }
+    },
+    {
+     "name": "C04",
+     "kind": "rack",
+     "col": 10.43,
+     "row": 11.5,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.9,
+      "temp_c": 23.4,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-4"
+     }
+    },
+    {
+     "name": "C05",
+     "kind": "rack",
+     "col": 11.47,
+     "row": 11.5,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1,
+      "temp_c": 24.2,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-5"
+     }
+    },
+    {
+     "name": "C06",
+     "kind": "rack",
+     "col": 12.5,
+     "row": 11.5,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.4,
+      "temp_c": 23.4,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-6"
+     }
+    },
+    {
+     "name": "C07",
+     "kind": "rack",
+     "col": 13.53,
+     "row": 11.5,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0.8,
+      "temp_c": 24.5,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-7"
+     }
+    },
+    {
+     "name": "C08",
+     "kind": "rack",
+     "col": 14.57,
+     "row": 11.5,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.2,
+      "temp_c": 24.4,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-8"
+     }
+    },
+    {
+     "name": "C09",
+     "kind": "rack",
+     "col": 15.6,
+     "row": 11.5,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.7,
+      "temp_c": 23.2,
+      "status": "ok",
+      "pdu": "PDU-A",
+      "cb": "CB-9"
+     }
+    },
+    {
+     "name": "C10",
+     "kind": "rack",
+     "col": 16.63,
+     "row": 11.5,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0,
+      "temp_c": 23,
+      "status": "empty",
+      "pdu": "PDU-A",
+      "cb": "CB-10"
+     }
+    },
+    {
+     "name": "D01",
+     "kind": "rack",
+     "col": 7.83,
+     "row": 15.5,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2,
+      "temp_c": 23.5,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-1"
+     }
+    },
+    {
+     "name": "D02",
+     "kind": "rack",
+     "col": 8.87,
+     "row": 15.5,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.4,
+      "temp_c": 24,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-2"
+     }
+    },
+    {
+     "name": "D03",
+     "kind": "rack",
+     "col": 9.9,
+     "row": 15.5,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0.9,
+      "temp_c": 23.2,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-3"
+     }
+    },
+    {
+     "name": "D04",
+     "kind": "rack",
+     "col": 10.93,
+     "row": 15.5,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.7,
+      "temp_c": 23,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-4"
+     }
+    },
+    {
+     "name": "D05",
+     "kind": "rack",
+     "col": 11.97,
+     "row": 15.5,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 4.6,
+      "temp_c": 24.9,
+      "status": "hot",
+      "pdu": "PDU-B",
+      "cb": "CB-5"
+     }
+    },
+    {
+     "name": "D06",
+     "kind": "rack",
+     "col": 13,
+     "row": 15.5,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 4.1,
+      "temp_c": 24.7,
+      "status": "hot",
+      "pdu": "PDU-B",
+      "cb": "CB-6"
+     }
+    },
+    {
+     "name": "D07",
+     "kind": "rack",
+     "col": 14.03,
+     "row": 15.5,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0.7,
+      "temp_c": 23.5,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-7"
+     }
+    },
+    {
+     "name": "D08",
+     "kind": "rack",
+     "col": 15.07,
+     "row": 15.5,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.2,
+      "temp_c": 24,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-8"
+     }
+    },
+    {
+     "name": "D09",
+     "kind": "rack",
+     "col": 16.1,
+     "row": 15.5,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.9,
+      "temp_c": 23.4,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-9"
+     }
+    },
+    {
+     "name": "D10",
+     "kind": "rack",
+     "col": 17.13,
+     "row": 15.5,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.7,
+      "temp_c": 23.7,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-10"
+     }
+    },
+    {
+     "name": "E01",
+     "kind": "rack",
+     "col": 7.33,
+     "row": 19.17,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.7,
+      "temp_c": 24.3,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-1"
+     }
+    },
+    {
+     "name": "E02",
+     "kind": "rack",
+     "col": 8.37,
+     "row": 19.17,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.7,
+      "temp_c": 23.6,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-2"
+     }
+    },
+    {
+     "name": "E03",
+     "kind": "rack",
+     "col": 9.4,
+     "row": 19.17,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.2,
+      "temp_c": 23.2,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-3"
+     }
+    },
+    {
+     "name": "E04",
+     "kind": "rack",
+     "col": 10.43,
+     "row": 19.17,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.4,
+      "temp_c": 23,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-4"
+     }
+    },
+    {
+     "name": "E05",
+     "kind": "rack",
+     "col": 11.47,
+     "row": 19.17,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.2,
+      "temp_c": 24.2,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-5"
+     }
+    },
+    {
+     "name": "E06",
+     "kind": "rack",
+     "col": 12.5,
+     "row": 19.17,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.7,
+      "temp_c": 24.5,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-6"
+     }
+    },
+    {
+     "name": "E07",
+     "kind": "rack",
+     "col": 13.53,
+     "row": 19.17,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.8,
+      "temp_c": 24.3,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-7"
+     }
+    },
+    {
+     "name": "E08",
+     "kind": "rack",
+     "col": 14.57,
+     "row": 19.17,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.4,
+      "temp_c": 24,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-8"
+     }
+    },
+    {
+     "name": "E09",
+     "kind": "rack",
+     "col": 15.6,
+     "row": 19.17,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0,
+      "temp_c": 23,
+      "status": "empty",
+      "pdu": "PDU-B",
+      "cb": "CB-9"
+     }
+    },
+    {
+     "name": "E10",
+     "kind": "rack",
+     "col": 16.63,
+     "row": 19.17,
+     "w": 1,
+     "d": 2,
+     "face": "S",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0,
+      "temp_c": 23,
+      "status": "empty",
+      "pdu": "PDU-B",
+      "cb": "CB-10"
+     }
+    },
+    {
+     "name": "F01",
+     "kind": "rack",
+     "col": 7.83,
+     "row": 23.17,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.9,
+      "temp_c": 22.8,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-1"
+     }
+    },
+    {
+     "name": "F02",
+     "kind": "rack",
+     "col": 8.87,
+     "row": 23.17,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.4,
+      "temp_c": 23.4,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-2"
+     }
+    },
+    {
+     "name": "F03",
+     "kind": "rack",
+     "col": 9.9,
+     "row": 23.17,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 4.2,
+      "temp_c": 24.4,
+      "status": "hot",
+      "pdu": "PDU-B",
+      "cb": "CB-3"
+     }
+    },
+    {
+     "name": "F04",
+     "kind": "rack",
+     "col": 10.93,
+     "row": 23.17,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.1,
+      "temp_c": 23.5,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-4"
+     }
+    },
+    {
+     "name": "F05",
+     "kind": "rack",
+     "col": 11.97,
+     "row": 23.17,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 2.2,
+      "temp_c": 24.1,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-5"
+     }
+    },
+    {
+     "name": "F06",
+     "kind": "rack",
+     "col": 13,
+     "row": 23.17,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 1.2,
+      "temp_c": 24.5,
+      "status": "ok",
+      "pdu": "PDU-B",
+      "cb": "CB-6"
+     }
+    },
+    {
+     "name": "F07",
+     "kind": "rack",
+     "col": 14.03,
+     "row": 23.17,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0,
+      "temp_c": 23,
+      "status": "empty",
+      "pdu": "PDU-B",
+      "cb": "CB-7"
+     }
+    },
+    {
+     "name": "F08",
+     "kind": "rack",
+     "col": 15.07,
+     "row": 23.17,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0,
+      "temp_c": 23,
+      "status": "empty",
+      "pdu": "PDU-B",
+      "cb": "CB-8"
+     }
+    },
+    {
+     "name": "F09",
+     "kind": "rack",
+     "col": 16.1,
+     "row": 23.17,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0,
+      "temp_c": 23,
+      "status": "empty",
+      "pdu": "PDU-B",
+      "cb": "CB-9"
+     }
+    },
+    {
+     "name": "F10",
+     "kind": "rack",
+     "col": 17.13,
+     "row": 23.17,
+     "w": 1,
+     "d": 2,
+     "face": "N",
+     "u_height": 42,
+     "attrs": {
+      "kw": 0,
+      "temp_c": 23,
+      "status": "empty",
+      "pdu": "PDU-B",
+      "cb": "CB-10"
+     }
+    },
+    {
+     "name": "CRAC-1",
+     "kind": "crac",
+     "col": 3.13,
+     "row": 0.25,
+     "w": 2.4,
+     "d": 1.5,
+     "attrs": {
+      "rt": 30,
+      "fan_pct": 72,
+      "status": "ok",
+      "supply_c": 18.3
+     }
+    },
+    {
+     "name": "CRAC-2",
+     "kind": "crac",
+     "col": 10.8,
+     "row": 0.25,
+     "w": 2.4,
+     "d": 1.5,
+     "attrs": {
+      "rt": 30,
+      "fan_pct": 68,
+      "status": "warn",
+      "supply_c": 20.5,
+      "note": "팬 감속 · 필터 경보"
+     }
+    },
+    {
+     "name": "CRAC-3",
+     "kind": "crac",
+     "col": 18.47,
+     "row": 0.25,
+     "w": 2.4,
+     "d": 1.5,
+     "attrs": {
+      "rt": 20,
+      "fan_pct": 70,
+      "status": "ok",
+      "supply_c": 18.3
+     }
+    },
+    {
+     "name": "UPS-1",
+     "kind": "ups_cabinet",
+     "col": 22.08,
+     "row": 5.25,
+     "w": 1.5,
+     "d": 1.5,
+     "attrs": {
+      "capacity_kw": 40,
+      "load_pct": 48,
+      "status": "ok"
+     }
+    },
+    {
+     "name": "UPS-2",
+     "kind": "ups_cabinet",
+     "col": 22.08,
+     "row": 7.92,
+     "w": 1.5,
+     "d": 1.5,
+     "attrs": {
+      "capacity_kw": 40,
+      "load_pct": 44,
+      "status": "ok"
+     }
+    },
+    {
+     "name": "PDU-A",
+     "kind": "pdu_cabinet",
+     "col": 0.5,
+     "row": 4.58,
+     "w": 1,
+     "d": 1.5,
+     "attrs": {
+      "rated_a": 125,
+      "load_a": 61,
+      "status": "ok"
+     }
+    },
+    {
+     "name": "PDU-B",
+     "kind": "pdu_cabinet",
+     "col": 0.5,
+     "row": 14.58,
+     "w": 1,
+     "d": 1.5,
+     "attrs": {
+      "rated_a": 125,
+      "load_a": 54,
+      "status": "ok"
+     }
+    },
+    {
+     "name": "PANEL-1",
+     "kind": "panel",
+     "col": 23,
+     "row": 2.13,
+     "w": 1,
+     "d": 0.4,
+     "attrs": {
+      "rated_a": 200,
+      "label": "LP-1"
+     }
+    },
+    {
+     "name": "PANEL-2",
+     "kind": "panel",
+     "col": 23,
+     "row": 11.13,
+     "w": 1,
+     "d": 0.4,
+     "attrs": {
+      "rated_a": 200,
+      "label": "LP-2"
+     }
+    },
+    {
+     "name": "UTILITY",
+     "kind": "panel",
+     "col": 22.75,
+     "row": 20.13,
+     "w": 1.5,
+     "d": 0.4,
+     "attrs": {
+      "rated_a": 400,
+      "utility": true,
+      "label": "CFE 인입 / 발전기 ATS"
+     }
+    },
+    {
+     "name": "FM-200",
+     "kind": "fm200",
+     "col": 22.5,
+     "row": 14.58,
+     "w": 1,
+     "d": 2.5,
+     "attrs": {
+      "status": "ok",
+      "cylinders": 3
+     }
+    },
+    {
+     "name": "DOOR",
+     "kind": "door",
+     "col": 2.33,
+     "row": 21.68,
+     "w": 2,
+     "d": 0.3,
+     "attrs": {}
+    },
+    {
+     "name": "TH-1",
+     "kind": "sensor",
+     "col": 3.67,
+     "row": 5.67,
+     "attrs": {
+      "temp_c": 23.2,
+      "humidity": 44
+     }
+    },
+    {
+     "name": "TH-2",
+     "kind": "sensor",
+     "col": 12,
+     "row": 5.67,
+     "attrs": {
+      "temp_c": 24,
+      "humidity": 44
+     }
+    },
+    {
+     "name": "TH-3",
+     "kind": "sensor",
+     "col": 20.33,
+     "row": 5.67,
+     "attrs": {
+      "temp_c": 23.3,
+      "humidity": 47
+     }
+    },
+    {
+     "name": "TH-4",
+     "kind": "sensor",
+     "col": 3.67,
+     "row": 16.33,
+     "attrs": {
+      "temp_c": 23.8,
+      "humidity": 46
+     }
+    },
+    {
+     "name": "TH-5",
+     "kind": "sensor",
+     "col": 12,
+     "row": 16.33,
+     "attrs": {
+      "temp_c": 24,
+      "humidity": 44
+     }
+    },
+    {
+     "name": "TH-6",
+     "kind": "sensor",
+     "col": 20.33,
+     "row": 16.33,
+     "attrs": {
+      "temp_c": 23.4,
+      "humidity": 46
+     }
+    },
+    {
+     "name": "SMK-1",
+     "kind": "smoke",
+     "col": 5.33,
+     "row": 11,
+     "attrs": {
+      "status": "ok"
+     }
+    },
+    {
+     "name": "SMK-2",
+     "kind": "smoke",
+     "col": 12.83,
+     "row": 11.83,
+     "attrs": {
+      "status": "ok"
+     }
+    },
+    {
+     "name": "SMK-3",
+     "kind": "smoke",
+     "col": 19.5,
+     "row": 9.33,
+     "attrs": {
+      "status": "ok"
+     }
+    },
+    {
+     "name": "ZONE-1",
+     "kind": "leak_zone",
+     "attrs": {
+      "status": "ok",
+      "zone_poly": [
+       [
+        2.33,
+        1
+       ],
+       [
+        6.33,
+        1
+       ],
+       [
+        6.33,
+        3.33
+       ],
+       [
+        2.33,
+        3.33
+       ]
+      ]
+     }
+    },
+    {
+     "name": "ZONE-2",
+     "kind": "leak_zone",
+     "attrs": {
+      "status": "ok",
+      "zone_poly": [
+       [
+        10,
+        1
+       ],
+       [
+        14,
+        1
+       ],
+       [
+        14,
+        3.33
+       ],
+       [
+        10,
+        3.33
+       ]
+      ]
+     }
+    },
+    {
+     "name": "ZONE-3",
+     "kind": "leak_zone",
+     "attrs": {
+      "status": "leak",
+      "zone_poly": [
+       [
+        17.67,
+        1
+       ],
+       [
+        21.67,
+        1
+       ],
+       [
+        21.67,
+        3.33
+       ],
+       [
+        17.67,
+        3.33
+       ]
+      ]
+     }
+    },
+    {
+     "name": "ZONE-4",
+     "kind": "leak_zone",
+     "attrs": {
+      "status": "ok",
+      "zone_poly": [
+       [
+        20.5,
+        4.67
+       ],
+       [
+        23.17,
+        4.67
+       ],
+       [
+        23.17,
+        9.67
+       ],
+       [
+        20.5,
+        9.67
+       ]
+      ]
+     }
+    }
+   ],
+   "devices": [
+    {
+     "label": "KMX-UPS-01",
+     "kind": "ups",
+     "model": "Symmetra PX 40kW",
+     "rack": "UPS-1",
+     "u_pos": 1,
+     "status": "ok",
+     "vendor": "APC",
+     "u_height": 10,
+     "battery_pct": 100,
+     "load_pct": 48,
+     "temp_c": 24.1,
+     "runtime_min": 31,
+     "ip": "10.60.1.11"
+    },
+    {
+     "label": "KMX-UPS-02",
+     "kind": "ups",
+     "model": "Symmetra PX 40kW",
+     "rack": "UPS-2",
+     "u_pos": 1,
+     "status": "ok",
+     "vendor": "APC",
+     "u_height": 10,
+     "battery_pct": 100,
+     "load_pct": 44,
+     "temp_c": 23.8,
+     "runtime_min": 34,
+     "ip": "10.60.1.12"
+    },
+    {
+     "label": "A01-UPS",
+     "kind": "ups",
+     "model": "Smart-UPS SRT 3000VA RM",
+     "rack": "A01",
+     "u_pos": 2,
+     "status": "ok",
+     "vendor": "APC",
+     "battery_pct": 98,
+     "load_pct": 41,
+     "temp_c": 24.6,
+     "runtime_min": 22,
+     "ip": "10.60.1.13"
+    },
+    {
+     "label": "B07-UPS",
+     "kind": "ups",
+     "model": "Smart-UPS SRT 5000VA RM",
+     "rack": "B07",
+     "u_pos": 2,
+     "status": "critical",
+     "vendor": "APC",
+     "battery_pct": 71,
+     "load_pct": 88,
+     "temp_c": 29.4,
+     "runtime_min": 9,
+     "ip": "10.60.1.14"
+    },
+    {
+     "label": "D01-UPS",
+     "kind": "ups",
+     "model": "Smart-UPS SRT 3000VA RM",
+     "rack": "D01",
+     "u_pos": 2,
+     "status": "ok",
+     "vendor": "APC",
+     "battery_pct": 99,
+     "load_pct": 35,
+     "temp_c": 24,
+     "runtime_min": 26,
+     "ip": "10.60.1.15"
+    },
+    {
+     "label": "CCR-CORE-1",
+     "kind": "switch",
+     "model": "Catalyst 9500-48Y4C",
+     "rack": "A01",
+     "u_pos": 40,
+     "status": "ok",
+     "vendor": "Cisco",
+     "ports_total": 48,
+     "ports_up": 31,
+     "ip": "10.60.1.21"
+    },
+    {
+     "label": "CCR-CORE-2",
+     "kind": "switch",
+     "model": "Catalyst 9500-48Y4C",
+     "rack": "A01",
+     "u_pos": 38,
+     "status": "ok",
+     "vendor": "Cisco",
+     "ports_total": 48,
+     "ports_up": 29,
+     "ip": "10.60.1.22"
+    },
+    {
+     "label": "CUCM-PUB",
+     "kind": "server",
+     "model": "UCS C220 M6",
+     "rack": "A02",
+     "u_pos": 20,
+     "status": "ok",
+     "vendor": "Cisco",
+     "ip": "10.60.1.31",
+     "note": "UC 콜 매니저"
+    },
+    {
+     "label": "CUCM-SUB1",
+     "kind": "server",
+     "model": "UCS C220 M6",
+     "rack": "A02",
+     "u_pos": 22,
+     "status": "warn",
+     "vendor": "Cisco",
+     "ip": "10.60.1.32",
+     "note": "DB 복제 지연"
+    },
+    {
+     "label": "CUBE-SBC-1",
+     "kind": "sbc",
+     "model": "ISR 4451 CUBE",
+     "rack": "A02",
+     "u_pos": 36,
+     "status": "ok",
+     "vendor": "Cisco",
+     "ports_total": 8,
+     "ports_up": 6,
+     "ip": "10.60.1.41",
+     "note": "SIP 트렁크 Telmex"
+    },
+    {
+     "label": "GENESYS-APP1",
+     "kind": "server",
+     "model": "PowerEdge R650",
+     "rack": "B01",
+     "u_pos": 20,
+     "status": "ok",
+     "vendor": "Dell",
+     "ip": "10.60.1.51"
+    },
+    {
+     "label": "GENESYS-APP2",
+     "kind": "server",
+     "model": "PowerEdge R650",
+     "rack": "B01",
+     "u_pos": 22,
+     "status": "ok",
+     "vendor": "Dell",
+     "ip": "10.60.1.52"
+    },
+    {
+     "label": "GENESYS-DB",
+     "kind": "server",
+     "model": "PowerEdge R750",
+     "rack": "B02",
+     "u_pos": 24,
+     "status": "ok",
+     "vendor": "Dell",
+     "ip": "10.60.1.53",
+     "u_height": 2
+    },
+    {
+     "label": "PP-A02",
+     "kind": "patch",
+     "model": "Patch Panel 24",
+     "rack": "A02",
+     "u_pos": 42,
+     "status": "ok"
+    },
+    {
+     "label": "ACC-A",
+     "kind": "switch",
+     "model": "Catalyst 9300-48P",
+     "rack": "A01",
+     "u_pos": 41,
+     "status": "ok",
+     "vendor": "Cisco",
+     "ports_total": 48,
+     "ports_up": 30,
+     "ip": "10.60.2.10"
+    },
+    {
+     "label": "ACC-B",
+     "kind": "switch",
+     "model": "Catalyst 9300-48P",
+     "rack": "B01",
+     "u_pos": 41,
+     "status": "ok",
+     "vendor": "Cisco",
+     "ports_total": 48,
+     "ports_up": 31,
+     "ip": "10.60.2.11"
+    },
+    {
+     "label": "ACC-C",
+     "kind": "switch",
+     "model": "Catalyst 9300-48P",
+     "rack": "C01",
+     "u_pos": 41,
+     "status": "ok",
+     "vendor": "Cisco",
+     "ports_total": 48,
+     "ports_up": 32,
+     "ip": "10.60.2.12"
+    },
+    {
+     "label": "ACC-D",
+     "kind": "switch",
+     "model": "Catalyst 9300-48P",
+     "rack": "D01",
+     "u_pos": 41,
+     "status": "ok",
+     "vendor": "Cisco",
+     "ports_total": 48,
+     "ports_up": 33,
+     "ip": "10.60.2.13"
+    },
+    {
+     "label": "ACC-E",
+     "kind": "switch",
+     "model": "Catalyst 9300-48P",
+     "rack": "E01",
+     "u_pos": 41,
+     "status": "ok",
+     "vendor": "Cisco",
+     "ports_total": 48,
+     "ports_up": 34,
+     "ip": "10.60.2.14"
+    },
+    {
+     "label": "ACC-F",
+     "kind": "switch",
+     "model": "Catalyst 9300-48P",
+     "rack": "F01",
+     "u_pos": 41,
+     "status": "ok",
+     "vendor": "Cisco",
+     "ports_total": 48,
+     "ports_up": 35,
+     "ip": "10.60.2.15"
+    }
+   ],
+   "power_links": [
+    {
+     "src": "A01",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-1",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "A02",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-2",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "A03",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-3",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "A04",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-4",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "A05",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-5",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "A06",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-6",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "A07",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-7",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "A08",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-8",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "A11",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-11",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "B01",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-1",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "B02",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-2",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "B03",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-3",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "B04",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-4",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "B05",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-5",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "B06",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-6",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "B07",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-7",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "B08",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-8",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "B09",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-9",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "B10",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-10",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "B11",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-11",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "C01",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-1",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "C02",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-2",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "C03",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-3",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "C04",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-4",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "C05",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-5",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "C06",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-6",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "C07",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-7",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "C08",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-8",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "C09",
+     "src_type": "object",
+     "dst": "PDU-A",
+     "dst_type": "object",
+     "dst_port": "CB-9",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "D01",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-1",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "D02",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-2",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "D03",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-3",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "D04",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-4",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "D05",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-5",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "D06",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-6",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "D07",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-7",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "D08",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-8",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "D09",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-9",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "D10",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-10",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "E01",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-1",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "E02",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-2",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "E03",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-3",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "E04",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-4",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "E05",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-5",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "E06",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-6",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "E07",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-7",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "E08",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-8",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "F01",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-1",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "F02",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-2",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "F03",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-3",
+     "rated_a": 16,
+     "phase": "L1"
+    },
+    {
+     "src": "F04",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-4",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "F05",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-5",
+     "rated_a": 16,
+     "phase": "L3"
+    },
+    {
+     "src": "F06",
+     "src_type": "object",
+     "dst": "PDU-B",
+     "dst_type": "object",
+     "dst_port": "CB-6",
+     "rated_a": 16,
+     "phase": "L2"
+    },
+    {
+     "src": "PDU-A",
+     "src_type": "object",
+     "dst": "KMX-UPS-01",
+     "dst_type": "ups_device",
+     "dst_port": "OUT-1",
+     "rated_a": 125,
+     "phase": "3P"
+    },
+    {
+     "src": "PDU-B",
+     "src_type": "object",
+     "dst": "KMX-UPS-02",
+     "dst_type": "ups_device",
+     "dst_port": "OUT-1",
+     "rated_a": 125,
+     "phase": "3P"
+    },
+    {
+     "src": "KMX-UPS-01",
+     "src_type": "ups_device",
+     "dst": "PANEL-1",
+     "dst_type": "object",
+     "dst_port": "LP1-1",
+     "circuit": "LP1-1",
+     "rated_a": 160,
+     "phase": "3P"
+    },
+    {
+     "src": "KMX-UPS-02",
+     "src_type": "ups_device",
+     "dst": "PANEL-2",
+     "dst_type": "object",
+     "dst_port": "LP2-1",
+     "circuit": "LP2-1",
+     "rated_a": 160,
+     "phase": "3P"
+    },
+    {
+     "src": "PANEL-1",
+     "src_type": "object",
+     "dst": "UTILITY",
+     "dst_type": "object",
+     "circuit": "MAIN-1",
+     "rated_a": 200,
+     "phase": "3P"
+    },
+    {
+     "src": "PANEL-2",
+     "src_type": "object",
+     "dst": "UTILITY",
+     "dst_type": "object",
+     "circuit": "MAIN-2",
+     "rated_a": 200,
+     "phase": "3P"
+    },
+    {
+     "src": "CRAC-1",
+     "src_type": "object",
+     "dst": "PANEL-1",
+     "dst_type": "object",
+     "circuit": "LP1-9",
+     "rated_a": 63,
+     "phase": "3P",
+     "note": "비 UPS 계통"
+    },
+    {
+     "src": "CRAC-2",
+     "src_type": "object",
+     "dst": "PANEL-2",
+     "dst_type": "object",
+     "circuit": "LP2-9",
+     "rated_a": 63,
+     "phase": "3P"
+    },
+    {
+     "src": "CRAC-3",
+     "src_type": "object",
+     "dst": "PANEL-2",
+     "dst_type": "object",
+     "circuit": "LP2-10",
+     "rated_a": 40,
+     "phase": "3P"
+    },
+    {
+     "src": "CCR-CORE-1",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "A01",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "CCR-CORE-2",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "A01",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "CUCM-PUB",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "A02",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "CUCM-SUB1",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "A02",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "CUBE-SBC-1",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "A02",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "GENESYS-APP1",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "B01",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "GENESYS-APP2",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "B01",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "GENESYS-DB",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "B02",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "PP-A02",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "A02",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "ACC-A",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "A01",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "ACC-B",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "B01",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "ACC-C",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "C01",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "ACC-D",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "D01",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "ACC-E",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "E01",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "ACC-F",
+     "src_type": "device",
+     "src_port": "PSU1",
+     "dst": "F01",
+     "dst_type": "object",
+     "dst_port": "PDU-L",
+     "rated_a": 10
+    },
+    {
+     "src": "A01-UPS",
+     "src_type": "ups_device",
+     "dst": "A01",
+     "dst_type": "object",
+     "dst_port": "PDU-R",
+     "rated_a": 20
+    },
+    {
+     "src": "B07-UPS",
+     "src_type": "ups_device",
+     "dst": "B07",
+     "dst_type": "object",
+     "dst_port": "PDU-R",
+     "rated_a": 20
+    },
+    {
+     "src": "D01-UPS",
+     "src_type": "ups_device",
+     "dst": "D01",
+     "dst_type": "object",
+     "dst_port": "PDU-R",
+     "rated_a": 20
+    }
+   ]
+  }
+ ],
+ "alarms": [
+  {
+   "id": "A-1151",
+   "priority": "P1",
+   "object": "B07",
+   "device": "B07-UPS",
+   "metric": "temp_c",
+   "message": "랙 B07 핫스팟 · 상단 27.9 °C · UPS 부하 88 %",
+   "value": 27.9,
+   "threshold": 26,
+   "received_at": "11:02",
+   "ai": "CRAC-2 팬 감속과 상관 91 % · 권고: CRAC-2 필터 교체, B07 부하 2 kW를 B09로 이전"
+  },
+  {
+   "id": "A-1152",
+   "priority": "P2",
+   "object": "CRAC-2",
+   "metric": "fan_pct",
+   "message": "CRAC-2 팬 감속 68 % · 필터 차압 경보",
+   "value": 68,
+   "threshold": 70,
+   "received_at": "10:48"
+  },
+  {
+   "id": "A-1153",
+   "priority": "P1",
+   "object": "ZONE-3",
+   "metric": "leak",
+   "message": "누수 감지 ZONE-3 · CRAC-3 하부 (LP6000)",
+   "value": 1,
+   "threshold": 0,
+   "received_at": "11:02",
+   "ai": "HAEM 시설팀 확인 중 · 티켓 T-1151 · CRAC-3 응축수 배관 점검"
+  },
+  {
+   "id": "A-1154",
+   "priority": "P3",
+   "object": "A02",
+   "device": "CUCM-SUB1",
+   "metric": "uc_replication",
+   "message": "CUCM-SUB1 DB 복제 지연 42 s",
+   "value": 42,
+   "threshold": 30,
+   "received_at": "09:15"
+  }
+ ]
+}

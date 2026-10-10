@@ -56,13 +56,38 @@ ALTER TABLE ups_devices ADD COLUMN rack_id INTEGER;
 ALTER TABLE ups_devices ADD COLUMN u_pos INTEGER;
 ALTER TABLE ups_devices ADD COLUMN u_height INTEGER;
 
+-- ── non-UPS equipment ───────────────────────────────────────────────
+-- Network, UC and server gear lives here rather than in ups_devices: the polling
+-- logic is different (SNMP ifOperStatus / ICMP / HTTPS health) and mixing them
+-- would drag that into the UPS poller. /v1/fms/assets stays UPS-only; floor and
+-- topology merge both and tag each row with `kind`.
+CREATE TABLE IF NOT EXISTS fms_devices (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id  INTEGER NOT NULL,
+  cbu        TEXT,
+  kind       TEXT NOT NULL,              -- switch | router | sbc | server | pdu | patch | storage | ups | other
+  label      TEXT NOT NULL,
+  vendor     TEXT, model TEXT, serial TEXT, ip TEXT,
+  rack_id    INTEGER REFERENCES fms_racks(id),
+  u_pos      INTEGER, u_height INTEGER DEFAULT 1,
+  location   TEXT, room TEXT, rack TEXT, -- string fallback when rack_id is null, same rule as ups_devices
+  status     TEXT DEFAULT 'nodata',      -- no collector yet: stays nodata, never a fake 'ok'
+  last_polled INTEGER,
+  ports_total INTEGER, ports_up INTEGER,
+  attrs      TEXT,                       -- JSON
+  decommissioned_at INTEGER,
+  updated_at INTEGER,
+  UNIQUE(tenant_id, label)
+);
+CREATE INDEX IF NOT EXISTS idx_fms_devices_rack ON fms_devices(tenant_id, rack_id);
+
 -- ── power links ─────────────────────────────────────────────────────
 -- Direction is load → upstream: `src` is the side that RECEIVES power, `dst` is
 -- the side that SUPPLIES it. Tracing a chain means following src → dst.
 CREATE TABLE IF NOT EXISTS fms_power_links (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   tenant_id  INTEGER NOT NULL,
-  src_type   TEXT NOT NULL,                 -- ups_device | object (fms_racks.id)
+  src_type   TEXT NOT NULL,                 -- ups_device | device (fms_devices.id) | object (fms_racks.id)
   src_id     INTEGER NOT NULL,
   src_port   TEXT,
   dst_type   TEXT NOT NULL,
