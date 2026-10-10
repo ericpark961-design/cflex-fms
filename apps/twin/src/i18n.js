@@ -47,6 +47,8 @@ export const EN = {
     'This server has no copilot endpoint (/v1/fms/copilot) deployed yet.',
   '원장': 'Ledger',
   // #/devices inventory tree
+  '네트워크 · UC 장비 — 배터리·부하·런타임은 이 장비 종류에 없습니다. 포트·전원 체인·배치만 표시됩니다.': 'Network / UC device — battery, load and runtime do not exist for this kind. Ports, power chain and placement only.',
+  '이 장비 종류는 아직 수집기가 없습니다': 'No collector exists for this device kind yet',
   '장비 인벤토리': 'Device inventory',
   '← 장비 인벤토리': '← Device inventory',
   '각 행의 "이동"으로 장소·룸·랙을 채우면 트리에 바로 반영됩니다.': 'Use “Move” on a row to fill in its site, room and rack — the tree updates immediately.',

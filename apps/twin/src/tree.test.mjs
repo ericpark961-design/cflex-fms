@@ -3,7 +3,13 @@
 // The inventory tree is what the real rollout is driven from, so its shape and
 // its roll-ups are asserted rather than eyeballed.
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { inventory, buildTree, sortedKeys, allKeys, filterRows, totals, UNSET } from './tree.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const read = (f) => readFileSync(path.join(here, f), 'utf8');
 
 let fail = 0;
 const t = (name, fn) => {
@@ -114,5 +120,45 @@ t('an empty inventory is an empty tree, not a crash', () => {
   assert.equal(totals([]).count, 0);
 });
 
-console.log(fail ? `\nFAIL: ${fail} check(s)` : '\nok - the inventory tree nests and rolls up correctly');
+// ── the wiring: a device at the end of the tree must open its detail ──
+const screen = read('DevicesScreen.jsx');
+
+t('every row in the tree is a link to its detail, network gear included', () => {
+  // A switch used to render as a plain <span>, so it was the one row in the
+  // tree that could not be clicked.
+  assert.ok(!/: <span>\{d\.label\}<\/span>/.test(screen), 'no row renders its label as inert text');
+  assert.match(screen, /href=\{`#\/device\?id=\$\{d\.src === 'ups' \? d\.id : `fd-\$\{d\.id\}`\}`\}/,
+    'both inventories link to #/device, network ids prefixed fd-');
+});
+
+t('device detail resolves an fd- id to the network inventory', () => {
+  const data = read('data.js');
+  assert.match(data, /if \(\/\^fd-\/i\.test\(String\(id \?\? ''\)\)\) return netDeviceData/,
+    'deviceData routes fd- ids away from /v1/fms/assets');
+  assert.match(data, /\/v1\/fms\/devices\/\$\{encodeURIComponent\(rawId\)\}/, 'and fetches the device endpoint');
+  // A switch has no battery, so the panels that would need one must not inherit
+  // the template's sample numbers.
+  assert.match(data, /battery: dash, load: dash, temp: dash, runtime: dash/);
+  assert.match(data, /histEmpty: true/);
+});
+
+t('the detail screen still has the panels it always had', () => {
+  const tpl = read('screens/Device.tpl.html');
+  for (const section of ['알람 이력', '{{d.label}}', '{{hist}}', 'RCA']) {
+    assert.ok(tpl.includes(section), `${section} is still on the detail screen`);
+  }
+  assert.ok(tpl.includes('crumb-devices'), 'and a breadcrumb back to the inventory');
+  assert.ok(tpl.includes('{{isNet}}'), 'with a banner naming what a non-UPS lacks');
+});
+
+t('device detail is reachable but is not a menu destination', () => {
+  const app = read('App.jsx');
+  assert.match(app, /p === 'device'/, 'the route still exists');
+  for (const f of ['screens/Main.tpl.html', 'screens/Alarms.tpl.html', 'screens/PowerChain.tpl.html', 'screens/Device.tpl.html']) {
+    assert.ok(!/<a class="nav[^"]*" href="#\/device">/.test(read(f)), `${f} has no device-detail menu entry`);
+    assert.match(read(f), /<a class="nav[^"]*" href="#\/devices">/, `${f} has the inventory menu entry`);
+  }
+});
+
+console.log(fail ? `\nFAIL: ${fail} check(s)` : '\nok - the inventory tree nests, rolls up, and every row opens its detail');
 process.exit(fail ? 1 : 0);

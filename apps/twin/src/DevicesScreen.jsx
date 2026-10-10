@@ -305,9 +305,10 @@ export default function DevicesScreen() {
                                   {d.u_pos != null ? `U${d.u_pos}` : '—'}
                                 </span>
                                 <span style={{ flex: 1, minWidth: 0 }}>
-                                  {d.src === 'ups'
-                                    ? <a href={`#/device?id=${d.id}`} style={{ color: '#f4f4f4', textDecoration: 'none', borderBottom: '1px solid #393939' }}>{d.label}</a>
-                                    : <span>{d.label}</span>}
+                                  {/* Every row opens its detail. A switch used to be
+                                      the one thing in the tree you could not click. */}
+                                  <a href={`#/device?id=${d.src === 'ups' ? d.id : `fd-${d.id}`}`}
+                                    style={{ color: '#f4f4f4', textDecoration: 'none', borderBottom: '1px solid #393939' }}>{d.label}</a>
                                   {d.model && <span style={{ color: '#8d8d8d', fontSize: 11, marginLeft: 7 }}>{d.vendor} {d.model}</span>}
                                   {d.ports && <span style={{ color: '#6f6f6f', fontSize: 11, marginLeft: 7 }}>{d.ports}</span>}
                                 </span>

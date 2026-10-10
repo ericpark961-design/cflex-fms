@@ -226,7 +226,50 @@ export const DEVICE_RANGES = [
   { key: '7d', label: '7d' }, { key: '30d', label: '30d' },
 ];
 
+/**
+ * Network / UC gear lands on the same detail screen. It is not a UPS — there is
+ * no battery, no load curve and no self-test — so the panels that would need
+ * those read 미수집 instead of borrowing the sample values, and what the device
+ * does have (ports, power chain, placement) is shown. Without this, a switch in
+ * the inventory tree was the one row you could not open.
+ */
+export async function netDeviceData(rawId, range = '24h') {
+  const base = evalLogic(Device.source, Device.props);
+  const r = await api(`/v1/fms/devices/${encodeURIComponent(rawId)}`);
+  const d = r?.ok ? r.device : null;
+  if (!d) return { ...base, ...meData(), cbus: cbus(), notFound: true, kind: 'net' };
+
+  const fresh = d.last_polled && Date.now() - d.last_polled < 5 * 60 * 1000;
+  const st = fresh ? (d.status || 'nodata') : 'nodata';
+  const dash = '—';
+  return {
+    ...base, ...meData(), cbus: cbus(), kind: 'net', isNet: true,
+    d: {
+      ...base.d,
+      label: d.label, stColor: SC[st] || NA, stLabel: slabel(st),
+      vendor: d.vendor || dash, model: d.model || dash, serial: d.serial || dash,
+      ip: d.ip || dash, location: d.location || dash, room: d.room || dash, rack: d.rack || dash,
+      u: d.u_pos != null ? `U${d.u_pos}${d.u_height ? `–${d.u_pos + d.u_height - 1}` : ''}` : dash,
+      kindLabel: d.kind || 'other',
+      ports: d.ports_total ? `${d.ports_up ?? dash} / ${d.ports_total}` : dash,
+      // Everything a UPS has and a switch does not.
+      battery: dash, load: dash, temp: dash, runtime: dash, health: dash,
+      pollNote: t('이 장비 종류는 아직 수집기가 없습니다'),
+    },
+    hist: [],
+    histEmpty: true,
+    trend: { batt: '', load: '', temp: '', loadArea: '', empty: true },
+    ranges: DEVICE_RANGES.map(x => ({ ...x, on: x.key === range })),
+    actions: [],
+    chain: (d.chain || []).map(c => ({ name: c.name, kind: c.kind })),
+    rca: null,
+    sample: false,
+  };
+}
+
 export async function deviceData(id, _fellBack = false, range = '24h') {
+  // An 'fd-<n>' id is an fms_devices row, not a UPS.
+  if (/^fd-/i.test(String(id ?? ''))) return netDeviceData(id, range);
   const base = evalLogic(Device.source, Device.props);
   let a = null;
   // Alerts carry device_id as 'ups-41'; /v1/fms/assets/:id parseInt()s its argument,
