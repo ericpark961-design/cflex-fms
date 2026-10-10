@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { store } from './data';
+import { store, hhmm } from './data';
+import { devId } from './ids';
 import { api, tx } from './theme';
 import { t } from './i18n';
 import Twin3D from './Twin3D';
@@ -68,6 +69,29 @@ export default function TwinScreen({ q, standalone = false, tick = 0 }) {
       <nav style={{ flex: '0 0 220px', background: '#0b0b0b', borderRight: '1px solid #262626', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '18px 16px 14px', borderBottom: '1px solid #262626', display: 'flex', alignItems: 'center', gap: 10 }}><div style={{ width: 30, height: 30, background: '#0f62fe', display: 'grid', placeItems: 'center', fontWeight: 700, color: '#fff' }}>C</div><div><div style={{ fontSize: 15, fontWeight: 700 }}>C-Flex FMS <span style={{ fontSize: 11, color: '#78a9ff' }}>2.0</span></div><div style={{ fontSize: 11, color: '#8d8d8d' }}>RingOn Service · {standalone ? 'KMX (Kia Mexico)' : (store.me?.tenantName || 'HAEA')}</div></div></div>
         {!standalone && <div style={{ padding: '10px 0', display: 'flex', flexDirection: 'column' }}>{nav.map(([h, l, on]) => <a key={l} href={h} style={{ padding: '11px 16px 11px 13px', fontSize: 14, textDecoration: 'none', color: on ? '#f4f4f4' : '#c6c6c6', background: on ? '#262626' : 'transparent', borderLeft: `3px solid ${on ? '#4589ff' : 'transparent'}`, fontWeight: on ? 600 : 400 }}>{l}</a>)}</div>}
+        {scene === 'real' && !standalone && <div style={{ padding: '12px 14px', borderTop: '1px solid #262626' }}>
+          <div style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em', marginBottom: 8 }}>
+            {t('알람')} {store.alerts.length} · {t('클릭하면 워크벤치')}
+          </div>
+          {!store.alerts.length && <div style={{ fontSize: 12, color: '#6f6f6f' }}>{t('24시간 내 알람 없음')}</div>}
+          {store.alerts.slice(0, 8).map(a => (
+            <button key={a.id} onClick={() => {
+              // Focus the rack in the scene AND open the workbench: the 3D view
+              // answers "where", the workbench answers "why and what now".
+              const dev = store.assets.find(x => devId(x.id) === devId(a.device_id));
+              if (dev?.rack) ledgerRef.current?.focus(dev.rack);
+              dispatchEvent(new CustomEvent('cflex:open-alarm', { detail: {
+                id: a.id, priority: a.priority, message: a.message,
+                device: a.device_label || a.device_id, deviceId: devId(a.device_id),
+                metric: a.metric, value: a.value ?? null, threshold: a.threshold ?? null, at: a.received_at,
+              } }));
+            }} style={{ display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', padding: '7px 9px', marginBottom: 6, background: '#1f1f1f', border: 0, borderLeft: `3px solid ${PRI[a.priority] || '#8d8d8d'}`, color: '#f4f4f4', fontFamily: 'inherit', fontSize: 12, lineHeight: 1.4 }}>
+              <div><b style={{ color: PRI[a.priority] || '#8d8d8d' }}>{a.priority}</b>{' '}
+                <span className="mono" style={{ color: '#8d8d8d' }}>{hhmm(a.received_at)}</span> · <b>{a.device_label || a.device_id}</b></div>
+              <div style={{ color: '#c6c6c6' }}>{a.message}</div>
+            </button>
+          ))}
+        </div>}
         {scene === 'kmx' && <div style={{ padding: '12px 14px', borderTop: '1px solid #262626' }}>
           <div style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em', marginBottom: 8 }}>알람 {alarms.length} · 클릭하면 3D 이동</div>
           {alarms.map(al => <div key={al.id} onClick={() => ledgerRef.current?.focus(al.object)} style={{ cursor: 'pointer', padding: '7px 9px', marginBottom: 6, background: '#1f1f1f', borderLeft: `3px solid ${PRI[al.priority]}`, fontSize: 12, lineHeight: 1.4 }}><div><b style={{ color: PRI[al.priority] }}>{al.priority}</b> <span style={{ color: '#8d8d8d' }}>{al.received_at}</span> · <b>{al.object}</b></div><div style={{ color: '#c6c6c6' }}>{al.message}</div></div>)}

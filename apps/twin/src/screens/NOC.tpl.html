@@ -108,12 +108,9 @@
   <footer style="border-top:1px solid #1f2a3d;display:flex;align-items:center;padding:0 36px;gap:24px;overflow:hidden;position:relative;background:rgba(7,10,16,.9)">
     <span style="font-size:12px;letter-spacing:.14em;color:#8fa3c4;font-weight:600;white-space:nowrap">실시간 알람</span>
     <div style="white-space:nowrap;overflow:hidden;font-size:14px;flex:1">
-      <span class="tick"><span class="mono" style="background:#fa4d56;color:#fff;padding:2px 7px;font-size:11px;font-weight:700">P1</span><span class="mono" style="color:#8fa3c4">14:31</span>KUS-UPS-03 배터리 전압 25.1 V</span>
-      <span class="tick"><span class="mono" style="background:#fa4d56;color:#fff;padding:2px 7px;font-size:11px;font-weight:700">P1</span><span class="mono" style="color:#8fa3c4">14:28</span>HMA-UPS-12 입력 상실 → 14:36 복귀</span>
-      <span class="tick"><span class="mono" style="background:#f1c21b;color:#161616;padding:2px 7px;font-size:11px;font-weight:700">P2</span><span class="mono" style="color:#8fa3c4">14:20</span>HMA-CRAC-02 팬 68% · 하위 4건 묶음</span>
-      <span class="tick"><span class="mono" style="background:#f1c21b;color:#161616;padding:2px 7px;font-size:11px;font-weight:700">P2</span><span class="mono" style="color:#8fa3c4">11:02</span>KMX-LEAK-01 Zone 3 누수 감지</span>
-      <span class="tick"><span class="mono" style="background:#393939;color:#f4f4f4;padding:2px 7px;font-size:11px;font-weight:700">P3</span><span class="mono" style="color:#8fa3c4">13:58</span>HMA-UPS-05 부하 55%</span>
+      <sc-for list="{{ticker}}" as="a" hint-placeholder-count="5"><button class="tick alarm-open" data-alarm="{{a.alertId}}" data-pri="{{a.p}}" data-msg="{{a.msg}}" data-dev="{{a.dev}}" data-devid="{{a.devId}}" data-metric="{{a.metric}}" data-value="{{a.rawValue}}" data-threshold="{{a.rawThreshold}}" data-at="{{a.at}}" style="border:0;background:none;color:inherit;font-family:inherit;font-size:inherit;cursor:pointer"><span class="mono" style="background:{{a.bg}};color:{{a.fg}};padding:2px 7px;font-size:11px;font-weight:700">{{a.p}}</span><span class="mono" style="color:#8fa3c4">{{a.t}}</span>{{a.dev}} {{a.msg}}</button></sc-for>
+      <sc-if value="{{tickerEmpty}}"><span class="tick" style="color:#8fa3c4">24시간 내 알람 없음</span></sc-if>
     </div>
-    <span class="mono" style="font-size:12px;color:#8fa3c4;white-space:nowrap">중복 제거 41 → 8 · AI 요약 14:35</span>
+    <span class="mono" style="font-size:12px;color:#8fa3c4;white-space:nowrap">{{tickerSummary}}</span>
   </footer>
 </div>

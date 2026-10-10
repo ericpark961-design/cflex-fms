@@ -183,7 +183,7 @@
               <sc-for list="{{hist}}" as="h" hint-placeholder-count="6">
                 <tr>
                   <td class="td"><span class="badge" style="background:{{h.bg}};color:{{h.fg}}">{{h.p}}</span></td>
-                  <td class="td">{{h.msg}}</td>
+                  <td class="td"><button class="alarm-open" data-alarm="{{h.alertId}}" data-pri="{{h.p}}" data-msg="{{h.msg}}" data-dev="{{h.dev}}" data-devid="{{h.devId}}" data-metric="{{h.rawMetric}}" data-value="{{h.rawValue}}" data-threshold="{{h.rawThreshold}}" data-at="{{h.at}}" style="background:none;border:0;padding:0;color:#e0e0e0;cursor:pointer;font-family:inherit;font-size:inherit;text-align:left">{{h.msg}}</button></td>
                   <td class="td mono" style="color:#c6c6c6">{{h.metric}}</td>
                   <td class="td mono">{{h.val}}</td>
                   <td class="td mono" style="color:#c6c6c6">{{h.start}}</td>

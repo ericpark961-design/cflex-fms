@@ -1,8 +1,12 @@
-// Global alarm modal. Opened by a `cflex:open-alarm` CustomEvent from anywhere —
-// alarm rows, the dashboard list, the 3D scene — never by changing the route.
+// Alarm detail: what the alarm says, what to do about it (asked of the copilot
+// with this alarm as context), and whether to raise a ticket.
 //
-// Three things in one place: what the alarm says, what to do about it (asked of
-// the copilot with this alarm as context), and whether to raise a ticket.
+// v5 replaced this modal with the workbench, which opens on the same
+// `cflex:open-alarm` event. The panel below is still the right thing to show
+// when there is no incident to open — a P3 alarm, or a server where
+// /v1/incidents is not yet deployed — so it is exported separately and the
+// workbench hosts it. Deleting it would have cost the working "AI 분석" and
+// "티켓 발행" buttons for exactly those cases.
 import React, { useEffect, useState } from 'react';
 import { store, ticketForAlert, createTicketFromAlert, askCopilot } from './data';
 import { t } from './i18n';
@@ -15,23 +19,13 @@ const fmtAgo = (ms) => {
   return s < 90 ? `${Math.round(s)}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`;
 };
 
-export default function AlarmModal() {
-  const [alarm, setAlarm] = useState(null);
+export function AlarmPanel({ alarm, onClose }) {
   const [ticket, setTicket] = useState(undefined);      // undefined = not looked up yet
   const [advice, setAdvice] = useState(null);
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState(null);
 
-  useEffect(() => {
-    const open = (e) => {
-      setAlarm(e.detail || null);
-      setTicket(undefined); setAdvice(null); setErr(null); setBusy(null);
-    };
-    addEventListener('cflex:open-alarm', open);
-    const esc = (e) => { if (e.key === 'Escape') setAlarm(null); };
-    addEventListener('keydown', esc);
-    return () => { removeEventListener('cflex:open-alarm', open); removeEventListener('keydown', esc); };
-  }, []);
+  useEffect(() => { setTicket(undefined); setAdvice(null); setErr(null); setBusy(null); }, [alarm?.id]);
 
   // Does this alarm already have a ticket? Asked once, so the button can say
   // "open the ticket" instead of silently raising a second one.
@@ -45,7 +39,7 @@ export default function AlarmModal() {
   if (!alarm) return null;
 
   const dev = store.assets.find(a => String(a.id) === String(alarm.deviceId)) || null;
-  const close = () => setAlarm(null);
+  const close = () => onClose?.();
 
   const ask = async () => {
     setBusy('advice'); setErr(null);
@@ -78,18 +72,9 @@ export default function AlarmModal() {
   });
 
   return (
-    <div onClick={close} role="dialog" aria-modal="true" aria-label={t('알람 상세')}
-      style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.6)', display: 'grid', placeItems: 'center', padding: 20 }}>
-      <div onClick={e => e.stopPropagation()}
-        style={{ width: 'min(680px, 100%)', maxHeight: '86vh', overflowY: 'auto', background: '#262626', border: '1px solid #393939', color: '#f4f4f4', fontFamily: '"IBM Plex Sans KR","IBM Plex Sans",sans-serif' }}>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid #393939' }}>
-          <span style={{ background: PRI[alarm.priority] || '#8d8d8d', color: alarm.priority === 'P2' ? '#161616' : '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px' }}>{alarm.priority}</span>
-          <b style={{ fontSize: 14 }}>{alarm.message}</b>
-          <button onClick={close} aria-label={t('닫기')} style={{ marginLeft: 'auto', background: 'none', border: 0, color: '#8d8d8d', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
-        </div>
-
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ color: '#f4f4f4' }}>
+      <div>
+        <div style={{ padding: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
             {[[t('장치'), alarm.device || '—'], [t('메트릭'), alarm.metric || '—'],
               [t('값 / 임계'), alarm.value != null ? `${alarm.value} / ${alarm.threshold ?? '—'}` : '—'],
@@ -146,9 +131,35 @@ export default function AlarmModal() {
 
           <div style={{ display: 'flex', gap: 8 }}>
             <a href={`#/device?id=${alarm.deviceId || ''}`} onClick={close} style={{ ...btn(false), textDecoration: 'none', display: 'inline-block' }}>{t('장치 상세 →')}</a>
-            <button onClick={close} style={{ ...btn(false), marginLeft: 'auto' }}>{t('닫기')}</button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * The standalone modal, kept for any entry point that wants alarm detail
+ * without the incident loop. App.jsx now mounts <Workbench/> instead, which
+ * hosts AlarmPanel itself when there is no incident.
+ */
+export default function AlarmModal() {
+  const [alarm, setAlarm] = useState(null);
+  useEffect(() => {
+    const open = (e) => setAlarm(e.detail || null);
+    const esc = (e) => { if (e.key === 'Escape') setAlarm(null); };
+    addEventListener('cflex:open-alarm', open);
+    addEventListener('keydown', esc);
+    return () => { removeEventListener('cflex:open-alarm', open); removeEventListener('keydown', esc); };
+  }, []);
+  if (!alarm) return null;
+  return (
+    <div onClick={() => setAlarm(null)} role="dialog" aria-modal="true" aria-label={t('알람 상세')}
+      style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.6)', display: 'grid', placeItems: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ width: 'min(680px, 100%)', maxHeight: '86vh', overflowY: 'auto', background: '#262626', border: '1px solid #393939', padding: 16, fontFamily: '"IBM Plex Sans KR","IBM Plex Sans",sans-serif' }}>
+        <AlarmPanel alarm={alarm} onClose={() => setAlarm(null)} />
       </div>
     </div>
   );

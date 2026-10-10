@@ -248,7 +248,15 @@ export async function deviceData(id, _fellBack = false, range = '24h') {
   };
   const ranges = DEVICE_RANGES.map(r => ({ ...r, bg: r.key === range ? '#393939' : 'transparent' }));
 
-  const hist = a && a._alerts.length ? a._alerts.map(x => ({ p: x.priority, ...(PR[x.priority] || PR.P4), msg: x.message, metric: x.metric || '—', val: x.value != null ? `${x.value} / ${x.threshold ?? '—'}` : '—', start: hhmm(x.received_at), end: '—', who: '—' })) : base.hist;
+  // The alarm-history rows carry the same identifiers the dashboard and alarm
+  // centre rows do, so a click here opens the one workbench (v5 §4).
+  const hist = a && a._alerts.length ? a._alerts.map(x => ({
+    p: x.priority, ...(PR[x.priority] || PR.P4), msg: x.message,
+    metric: x.metric || '—', val: x.value != null ? `${x.value} / ${x.threshold ?? '—'}` : '—',
+    start: hhmm(x.received_at), end: '—', who: '—',
+    alertId: x.id, dev: a.label || devId(a.id), devId: devId(a.id),
+    rawMetric: x.metric || '', rawValue: x.value ?? '', rawThreshold: x.threshold ?? '', at: x.received_at,
+  })) : base.hist;
   // Control buttons only for actions this user is actually allowed to run —
   // a button that always answers "권한 없음" is worse than no button.
   const actions = (aux.actions || []).filter(x => x.allowed && !x.destructive)
@@ -379,9 +387,24 @@ export function nocData() {
       color: C[key], glow: `${C[key]}33`,
     };
   });
+  // The wall's ticker was hard-coded sample alarms. It now runs on the real
+  // alert feed and each entry opens the workbench, which is what §4 asks of
+  // every alarm surface. An empty feed shows one quiet row, not invented ones.
+  const ticker = store.alerts.slice(0, 12).map(x => ({
+    p: x.priority, ...(PR[x.priority] || PR.P4),
+    t: hhmm(x.received_at), msg: x.message,
+    dev: x.device_label || x.device_id, devId: devId(x.device_id),
+    alertId: x.id, metric: x.metric || '', rawValue: x.value ?? '', rawThreshold: x.threshold ?? '',
+    at: x.received_at,
+  }));
   return {
     ...base, ...meData(), cbus: cbus(), kpi: k,
     sites: sites.length ? sites : base.sites,
+    ticker,
+    tickerEmpty: !ticker.length,
+    tickerSummary: ticker.length
+      ? `${t('활성 알람')} ${ticker.length}${store.alerts.length > ticker.length ? ` / ${store.alerts.length}` : ''}`
+      : t('24시간 내 알람 없음'),
     siteSummary: sites.length ? `사이트 ${sites.length} · UPS ${sites.reduce((n, x) => n + (x.ups || 0), 0)}` : '',
     clock: new Date().toLocaleTimeString('en-GB', { hour12: false }),
   };

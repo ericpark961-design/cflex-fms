@@ -12,10 +12,10 @@ import { api, lang, tx, cbu as globalCbu } from './theme';
 import { devId } from './ids';
 import { mountCopilot } from './copilot';
 import { t } from './i18n';
-import { mountCbuBar, CbuBar } from './cbubar';
+import { mountCbuBar } from './cbubar';
 import TwinScreen from './TwinScreen';
 import MapScreen from './MapScreen';
-import AlarmModal from './AlarmModal';
+import Workbench from './Workbench';
 
 // ---------- hash router
 function useRoute() {
@@ -119,14 +119,17 @@ export default function App() {
     root.querySelectorAll('form').forEach(f => { if (!f.dataset.wired) f.addEventListener('submit', e => { e.preventDefault(); location.hash = '#/powerchain?panel=copilot'; }); });
     if (route.q.panel === 'copilot') root.querySelector('#copilot')?.scrollIntoView({ behavior: 'smooth' });
   }, [route.q.panel, route.q.id]);
-  const withModal = (el) => <>{el}<AlarmModal /></>;
+  const withModal = (el) => <>{el}<Workbench /></>;
   if (!ready) return <div style={{ minHeight: '100vh', background: '#161616', color: '#8d8d8d', display: 'grid', placeItems: 'center', fontFamily: 'IBM Plex Sans KR, sans-serif' }}>{t('C-Flex FMS 2.0 불러오는 중…')}</div>;
   const p = route.path;
+  // #/incident/:id is the link a dispatched engineer opens — the workbench
+  // renders full-screen over the alarm centre behind it.
+  if (p === 'incident') { const d = alarmsData(null); return withModal(<Screen name="Alarms" html={alarmsTpl} data={d} onReady={wire} />); }
   if (p === 'map') return withModal(<MapScreen />);
   if (p === 'twin') return withModal(<TwinScreen q={route.q} tick={tick} />);
-  if (p === 'wall') return <WallScreen data={nocData()} />;
-  if (p === 'device') return <><Screen name="Device" html={deviceTpl} data={devData} onReady={wire} /><SampleBadge on={!!devData?.sample} /><SampleBadge on={!devData?.sample} text={t('AI 예측·RCA는 Phase 2 샘플')} /></>;
+  if (p === 'wall') return withModal(<WallScreen data={nocData()} />);
+  if (p === 'device') return withModal(<><Screen name="Device" html={deviceTpl} data={devData} onReady={wire} /><SampleBadge on={!!devData?.sample} /><SampleBadge on={!devData?.sample} text={t('AI 예측·RCA는 Phase 2 샘플')} /></>);
   if (p === 'alarms') { const d = alarmsData(route.q.cbu || (globalCbu() === 'all' ? null : globalCbu())); return withModal(<><Screen name="Alarms" html={alarmsTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>); }
-  if (p === 'powerchain') return <><Screen name="PowerChain" html={powerTpl} data={powerData()} onReady={wire} /><SampleBadge on text={t('전력체인·코파일럿 · Phase 3 샘플')} /></>;
+  if (p === 'powerchain') return withModal(<><Screen name="PowerChain" html={powerTpl} data={powerData()} onReady={wire} /><SampleBadge on text={t('전력체인·코파일럿 · Phase 3 샘플')} /></>);
   const d = mainData(); return withModal(<><Screen name="Main" html={mainTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>);
 }
