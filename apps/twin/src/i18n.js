@@ -298,7 +298,7 @@ export const EN = {
   '랙을 클릭하면 장치 상세가 표시된다.': 'Click a rack for device detail.',
   '장치 상세 →': 'Device detail →', '배터리': 'Battery', '부하': 'Load', '런타임': 'Runtime',
   'DEMO · 샘플 데이터': 'DEMO · sample data', 'DEMO · KMX 설계 샘플': 'DEMO · KMX design sample',
-  'AI 예측·RCA·추세는 Phase 2 샘플': 'AI forecast, RCA and trends are Phase 2 samples',
+  'AI 예측·RCA는 Phase 2 샘플': 'AI forecast and RCA are Phase 2 samples',
   '전력체인·코파일럿 · Phase 3 샘플': 'Power chain and copilot · Phase 3 sample',
   '← 대시보드': '← Dashboard',
   '미수집 · 수집기 연결 대기': 'Not collected · waiting for a collector',
