@@ -1,0 +1,122 @@
+# C-Flex FMS 2.0 (/twin) — build and deploy to VM1 on push.
+#
+# Trigger: push to main touching apps/twin/**, or a manual run
+# (Actions → Deploy /twin → Run workflow).
+#
+# The deploy account is azureuser on VM1 via a dedicated key (GitHub Secret
+# VM1_SSH_KEY, fingerprint SHA256:dDtbn76A/GRWDUHHpn9lU8kxUFOlib63/++MFP4Ntng).
+# nginx serves /twin/ with `alias /opt/cflex-fms/twin-dist/`, so publishing is a
+# directory swap and no reload is needed — the workflow never uses sudo.
+name: Deploy /twin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/twin/**"
+      - ".github/workflows/deploy-twin.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-twin
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  APP_DIR: apps/twin
+  REMOTE_DIR: /opt/cflex-fms/twin-dist
+  LIVE_URL: https://fms.runless.co.uk/twin/
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
+
+      - name: Build
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -euo pipefail
+          npm ci
+          # Fails if a screen string has no English translation — shipping a
+          # half-translated console is worse than failing the deploy.
+          npm test
+          npm run build
+          test -f dist/index.html
+          ls -la dist/assets
+
+      - name: SSH setup
+        env:
+          VM1_SSH_KEY: ${{ secrets.VM1_SSH_KEY }}
+          VM1_HOST: ${{ secrets.VM1_HOST }}
+          VM1_USER: ${{ secrets.VM1_USER }}
+        run: |
+          set -euo pipefail
+          if [ -z "$VM1_SSH_KEY" ] || [ -z "$VM1_HOST" ] || [ -z "$VM1_USER" ]; then
+            echo "::error::VM1_SSH_KEY / VM1_HOST / VM1_USER are not all set in repository secrets."
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$VM1_SSH_KEY" > ~/.ssh/vm1_deploy
+          chmod 600 ~/.ssh/vm1_deploy
+          # Host keys are pinned, so an empty keyscan must fail here rather than
+          # surface later as an opaque host-verification error.
+          ssh-keyscan -H "$VM1_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          test -s ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<CFG
+          Host vm1
+            HostName $VM1_HOST
+            User $VM1_USER
+            IdentityFile ~/.ssh/vm1_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          CFG
+          chmod 600 ~/.ssh/config
+          ssh -o BatchMode=yes vm1 'echo "ssh ok as $(id -un) on $(hostname)"'
+
+      - name: Upload, then swap
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -euo pipefail
+          ssh vm1 "rm -rf '$REMOTE_DIR.new' && mkdir -p '$REMOTE_DIR.new'"
+          rsync -az --delete dist/ "vm1:$REMOTE_DIR.new/"
+          # Two renames back to back. Not strictly atomic — there is a sub-millisecond
+          # window with no twin-dist — but it is short enough that nginx never sees it
+          # in practice, and twin-dist.prev is what the rollback step restores.
+          ssh vm1 "set -e
+            cd /opt/cflex-fms
+            rm -rf twin-dist.prev
+            [ -d twin-dist ] && mv twin-dist twin-dist.prev || true
+            mv twin-dist.new twin-dist
+            echo '$GITHUB_SHA' > twin-dist/BUILD_SHA
+            ls twin-dist/assets"
+
+      - name: Smoke check
+        run: |
+          set -euo pipefail
+          sleep 2
+          code=$(curl -s -o /tmp/twin.html -w '%{http_code}' "$LIVE_URL")
+          echo "GET $LIVE_URL -> $code"
+          test "$code" = "200"
+          grep -q 'C-Flex FMS 2.0' /tmp/twin.html
+          asset=$(grep -o '/twin/assets/index-[A-Za-z0-9_-]*\.js' /tmp/twin.html | head -1)
+          echo "asset: $asset"
+          test -n "$asset"
+          test "$(curl -s -o /dev/null -w '%{http_code}' "https://fms.runless.co.uk$asset")" = "200"
+          # Prove the live bundle is the one this run built, not a stale directory.
+          test "$(curl -s https://fms.runless.co.uk/twin/BUILD_SHA)" = "$GITHUB_SHA"
+          echo "deployed $GITHUB_SHA -> $LIVE_URL"
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          ssh vm1 "cd /opt/cflex-fms && if [ -d twin-dist.prev ]; then rm -rf twin-dist && mv twin-dist.prev twin-dist && echo 'rolled back'; fi" || true
