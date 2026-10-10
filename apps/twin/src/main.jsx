@@ -1,6 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
+import { lang } from './theme'
+// Keep <html lang> in step with the tx()/t() language.
+document.documentElement.lang = lang();
 const _fetch = window.fetch.bind(window);
 window.fetch = async (...a) => {
   const r = await _fetch(...a);

@@ -10,7 +10,10 @@ const look = (scope, path) => {
   for (const s of scope) { if (s && parts[0] in s) { let v = s; for (const p of parts) v = v == null ? undefined : v[p]; return v; } }
   return undefined;
 };
-const sub = (str, scope) => str.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (m, p) => { const v = look(scope, p); return v == null ? '' : String(v); });
+// Interpolated values are translated too: the sample data in screens/*.logic.js is Korean.
+const sub = (str, scope) => str.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (m, p) => { const v = look(scope, p); return v == null ? '' : t(String(v)); });
+import { t, tNode } from './i18n';
+
 // The HTML parser foster-parents unknown elements out of <table>/<tbody>: an
 // <sc-for> written inside a <tbody> is moved before the table and loses its
 // children, while the <tr> it wrapped is parsed as a literal row. The alarm centre
@@ -31,7 +34,12 @@ const asTemplates = (html) => html
 const expand = (nodes, frag, scope) => nodes.forEach(t => { const c = t.cloneNode(true); frag.appendChild(c); walk(c, scope); });
 
 function walk(node, scope) {
-  if (node.nodeType === 3) { if (node.nodeValue.includes('{{')) node.nodeValue = sub(node.nodeValue, scope); return; }
+  if (node.nodeType === 3) {
+    // Translate first — dictionary keys are the raw template text, {{path}} included.
+    node.nodeValue = tNode(node.nodeValue);
+    if (node.nodeValue.includes('{{')) node.nodeValue = sub(node.nodeValue, scope);
+    return;
+  }
   if (node.nodeType !== 1) return;
   const tag = node.tagName.toLowerCase();
   if (tag === 'template' && node.hasAttribute('data-sc-for')) {
@@ -47,7 +55,12 @@ function walk(node, scope) {
     expand(Array.from(node.content.childNodes), frag, scope);
     node.replaceWith(frag); return;
   }
-  for (const a of Array.from(node.attributes)) if (a.value.includes('{{')) node.setAttribute(a.name, sub(a.value, scope));
+  for (const a of Array.from(node.attributes)) {
+    let v = a.value;
+    if (a.name === 'placeholder' || a.name === 'title' || a.name === 'aria-label') v = t(v);
+    if (v.includes('{{')) v = sub(v, scope);
+    if (v !== a.value) node.setAttribute(a.name, v);
+  }
   Array.from(node.childNodes).forEach(c => walk(c, scope));
 }
 export function render(container, html, data) {

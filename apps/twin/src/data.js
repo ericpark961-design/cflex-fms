@@ -2,6 +2,7 @@
 // Rule: anything the API provides overrides the sample; AI/prediction/twin figures stay sample until Phase 2/3 APIs exist.
 import { api, withCbu, cbu as getCbu } from './theme';
 import { devId } from './ids';
+import { t } from './i18n';
 import * as Main from './screens/Main.logic.js';
 import * as Device from './screens/Device.logic.js';
 import * as Alarms from './screens/Alarms.logic.js';
@@ -11,7 +12,8 @@ import { evalLogic } from './tpl';
 
 const OK = '#42be65', WARN = '#f1c21b', CRIT = '#fa4d56', NA = '#6f6f6f';
 const SC = { ok: OK, warn: WARN, critical: CRIT, nodata: NA, unreachable: NA, unknown: NA };
-const SL = { ok: '정상', warn: '경고', critical: '위험', nodata: '데이터없음', unreachable: '데이터없음', unknown: '데이터없음' };
+const SL = { ok: () => t('정상'), warn: () => t('경고'), critical: () => t('위험'), nodata: () => t('데이터없음'), unreachable: () => t('데이터없음'), unknown: () => t('데이터없음') };
+const slabel = (s) => (SL[s] || SL.unknown)();
 const PR = { P1: { bg: '#fa4d56', fg: '#fff' }, P2: { bg: '#f1c21b', fg: '#161616' }, P3: { bg: '#393939', fg: '#f4f4f4' }, P4: { bg: '#393939', fg: '#c6c6c6' } };
 export const hhmm = (ms) => ms ? new Date(ms).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '—';
 const pct = (n, t) => t ? `${Math.max(2, Math.round((n / t) * 100))}%` : '0%';
@@ -40,8 +42,8 @@ export function mainData() {
   const base = evalLogic(Main.source, Main.props); const k = kpi();
   const assets = store.assets;
   const groups = Object.values(assets.reduce((g, a) => { (g[a.cbu] = g[a.cbu] || { name: a.cbu, n: 0, units: [] }); g[a.cbu].n++; g[a.cbu].units.push({ id: a.label, devId: a.id, color: SC[a.status] || NA }); return g; }, {})).map(g => ({ ...g, w: `${Math.min(300, Math.ceil(Math.sqrt(g.n)) * 2 * 25 + 60)}px` }));
-  const batt = [...assets].filter(a => a.battery_pct != null).sort((a, b) => (a.health_score ?? 100) - (b.health_score ?? 100)).slice(0, 5).map(a => ({ id: a.label, devId: a.id, w: `${Math.max(5, Math.min(100, a.health_score ?? 80))}%`, color: SC[a.status] || OK, eol: (a.health_score ?? 80) < 50 ? '교체 권고' : (a.health_score ?? 80) < 70 ? '관찰' : '양호' }));
-  const sites = (store.summary?.cbu_list || []).map(c => ({ name: c.cbu, addr: `${c.total} UPS · 정상 ${c.ok ?? '—'} · 경고 ${c.warn ?? 0} · 위험 ${c.critical ?? 0}`, ups: c.total, alarms: c.critical ? `${c.critical} 위험` : c.warn ? `${c.warn} 경고` : '정상', color: c.critical ? CRIT : c.warn ? WARN : OK }));
+  const batt = [...assets].filter(a => a.battery_pct != null).sort((a, b) => (a.health_score ?? 100) - (b.health_score ?? 100)).slice(0, 5).map(a => ({ id: a.label, devId: a.id, w: `${Math.max(5, Math.min(100, a.health_score ?? 80))}%`, color: SC[a.status] || OK, eol: t((a.health_score ?? 80) < 50 ? '교체 권고' : (a.health_score ?? 80) < 70 ? '관찰' : '양호') }));
+  const sites = (store.summary?.cbu_list || []).map(c => ({ name: c.cbu, addr: `${c.total} UPS · ${t('정상')} ${c.ok ?? '—'} · ${t('경고')} ${c.warn ?? 0} · ${t('위험')} ${c.critical ?? 0}`, ups: c.total, alarms: c.critical ? `${c.critical} ${t('위험')}` : c.warn ? `${c.warn} ${t('경고')}` : t('정상'), color: c.critical ? CRIT : c.warn ? WARN : OK }));
   return { ...base, ...meData(), kpi: k, cbus: cbus(), groups: groups.length ? groups : base.groups, batt: batt.length ? batt : base.batt, sites: sites.length ? sites : base.sites, alarms: store.alerts.length ? alarmRows(6) : base.alarms, sample: !assets.length };
 }
 
@@ -64,8 +66,8 @@ export async function deviceData(id, _fellBack = false) {
   // sample screen, which the badge marks as sample.
   if (!a && id === undefined && !_fellBack) { const pick = [...store.assets].sort((x, y) => ({ critical: 0, warn: 1 }[x.status] ?? 2) - ({ critical: 0, warn: 1 }[y.status] ?? 2))[0]; if (pick) return deviceData(pick.id, true); }
   const d = a ? {
-    id: a.id, label: a.label, vendor: a.vendor || '', model: a.model || '', room: a.room || '', rack: a.rack || '', location: a.location || '', cbu: a.cbu || '', ip: a.ip || '—', serial: a.serial || '—', firmware: a.firmware || '—', poll: '30s · 서버 폴러',
-    stColor: SC[a.status] || NA, stLabel: SL[a.status] || '데이터없음', health: a.health_score ?? '—', healthPct: `${a.health_score ?? 0}%`,
+    id: a.id, label: a.label, vendor: a.vendor || '', model: a.model || '', room: a.room || '', rack: a.rack || '', location: a.location || '', cbu: a.cbu || '', ip: a.ip || '—', serial: a.serial || '—', firmware: a.firmware || '—', poll: t('30s · 서버 폴러'),
+    stColor: SC[a.status] || NA, stLabel: slabel(a.status), health: a.health_score ?? '—', healthPct: `${a.health_score ?? 0}%`,
     battery_pct: a.battery_pct ?? '—', load_pct: a.load_pct ?? '—', temp_c: a.temp_c ?? '—', runtime_min: a.runtime_min ?? '—', input_v: a.input_v ?? '—', output_v: a.output_v ?? '—', output_status: a.output_status || '—', battery_status: a.battery_status || '—',
     battOff: 188.5 * (1 - Math.min(100, a.battery_pct || 0) / 100), loadOff: 188.5 * (1 - Math.min(100, a.load_pct || 0) / 100), tempOff: 188.5 * (1 - Math.min(1, Math.max(0, ((a.temp_c || 20) - 15) / 30))), lastPoll: hhmm(a.last_polled),
   } : { id: '', label: 'KUS-UPS-03', vendor: 'APC', model: 'Smart-UPS SRT 5000VA', room: 'Irvine 서버실', rack: 'Rack A-04', location: '', cbu: 'KUS', ip: '10.40.12.33', serial: 'AS2318xxxxxx', firmware: 'UPS 14.3 / NMC 3.1', poll: '30s', stColor: CRIT, stLabel: 'P1 · 배터리 전압 저하', health: 61, healthPct: '61%', battery_pct: 71, load_pct: 48, temp_c: 27.1, runtime_min: 18, input_v: 118.2, output_v: 120.1, output_status: 'ONLINE', battery_status: 'NORMAL', battOff: 55, loadOff: 98, tempOff: 86, lastPoll: '14:31' };
@@ -75,7 +77,7 @@ export async function deviceData(id, _fellBack = false) {
 
 export function alarmsData() {
   const base = evalLogic(Alarms.source, Alarms.props);
-  const rows = store.alerts.length ? store.alerts.slice(0, 12).map(a => ({ p: a.priority, ...(PR[a.priority] || PR.P4), st: a.muted_until ? '점검모드' : '미확인', stc: a.muted_until ? '#8d8d8d' : '#ff832b', rowbg: a.priority === 'P1' ? 'rgba(250,77,86,.06)' : 'transparent', msg: a.message, sub: `${a.metric || ''}${a.recurring ? ' · 반복' : ''}`, dev: a.device_label || a.device_id, devId: devId(a.device_id), site: a.site || a.room || '', val: a.value != null ? `${a.value} / ${a.threshold ?? '—'}` : '—', t: hhmm(a.received_at), age: a.received_at ? `${Math.max(0, Math.round((Date.now() - a.received_at) / 60000))}m` : '—', agec: a.priority === 'P1' ? '#ff8389' : '#c6c6c6', who: '—' })) : base.rows;
+  const rows = store.alerts.length ? store.alerts.slice(0, 12).map(a => ({ p: a.priority, ...(PR[a.priority] || PR.P4), st: t(a.muted_until ? '점검모드' : '미확인'), stc: a.muted_until ? '#8d8d8d' : '#ff832b', rowbg: a.priority === 'P1' ? 'rgba(250,77,86,.06)' : 'transparent', msg: a.message, sub: `${a.metric || ''}${a.recurring ? ` · ${t('반복')}` : ''}`, dev: a.device_label || a.device_id, devId: devId(a.device_id), site: a.site || a.room || '', val: a.value != null ? `${a.value} / ${a.threshold ?? '—'}` : '—', t: hhmm(a.received_at), age: a.received_at ? `${Math.max(0, Math.round((Date.now() - a.received_at) / 60000))}m` : '—', agec: a.priority === 'P1' ? '#ff8389' : '#c6c6c6', who: '—' })) : base.rows;
   return { ...base, ...meData(), rows, sample: !store.alerts.length };
 }
 export function powerData() { const base = evalLogic(Power.source, Power.props); return { ...base, ...meData() }; }
