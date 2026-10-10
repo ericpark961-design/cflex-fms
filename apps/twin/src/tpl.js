@@ -59,12 +59,19 @@ function walk(node, scope) {
   // set — before interpolation runs — so a {{path}} in `points` logs a console
   // error even though the value is correct a tick later. Author them as
   // data-points and copy across once the value is real.
-  if (node.hasAttribute?.('data-points')) {
-    const v = sub(node.getAttribute('data-points'), scope);
-    node.removeAttribute('data-points');
-    if (v.trim()) node.setAttribute('points', v);
-    else node.remove();
-    return;
+  // SVG geometry attributes are validated by the parser the moment innerHTML is
+  // set — before interpolation runs — so a {{path}} in points/y1/cx logs a
+  // console error even though the value is correct a tick later. Author them as
+  // data-svg-<attr> and copy across once the value is real. An empty value drops
+  // the element rather than leaving a half-drawn shape.
+  const svgAttrs = Array.from(node.attributes || []).filter(a => a.name.startsWith('data-svg-'));
+  if (svgAttrs.length) {
+    for (const a of svgAttrs) {
+      const v = sub(a.value, scope);
+      node.removeAttribute(a.name);
+      if (!v.trim()) { node.remove(); return; }
+      node.setAttribute(a.name.slice('data-svg-'.length), v);
+    }
   }
   for (const a of Array.from(node.attributes)) {
     let v = a.value;

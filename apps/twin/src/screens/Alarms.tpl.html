@@ -107,17 +107,22 @@
 
           <!-- Rules -->
           <section style="background:#262626;padding:14px 16px">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h2 style="margin:0;font-size:15px;font-weight:600">적용 중인 알람 규칙 · HAEA 테넌트</h2><span style="font-size:11px;color:#8d8d8d">임계치 + 지속시간 + 중복제거 윈도우</span><button class="mini" style="margin-left:auto">규칙 편집</button></div>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;font-size:12px">
+              <span style="color:#8d8d8d;font-weight:600;letter-spacing:.04em">통보 채널</span>
+              <sc-for list="{{channels}}" as="ch">
+                <span style="display:inline-flex;align-items:center;gap:6px;background:#1f1f1f;padding:4px 9px"><i style="width:8px;height:8px;border-radius:50%;background:{{ch.color}};display:inline-block"></i>{{ch.name}} <span style="color:#8d8d8d">{{ch.note}}</span></span>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h2 style="margin:0;font-size:15px;font-weight:600">적용 중인 알람 규칙 · {{tenant}}</h2><span style="font-size:11px;color:#8d8d8d">임계치 + 지속시간 + 중복제거 윈도우</span><button class="mini" style="margin-left:auto">규칙 편집</button></div>
             <div style="overflow-x:auto">
               <table style="width:100%;border-collapse:collapse;min-width:720px">
                 <thead><tr><th class="th">메트릭</th><th class="th">P1</th><th class="th">P2</th><th class="th">P3</th><th class="th">지속</th><th class="th">중복제거</th><th class="th">자동 종료</th><th class="th">통보</th></tr></thead>
                 <tbody>
-                  <tr><td class="td mono">battery_v</td><td class="td mono" style="color:#ff8389">&lt; 26.0</td><td class="td mono" style="color:#f1c21b">&lt; 26.5</td><td class="td mono">&lt; 27.0</td><td class="td mono">60 s</td><td class="td mono">30 min</td><td class="td">복귀 후 5 min</td><td class="td">Teams · SMS · PagerDuty</td></tr>
-                  <tr><td class="td mono">output_status</td><td class="td mono" style="color:#ff8389">ON BATTERY</td><td class="td mono" style="color:#f1c21b">BYPASS</td><td class="td mono">—</td><td class="td mono">30 s</td><td class="td mono">15 min</td><td class="td">ONLINE 복귀</td><td class="td">Teams · SMS · 전화</td></tr>
-                  <tr><td class="td mono">temp_c</td><td class="td mono" style="color:#ff8389">&gt; 32</td><td class="td mono" style="color:#f1c21b">&gt; 28</td><td class="td mono">&gt; 26</td><td class="td mono">5 min</td><td class="td mono">60 min</td><td class="td">임계 −1°C</td><td class="td">Teams</td></tr>
-                  <tr><td class="td mono">runtime_min 추세</td><td class="td mono">—</td><td class="td mono" style="color:#f1c21b">−30% / 90d</td><td class="td mono">−15% / 90d</td><td class="td mono">일 1회 평가</td><td class="td mono">7 d</td><td class="td">—</td><td class="td">Teams · PM 큐</td></tr>
-                  <tr><td class="td mono">heartbeat</td><td class="td mono">—</td><td class="td mono" style="color:#f1c21b">&gt; 300 s</td><td class="td mono">&gt; 90 s</td><td class="td mono">—</td><td class="td mono">10 min</td><td class="td">복귀 즉시</td><td class="td">Teams</td></tr>
-                </tbody>
+                  <sc-for list="{{rules}}" as="ru">
+                    <tr><td class="td mono">{{ru.metric}}</td><td class="td mono" style="color:{{ru.color}}">{{ru.threshold}}</td><td class="td mono">{{ru.priority}}</td><td class="td mono">{{ru.duration}}</td><td class="td mono">{{ru.dedup}}</td><td class="td mono">{{ru.channels}}</td><td class="td">{{ru.state}}</td></tr>
+                  </sc-for>
+                  <sc-if value="{{rulesEmpty}}"><tr><td class="td" colspan="7" style="color:#8d8d8d">등록된 알람 규칙 없음</td></tr></sc-if>
+                  </tbody>
               </table>
             </div>
           </section>

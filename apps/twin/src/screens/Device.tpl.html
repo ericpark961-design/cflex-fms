@@ -37,8 +37,8 @@
         </div>
         <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
           <button class="ghost">임계치</button>
-          <button class="ghost">점검모드 1h</button>
-          <button class="ghost">자가진단 실행</button>
+          <button class="ghost dev-mute" data-device="{{deviceId}}" data-on="{{muted}}">점검모드 1h</button>
+          <sc-for list="{{actions}}" as="ac"><button class="ghost dev-action" data-device="{{deviceId}}" data-action="{{ac.key}}">{{ac.label}}</button></sc-for>
           <a href="#/powerchain?panel=copilot" class="btn" style="background:{{accent}};color:#fff;text-decoration:none">AI RCA</a>
         </div>
       </div>
@@ -104,30 +104,27 @@
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px">
               <h2 style="margin:0;font-size:15px;font-weight:600">배터리 전압 · 런타임 추세</h2>
               <div role="group" aria-label="구간" style="margin-left:auto;display:flex;border:1px solid #393939;font-size:12px">
-                <button class="ghost" style="border:0;padding:5px 10px;background:#393939">24h</button>
-                <button class="ghost" style="border:0;border-left:1px solid #393939;padding:5px 10px">7d</button>
-                <button class="ghost" style="border:0;border-left:1px solid #393939;padding:5px 10px">30d</button>
-                <button class="ghost" style="border:0;border-left:1px solid #393939;padding:5px 10px">1y</button>
+                <sc-for list="{{ranges}}" as="rg">
+                  <button class="ghost dev-range" data-range="{{rg.key}}" style="border:0;border-left:1px solid #393939;padding:5px 10px;background:{{rg.bg}}">{{rg.label}}</button>
+                </sc-for>
               </div>
             </div>
             <div style="display:flex;gap:18px;font-size:12px;color:#c6c6c6;margin-bottom:6px">
               <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#f1c21b"></span>배터리 전압 V</span>
               <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#4589ff"></span>런타임 min</span>
-              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;border-top:2px dashed #fa4d56"></span>P1 임계 26.0 V</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;border-top:2px dashed #fa4d56"></span>{{trend.thresholdLabel}}</span>
               <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:10px;background:rgba(250,77,86,.18)"></span>알람 구간</span>
             </div>
             <div style="position:relative;height:200px">
               <svg viewBox="0 0 800 200" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%" aria-hidden="true">
-                <rect x="690" y="0" width="110" height="200" fill="#fa4d56" fill-opacity="0.14"/>
                 <line x1="0" y1="50" x2="800" y2="50" stroke="#393939"/><line x1="0" y1="100" x2="800" y2="100" stroke="#393939"/><line x1="0" y1="150" x2="800" y2="150" stroke="#393939"/>
-                <line x1="0" y1="120" x2="800" y2="120" stroke="#fa4d56" stroke-dasharray="6 5"/>
-                <polyline points="0,70 60,71 120,70 180,72 240,73 300,72 360,75 420,78 480,80 540,86 600,94 660,108 700,124 740,136 800,142" fill="none" stroke="#f1c21b" stroke-width="2.4"/>
-                <polyline points="0,40 60,40 120,41 180,42 240,42 300,44 360,46 420,50 480,55 540,62 600,74 660,92 700,110 740,124 800,132" fill="none" stroke="#4589ff" stroke-width="2.4"/>
-                <circle cx="700" cy="124" r="4.5" fill="#fa4d56" stroke="#161616" stroke-width="2"/>
+                <line x1="0" data-svg-y1="{{trend.thresholdY}}" x2="800" data-svg-y2="{{trend.thresholdY}}" stroke="#fa4d56" stroke-dasharray="6 5"/>
+                <polyline data-svg-points="{{trend.batt}}" fill="none" stroke="#f1c21b" stroke-width="2.4"/>
+                <polyline data-svg-points="{{trend.runtime}}" fill="none" stroke="#4589ff" stroke-width="2.4"/>
               </svg>
-              <div class="mono" style="position:absolute;left:66%;top:8px;background:#0b0b0b;border:1px solid #fa4d56;padding:6px 10px;font-size:11px;line-height:1.5">14:31 P1 발생<br>25.1 V · RT 18 min</div>
+              <sc-if value="{{trend.empty}}"><div class="mono" style="position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);font-size:12px;color:#8d8d8d">{{trend.emptyWhy}}</div></sc-if>
             </div>
-            <div class="mono" style="display:flex;justify-content:space-between;font-size:10px;color:#8d8d8d;margin-top:6px"><span>어제 14:30</span><span>20:00</span><span>02:00</span><span>08:00</span><span>지금</span></div>
+            <div class="mono" style="display:flex;justify-content:space-between;font-size:10px;color:#8d8d8d;margin-top:6px"><span>{{trend.from}}</span><span>{{trend.points}}점 · {{trend.range}}</span><span>{{trend.to}}</span></div>
           </div>
         </section>
 
@@ -158,9 +155,10 @@
           </div>
 
           <div style="background:#262626;padding:16px 18px">
-            <div style="display:flex;align-items:center;gap:8px"><h2 style="margin:0;font-size:15px;font-weight:600">AI RCA</h2><span class="badge" style="background:#393939;color:#c6c6c6">14:32 생성</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><h2 style="margin:0;font-size:15px;font-weight:600">AI RCA</h2><span class="badge" style="background:#393939;color:#c6c6c6">{{ticketNo}}</span></div>
             <p style="font-size:13px;line-height:1.55;color:#e0e0e0;margin:10px 0 0">배터리 전압 저하는 외부 전원 이상이 아니라 <b>배터리 노후</b>가 원인으로 판단됨. 입력 전압은 정상 범위(118 V)이며 동일 시각 KUS 다른 UPS에 알람 없음. 런타임 감쇠 추세와 자가진단 결과(9/22 PASS, 마진 감소)가 일치.</p>
-            <div style="margin-top:10px;font-size:12px;color:#c6c6c6;line-height:1.6"><b style="color:#f4f4f4">권고</b> ① 부하 이전 없이 운전 가능(RT 18 min &gt; 전환 요구 6 min) ② 배터리 모듈 교체를 4주 내 수행 ③ 교체 전까지 P1 임계를 25.5 V로 임시 조정하고 점검모드 기록</div>
+            <sc-if value="{{rcaEmpty}}"><div style="margin-top:10px;font-size:12px;color:#8d8d8d">{{rcaNote}}</div></sc-if>
+            <sc-if value="{{rca}}"><div style="margin-top:10px;font-size:12px;color:#c6c6c6;line-height:1.6">{{rca.text}}<div style="margin-top:8px"><b style="color:#f4f4f4">권고</b> {{rca.actions}}</div><div class="mono" style="font-size:10px;color:#8d8d8d;margin-top:8px">{{rca.model}} · {{rca.ticket}}</div></div></sc-if>
           </div>
 
           <div style="background:#262626;padding:16px 18px">

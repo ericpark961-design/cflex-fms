@@ -7,7 +7,7 @@ import powerTpl from './screens/PowerChain.tpl.html?raw';
 import nocTpl from './screens/NOC.tpl.html?raw';
 import { render } from './tpl';
 import { buildLedgerScene } from './twin/LedgerScene';
-import { store, refresh, mainData, deviceData, alarmsData, powerData, nocData, heatFor, powerChain, powerChainObject, fleetLive, ackAlert } from './data';
+import { store, refresh, mainData, deviceData, alarmsData, powerData, nocData, heatFor, powerChain, powerChainObject, fleetLive, ackAlert, muteDevice, runControlAction } from './data';
 import { api, lang, tx } from './theme';
 import { devId } from './ids';
 import { mountCopilot } from './copilot';
@@ -62,9 +62,9 @@ function WallScreen({ data }) {
 }
 
 export default function App() {
-  const route = useRoute(); const [tick, setTick] = useState(0); const [ready, setReady] = useState(false); const [devData, setDevData] = useState(null);
+  const route = useRoute(); const [tick, setTick] = useState(0); const [ready, setReady] = useState(false); const [devData, setDevData] = useState(null); const [devRange, setDevRange] = useState('24h');
   useEffect(() => { api('/v1/me').then(async m => { if (!m || (!m.userId && !m.email)) { location.replace('/login'); return; } store.me = m; await refresh(); setReady(true); }); const t = setInterval(async () => { await refresh(); setTick(x => x + 1); }, 30000); return () => clearInterval(t); }, []);
-  useEffect(() => { if (!ready) return; if (route.path === 'device') deviceData(route.q.id).then(setDevData); }, [ready, route.path, route.q.id, tick]);
+  useEffect(() => { if (!ready) return; if (route.path === 'device') deviceData(route.q.id, false, devRange).then(setDevData); }, [ready, route.path, route.q.id, tick, devRange]);
   const wire = useCallback((root) => {
     root.querySelectorAll('.cbu-btn').forEach(b => b.addEventListener('click', async () => { localStorage.setItem('fms_cbu', b.dataset.cbu); await refresh(); setTick(x => x + 1); }));
     // The copilot form is a real request; every other form in the mockup is inert
@@ -97,6 +97,22 @@ export default function App() {
         value: d.value === '' ? null : d.value, threshold: d.threshold === '' ? null : d.threshold,
         at: Number(d.at) || null,
       } }));
+    }));
+    // Device detail: trend range, maintenance mode, control actions.
+    root.querySelectorAll('.dev-range').forEach(b => b.addEventListener('click', () => setDevRange(b.dataset.range)));
+    root.querySelectorAll('.dev-mute').forEach(b => b.addEventListener('click', async () => {
+      b.disabled = true;
+      await muteDevice(b.dataset.device, b.dataset.on === 'true' ? 0 : 60, '2.0 콘솔');
+      setTick(x => x + 1);
+    }));
+    root.querySelectorAll('.dev-action').forEach(b => b.addEventListener('click', async () => {
+      const was = b.textContent;
+      b.disabled = true; b.textContent = '실행 중…';
+      const r = await runControlAction(b.dataset.device, b.dataset.action);
+      // The result is reported on the button itself: a control action that
+      // silently did nothing is the worst outcome here.
+      b.textContent = r?.ok ? '요청됨' : (r?.status === 403 ? '권한 없음' : '실패');
+      setTimeout(() => { b.textContent = was; b.disabled = false; }, 2500);
     }));
     mountCopilot(root, { deviceId: route.q.id });
     root.querySelectorAll('form').forEach(f => { if (!f.dataset.wired) f.addEventListener('submit', e => { e.preventDefault(); location.hash = '#/powerchain?panel=copilot'; }); });

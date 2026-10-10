@@ -28,7 +28,7 @@ export async function refresh() {
   // A server without the v3 ledger endpoint simply has no topology; the 3D scene
   // then falls back to v2 placement for everything, which is the v2 behaviour.
   store.topology = t?.ok ? { rooms: t.rooms || [], unplaced: t.unplaced || [] } : null;
-  await fleetLive(store.fleet?.minutes || 60).catch(() => {});
+  await Promise.all([fleetLive(store.fleet?.minutes || 60), loadAlarmAux()].map(p => p.catch(() => {})));
   store.loadedAt = Date.now(); return store;
 }
 
@@ -126,6 +126,18 @@ export async function askCopilot(question, deviceId) {
   } catch { return { ok: false, status: 0 }; }
 }
 
+export async function runControlAction(deviceId, action) {
+  try {
+    const r = await fetch(`/v1/fms/devices/${devId(deviceId)}/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('cflex_token') || localStorage.getItem('token') || ''}` },
+      body: JSON.stringify({ action }),
+    });
+    const d = await r.json().catch(() => null);
+    return { ...(d || {}), status: r.status };
+  } catch { return { ok: false, status: 0 }; }
+}
+
 export const powerChain = (deviceId) => chain(`/v1/fms/power-chain/${devId(deviceId)}`, `d:${devId(deviceId)}`);
 export const powerChainObject = (objectId) => chain(`/v1/fms/power-chain/object/${objectId}`, `o:${objectId}`);
 const meData = () => ({ me: { name: store.me?.displayName || store.me?.name || '', email: store.me?.email || '' }, tenant: store.me?.tenantName || store.me?.tenant?.display_name || 'HAEA' });
@@ -174,30 +186,99 @@ export function mainData() {
 // `_fellBack` stops the "no id / fetch failed -> show the worst device" path from
 // recursing forever when the API is down: the retry would fail the same way and
 // pick the same device again.
-export async function deviceData(id, _fellBack = false) {
+export const DEVICE_RANGES = [
+  { key: '1h', label: '1h' }, { key: '24h', label: '24h' },
+  { key: '7d', label: '7d' }, { key: '30d', label: '30d' },
+];
+
+export async function deviceData(id, _fellBack = false, range = '24h') {
   const base = evalLogic(Device.source, Device.props);
   let a = null;
   // Alerts carry device_id as 'ups-41'; /v1/fms/assets/:id parseInt()s its argument,
   // so the prefix has to come off or the fetch 404s and the screen silently shows
   // whichever device the fallback picks instead.
   const wanted = devId(id);
-  if (wanted) { const r = await api(`/v1/fms/assets/${wanted}?range=24h`); if (r?.ok) a = { ...r.asset, _alerts: r.alerts || [], _metrics: r.metrics || [] }; }
+  if (wanted) { const r = await api(`/v1/fms/assets/${wanted}?range=${range}`); if (r?.ok) a = { ...r.asset, _alerts: r.alerts || [], _metrics: r.metrics || [], _thresholds: r.thresholds || null }; }
   // Fall back to the worst device only when no id was asked for at all — that is the
   // sidebar's bare "장치" link. An id that was supplied but did not resolve must NOT
   // silently show a different device: the sample root-cause cards link to
   // "#/device?id=" because they carry a label and no device id, and the alarm rows
   // would 404 if their 'ups-' prefix ever slipped through. Those fall through to the
   // sample screen, which the badge marks as sample.
-  if (!a && id === undefined && !_fellBack) { const pick = [...store.assets].sort((x, y) => ({ critical: 0, warn: 1 }[x.status] ?? 2) - ({ critical: 0, warn: 1 }[y.status] ?? 2))[0]; if (pick) return deviceData(pick.id, true); }
+  if (!a && id === undefined && !_fellBack) { const pick = [...store.assets].sort((x, y) => ({ critical: 0, warn: 1 }[x.status] ?? 2) - ({ critical: 0, warn: 1 }[y.status] ?? 2))[0]; if (pick) return deviceData(pick.id, true, range); }
   const d = a ? {
     id: a.id, label: a.label, vendor: a.vendor || '', model: a.model || '', room: a.room || '', rack: a.rack || '', location: a.location || '', cbu: a.cbu || '', ip: a.ip || '—', serial: a.serial || '—', firmware: a.firmware || '—', poll: t('30s · 서버 폴러'),
     stColor: SC[a.status] || NA, stLabel: slabel(a.status), health: a.health_score ?? '—', healthPct: `${a.health_score ?? 0}%`,
     battery_pct: a.battery_pct ?? '—', load_pct: a.load_pct ?? '—', temp_c: a.temp_c ?? '—', runtime_min: a.runtime_min ?? '—', input_v: a.input_v ?? '—', output_v: a.output_v ?? '—', output_status: a.output_status || '—', battery_status: a.battery_status || '—',
     battOff: 188.5 * (1 - Math.min(100, a.battery_pct || 0) / 100), loadOff: 188.5 * (1 - Math.min(100, a.load_pct || 0) / 100), tempOff: 188.5 * (1 - Math.min(1, Math.max(0, ((a.temp_c || 20) - 15) / 30))), lastPoll: hhmm(a.last_polled),
   } : { id: '', label: 'KUS-UPS-03', vendor: 'APC', model: 'Smart-UPS SRT 5000VA', room: 'Irvine 서버실', rack: 'Rack A-04', location: '', cbu: 'KUS', ip: '10.40.12.33', serial: 'AS2318xxxxxx', firmware: 'UPS 14.3 / NMC 3.1', poll: '30s', stColor: CRIT, stLabel: 'P1 · 배터리 전압 저하', health: 61, healthPct: '61%', battery_pct: 71, load_pct: 48, temp_c: 27.1, runtime_min: 18, input_v: 118.2, output_v: 120.1, output_status: 'ONLINE', battery_status: 'NORMAL', battOff: 55, loadOff: 98, tempOff: 86, lastPoll: '14:31' };
+  // Real trend curves from the metrics the endpoint already returns, with the
+  // device's own threshold line. No metrics means an empty chart and a reason —
+  // never an invented curve.
+  const m = a?._metrics || [];
+  const th = a?._thresholds || {};
+  const span = (key, pad = 0.08) => {
+    const v = m.map(p => p[key]).filter(x => x != null);
+    if (!v.length) return null;
+    let lo = Math.min(...v), hi = Math.max(...v);
+    if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
+    const p = (hi - lo) * pad;
+    return [lo - p, hi + p];
+  };
+  const battSpan = span('battery_pct') || [0, 100];
+  const rtSpan = span('runtime_min') || [0, 60];
+  const thrLine = (() => {
+    const crit = th.battery_pct?.critical;
+    if (crit == null || !m.length) return null;
+    const [lo, hi] = battSpan;
+    if (crit < lo || crit > hi) return null;                 // off-scale: drawing it would mislead
+    return (200 - ((crit - lo) / (hi - lo)) * 200).toFixed(1);
+  })();
+  const trend = {
+    batt: seriesPoints(m, 'battery_pct', battSpan[0], battSpan[1]),
+    runtime: seriesPoints(m, 'runtime_min', rtSpan[0], rtSpan[1]),
+    thresholdY: thrLine,
+    thresholdLabel: th.battery_pct?.critical != null ? `P1 임계 ${th.battery_pct.critical}` : '',
+    points: m.length,
+    empty: !m.length,
+    emptyWhy: '데이터 축적 중 · 수집 대기',
+    range,
+    from: m.length ? hhmm(m[0].ts) : '—',
+    to: m.length ? hhmm(m[m.length - 1].ts) : '—',
+  };
+  const ranges = DEVICE_RANGES.map(r => ({ ...r, bg: r.key === range ? '#393939' : 'transparent' }));
+
   const hist = a && a._alerts.length ? a._alerts.map(x => ({ p: x.priority, ...(PR[x.priority] || PR.P4), msg: x.message, metric: x.metric || '—', val: x.value != null ? `${x.value} / ${x.threshold ?? '—'}` : '—', start: hhmm(x.received_at), end: '—', who: '—' })) : base.hist;
-  return { ...base, ...meData(), d, hist, sample: !a };
+  // Control buttons only for actions this user is actually allowed to run —
+  // a button that always answers "권한 없음" is worse than no button.
+  const actions = (aux.actions || []).filter(x => x.allowed && !x.destructive)
+    .map(x => ({ key: x.key, label: x.label }));
+
+  // RCA comes from the device's open ticket. No ticket is not an error state.
+  const ticket = a ? (store.ticketsByDevice?.[devId(a.id)] || null) : null;
+  const rca = ticket?.rca_summary
+    ? { text: ticket.rca_summary, actions: ticket.rca_actions || '', model: ticket.rca_model || '', ticket: ticket.ticket_no }
+    : null;
+
+  return {
+    ...base, ...meData(), d, hist, trend, ranges, actions,
+    hasActions: !!actions.length,
+    rca, rcaEmpty: !rca,
+    rcaNote: ticket ? 'RCA 생성 전 — 티켓 ' + ticket.ticket_no : 'P1 알람 발생 시 자동 생성',
+    ticketNo: ticket?.ticket_no || '',
+    deviceId: a?.id ?? '', muted: !!a?.muted_until, sample: !a,
+  };
 }
+
+// Cached so the alarm screen can stay synchronous; refreshed by refresh().
+export const aux = { rules: null, channels: null, actions: null, sites: null };
+export async function loadAlarmAux() {
+  const [r, c, a, si] = await Promise.all([alarmRoutes(), channelsHealth(), controlActions(), sitesMap()]);
+  aux.rules = r.routes; aux.channels = c; aux.actions = a; aux.sites = si;
+  return aux;
+}
+
+const CH_NAME = { teams: 'Teams', sms: 'SMS', email: 'Email', line: 'LINE', phone: '전화' };
 
 export function alarmsData(cbuFilter = null) {
   const base = evalLogic(Alarms.source, Alarms.props);
@@ -206,8 +287,25 @@ export function alarmsData(cbuFilter = null) {
   const inScope = (a) => !cbuFilter || cbuOf.get(devId(a.device_id)) === cbuFilter;
   const scoped = store.alerts.filter(inScope);
   const rows = scoped.length ? scoped.slice(0, 12).map(a => ({ p: a.priority, ...(PR[a.priority] || PR.P4), st: t(a.muted_until ? '점검모드' : '미확인'), stc: a.muted_until ? '#8d8d8d' : '#ff832b', rowbg: a.priority === 'P1' ? 'rgba(250,77,86,.06)' : 'transparent', msg: a.message, sub: `${a.metric || ''}${a.recurring ? ` · ${t('반복')}` : ''}`, dev: a.device_label || a.device_id, devId: devId(a.device_id), alertId: a.id, metric: a.metric || '', rawValue: a.value ?? '', rawThreshold: a.threshold ?? '', at: a.received_at, site: a.site || a.room || '', val: a.value != null ? `${a.value} / ${a.threshold ?? '—'}` : '—', t: hhmm(a.received_at), age: a.received_at ? `${Math.max(0, Math.round((Date.now() - a.received_at) / 60000))}m` : '—', agec: a.priority === 'P1' ? '#ff8389' : '#c6c6c6', who: '—' })) : base.rows;
+  const rules = (aux.rules || []).map(r => ({
+    metric: r.metric, priority: r.priority,
+    threshold: r.threshold != null ? String(r.threshold) : '—',
+    duration: r.duration_s != null ? `${r.duration_s} s` : '—',
+    dedup: r.dedup_min != null ? `${r.dedup_min} min` : '—',
+    channels: r.channels || '—',
+    state: r.enabled ? '사용' : '중지',
+    color: r.priority === 'P1' ? '#ff8389' : r.priority === 'P2' ? '#f1c21b' : '#c6c6c6',
+  }));
+  // A channel that is configured but failing must look different from one that
+  // was never set up — an operator reading "Email ●" has to know which.
+  const channels = (aux.channels || []).map(c => ({
+    name: CH_NAME[c.channel] || c.channel,
+    color: !c.configured ? '#525252' : c.ok ? '#42be65' : '#fa4d56',
+    note: !c.configured ? '미설정' : c.ok ? '정상' : (c.last_error ? '오류' : '응답 없음'),
+  }));
+
   return {
-    ...base, ...meData(), rows,
+    ...base, ...meData(), rows, rules, rulesEmpty: !rules.length, channels,
     cbuFilter: cbuFilter || '',
     filterLabel: cbuFilter ? `${cbuFilter} · ${scoped.length}건` : '',
     sample: !scoped.length,
@@ -267,4 +365,25 @@ export function powerData() {
     chain: { tiers, empty: !tiers.length, emptyWhy: why },
   };
 }
-export function nocData() { const base = evalLogic(NOC.source, NOC.props); const k = kpi(); return { ...base, ...meData(), kpi: k, clock: new Date().toLocaleTimeString('en-GB', { hour12: false }) }; }
+export function nocData() {
+  const base = evalLogic(NOC.source, NOC.props);
+  const k = kpi();
+  const C = { crit: '#fa4d56', warn: '#f1c21b', ok: '#42be65', nodata: '#6f6f6f' };
+  const sites = (aux.sites || []).map(s => {
+    const key = s.critical > 0 ? 'crit' : s.warn > 0 ? 'warn' : (s.ok > 0 ? 'ok' : 'nodata');
+    return {
+      name: s.company || s.cbu,
+      sub: `${s.display || ''}${s.buildings?.length ? ` · ${t0(s.buildings.length)}` : ''}`.trim(),
+      ups: s.total,
+      state: s.critical ? `${s.critical} 위험` : s.warn ? `${s.warn} 경고` : (s.ok ? '정상' : '데이터없음'),
+      color: C[key], glow: `${C[key]}33`,
+    };
+  });
+  return {
+    ...base, ...meData(), kpi: k,
+    sites: sites.length ? sites : base.sites,
+    siteSummary: sites.length ? `사이트 ${sites.length} · UPS ${sites.reduce((n, x) => n + (x.ups || 0), 0)}` : '',
+    clock: new Date().toLocaleTimeString('en-GB', { hour12: false }),
+  };
+}
+const t0 = (n) => `건물 ${n}`;
