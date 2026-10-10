@@ -1,0 +1,119 @@
+<div style="width:1920px;height:1080px;box-sizing:border-box;background:radial-gradient(1200px 700px at 60% 40%,#0f1626 0%,#070a10 70%);color:#f4f4f4;font-family:'IBM Plex Sans KR','IBM Plex Sans',sans-serif;display:grid;grid-template-rows:84px minmax(0, 1fr) 64px;overflow:hidden;position:relative">
+
+  <!-- grid texture -->
+  <div aria-hidden="true" style="position:absolute;inset:0;background-image:linear-gradient(rgba(69,137,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(69,137,255,.06) 1px,transparent 1px);background-size:48px 48px;pointer-events:none"></div>
+
+  <!-- Header -->
+  <header style="display:flex;align-items:center;gap:28px;padding:0 36px;border-bottom:1px solid #1f2a3d;position:relative">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="width:40px;height:40px;background:{{accent}};display:grid;place-items:center;font-weight:700;font-size:20px;color:#fff">C</div>
+      <div><div style="font-size:22px;font-weight:700;letter-spacing:.02em">C-Flex FMS <span style="color:#78a9ff;font-size:14px;font-weight:600">2.0</span> · 통합 관제 상황판</div><div style="font-size:12px;color:#8fa3c4;letter-spacing:.1em">RINGON SERVICE · TCI · RUNLESS DATACENTER OPS · 24×7 MANAGED SERVICE</div></div>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:36px">
+      <div style="text-align:right"><div class="cap">전체 자산</div><div class="big" style="font-size:30px">{{kpi.total}} <span style="font-size:13px;color:#8fa3c4;font-weight:500">UPS · CRAC 6 · 누수 1</span></div></div>
+      <div style="text-align:right"><div class="cap">가용성 (30d)</div><div class="big" style="font-size:30px;color:#42be65">99.98%</div></div>
+      <div style="text-align:right"><div class="cap">현지 시각 · Irvine</div><div class="big" style="font-size:30px">{{clock}}</div></div>
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#42be65;border:1px solid #1f5c3a;padding:8px 12px"><span style="width:9px;height:9px;border-radius:50%;background:#42be65;box-shadow:0 0 0 5px rgba(66,190,101,.18)"></span>LIVE</span>
+    </div>
+  </header>
+
+  <!-- Body -->
+  <div style="display:grid;grid-template-columns:400px minmax(0, 1fr) 400px;gap:20px;padding:20px 36px;min-height:0;position:relative">
+
+    <!-- Left column -->
+    <div style="display:flex;flex-direction:column;gap:16px;min-height:0">
+      <section class="pnl" style="padding:18px 20px">
+        <div class="cap">상태 요약</div>
+        <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px;margin-top:12px">
+          <div style="background:rgba(250,77,86,.1);border:1px solid rgba(250,77,86,.4);padding:12px 14px"><div style="font-size:12px;color:#ff8389">위험 P1</div><div class="big" style="font-size:44px;color:#ff8389">{{kpi.critical}}</div></div>
+          <div style="background:rgba(241,194,27,.08);border:1px solid rgba(241,194,27,.4);padding:12px 14px"><div style="font-size:12px;color:#f1c21b">경고</div><div class="big" style="font-size:44px;color:#f1c21b">{{kpi.warn}}</div></div>
+          <div style="background:rgba(66,190,101,.08);border:1px solid rgba(66,190,101,.35);padding:12px 14px"><div style="font-size:12px;color:#42be65">정상</div><div class="big" style="font-size:44px;color:#42be65">{{kpi.normal}}</div></div>
+          <div style="background:rgba(120,169,255,.08);border:1px solid rgba(120,169,255,.35);padding:12px 14px"><div style="font-size:12px;color:#a6c8ff">AI 교체 권고</div><div class="big" style="font-size:44px;color:#a6c8ff">3</div></div>
+        </div>
+      </section>
+
+      <section class="pnl" style="padding:18px 20px;flex:1;min-height:0">
+        <div class="cap">글로벌 사이트</div>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+          <sc-for list="{{sites}}" as="s" hint-placeholder-count="5">
+            <div style="display:grid;grid-template-columns:14px 1fr auto;gap:12px;align-items:center;padding:10px 12px;background:rgba(255,255,255,.03);border-left:3px solid {{s.color}}">
+              <span style="width:12px;height:12px;border-radius:50%;background:{{s.color}};box-shadow:0 0 0 4px {{s.glow}}"></span>
+              <div><div style="font-size:15px;font-weight:600">{{s.name}}</div><div style="font-size:12px;color:#8fa3c4">{{s.sub}}</div></div>
+              <div class="mono" style="font-size:13px;text-align:right;color:#c6c6c6;line-height:1.5">{{s.ups}} UPS<br><span style="color:{{s.color}}">{{s.state}}</span></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:10px;font-size:12px;color:#8fa3c4"><span>{{siteSummary}}</span></div>
+      </section>
+    </div>
+
+    <!-- Center: isometric floor -->
+    <section class="pnl" style="padding:18px 24px;display:flex;flex-direction:column;min-height:0">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div><div class="cap">KMX CCR 서버실 · Pesquería</div><div style="font-size:13px;color:#c6c6c6;margin-top:2px">178 ㎡ · 랙 62 · CRAC 3 (Stulz) · UPS 2 (Vertiv) · 누수감지 LP6000 · FM-200</div></div>
+        <div style="margin-left:auto;display:flex;gap:14px;font-size:12px;color:#c6c6c6"><span><span style="display:inline-block;width:12px;height:12px;background:#1c4f8a;vertical-align:-2px"></span> 정상</span><span><span style="display:inline-block;width:12px;height:12px;background:#08bdba;vertical-align:-2px"></span> 고부하</span><span><span style="display:inline-block;width:12px;height:12px;background:#f1c21b;vertical-align:-2px"></span> 온도 주의</span><span><span style="display:inline-block;width:12px;height:12px;background:#fa4d56;vertical-align:-2px"></span> 알람</span><span><span style="display:inline-block;width:12px;height:12px;background:#2b2b2b;border:1px solid #525252;vertical-align:-2px"></span> 공랙</span></div>
+      </div>
+
+      <div id="wall-3d" style="flex:1;position:relative;min-height:0;overflow:hidden;background:#070a10"></div>
+
+      <div style="display:grid;grid-template-columns:repeat(5, minmax(0, 1fr));gap:12px;margin-top:6px">
+        <div style="background:rgba(255,255,255,.03);padding:10px 12px"><div style="font-size:11px;color:#8fa3c4">IT 부하</div><div class="big" style="font-size:26px">184 <span style="font-size:12px;font-weight:500;color:#8fa3c4">kW</span></div></div>
+        <div style="background:rgba(255,255,255,.03);padding:10px 12px"><div style="font-size:11px;color:#8fa3c4">PUE 24h</div><div class="big" style="font-size:26px">1.42</div></div>
+        <div style="background:rgba(255,255,255,.03);padding:10px 12px"><div style="font-size:11px;color:#8fa3c4">냉방 사용률</div><div class="big" style="font-size:26px;color:#f1c21b">82%</div></div>
+        <div style="background:rgba(255,255,255,.03);padding:10px 12px"><div style="font-size:11px;color:#8fa3c4">랙 평균 / 최고</div><div class="big" style="font-size:26px">23.8 <span style="font-size:12px;font-weight:500;color:#8fa3c4">/ 27.9°C</span></div></div>
+        <div style="background:rgba(255,255,255,.03);padding:10px 12px"><div style="font-size:11px;color:#8fa3c4">배터리 런타임 최소</div><div class="big" style="font-size:26px;color:#ff8389">18 <span style="font-size:12px;font-weight:500;color:#8fa3c4">min · KUS-03</span></div></div>
+      </div>
+    </section>
+
+    <!-- Right column -->
+    <div style="display:flex;flex-direction:column;gap:16px;min-height:0">
+      <section class="pnl" style="padding:18px 20px">
+        <div class="cap">SLA 대응 현황 · 진행 중</div>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+          <div style="background:rgba(250,77,86,.08);border:1px solid rgba(250,77,86,.35);padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="mono" style="font-size:15px;font-weight:700">KUS-UPS-03</span><span class="mono" style="font-size:12px;color:#ff8389">P1 · T-1143</span></div>
+            <div style="font-size:13px;margin-top:4px">배터리 전압 저하 · AI RCA: 배터리 노후</div>
+            <div style="display:flex;gap:6px;margin-top:10px;align-items:center"><span style="flex:1;height:8px;background:#2b2b2b;position:relative"><span style="position:absolute;left:0;top:0;height:100%;width:28%;background:#ff8389"></span></span><span class="mono" style="font-size:12px;color:#c6c6c6">SLA 4h · 경과 1h 07m</span></div>
+            <div style="font-size:12px;color:#c6c6c6;margin-top:6px">Runless ack 2분 → NOC 확인 → <b style="color:#f4f4f4">TCI 출동 배정</b></div>
+          </div>
+          <div style="background:rgba(241,194,27,.06);border:1px solid rgba(241,194,27,.35);padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="mono" style="font-size:15px;font-weight:700">HMA-CRAC-02</span><span class="mono" style="font-size:12px;color:#f1c21b">P2 · 묶음 4건</span></div>
+            <div style="font-size:13px;margin-top:4px">팬 감속 · 냉방 여유 18% · 필터 교체 권고</div>
+            <div style="display:flex;gap:6px;margin-top:10px;align-items:center"><span style="flex:1;height:8px;background:#2b2b2b;position:relative"><span style="position:absolute;left:0;top:0;height:100%;width:12%;background:#f1c21b"></span></span><span class="mono" style="font-size:12px;color:#c6c6c6">SLA 24h · 경과 0h 16m</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pnl" style="padding:18px 20px;flex:1;min-height:0">
+        <div class="cap">오늘의 운영 · 10월 9일</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;font-size:13px">
+          <div style="display:grid;grid-template-columns:62px 1fr;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03)"><span class="mono" style="color:#8fa3c4">17:00</span><span>KUS Q3 PM 윈도우 · TCI + RingOn · UPS 6대 · <span style="color:#78a9ff">MOP-HAEA-2026-0922</span></span></div>
+          <div style="display:grid;grid-template-columns:62px 1fr;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03)"><span class="mono" style="color:#8fa3c4">완료</span><span>HMA FV Q3 PM · 7대 자가진단 PASS · 보고서 자동 생성</span></div>
+          <div style="display:grid;grid-template-columns:62px 1fr;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03)"><span class="mono" style="color:#8fa3c4">AI</span><span>배터리 교체 권고 3건 → 11월 PM 일정 제안 · 승인 대기</span></div>
+          <div style="display:grid;grid-template-columns:62px 1fr;gap:10px;padding:8px 10px;background:rgba(255,255,255,.03)"><span class="mono" style="color:#8fa3c4">KMX</span><span>구축 1단계 2주차 · 센서 6 · CRAC 연동 3 · probe 등록 완료</span></div>
+        </div>
+        <div style="margin-top:16px;border-top:1px solid #1f2a3d;padding-top:12px">
+          <div class="cap">운영 파트너</div>
+          <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:8px;margin-top:10px;font-size:12px;text-align:center">
+            <div style="background:rgba(255,255,255,.03);padding:10px 6px"><div style="font-weight:600">RingOn NOC</div><div style="color:#42be65;margin-top:3px">● 온라인</div></div>
+            <div style="background:rgba(255,255,255,.03);padding:10px 6px"><div style="font-weight:600">TCI 현장</div><div style="color:#f1c21b;margin-top:3px">● 출동 1</div></div>
+            <div style="background:rgba(255,255,255,.03);padding:10px 6px"><div style="font-weight:600">Runless 24×7</div><div style="color:#42be65;margin-top:3px">● 대기 2</div></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Ticker -->
+  <footer style="border-top:1px solid #1f2a3d;display:flex;align-items:center;padding:0 36px;gap:24px;overflow:hidden;position:relative;background:rgba(7,10,16,.9)">
+    <span style="font-size:12px;letter-spacing:.14em;color:#8fa3c4;font-weight:600;white-space:nowrap">실시간 알람</span>
+    <div style="white-space:nowrap;overflow:hidden;font-size:14px;flex:1">
+      <span class="tick"><span class="mono" style="background:#fa4d56;color:#fff;padding:2px 7px;font-size:11px;font-weight:700">P1</span><span class="mono" style="color:#8fa3c4">14:31</span>KUS-UPS-03 배터리 전압 25.1 V</span>
+      <span class="tick"><span class="mono" style="background:#fa4d56;color:#fff;padding:2px 7px;font-size:11px;font-weight:700">P1</span><span class="mono" style="color:#8fa3c4">14:28</span>HMA-UPS-12 입력 상실 → 14:36 복귀</span>
+      <span class="tick"><span class="mono" style="background:#f1c21b;color:#161616;padding:2px 7px;font-size:11px;font-weight:700">P2</span><span class="mono" style="color:#8fa3c4">14:20</span>HMA-CRAC-02 팬 68% · 하위 4건 묶음</span>
+      <span class="tick"><span class="mono" style="background:#f1c21b;color:#161616;padding:2px 7px;font-size:11px;font-weight:700">P2</span><span class="mono" style="color:#8fa3c4">11:02</span>KMX-LEAK-01 Zone 3 누수 감지</span>
+      <span class="tick"><span class="mono" style="background:#393939;color:#f4f4f4;padding:2px 7px;font-size:11px;font-weight:700">P3</span><span class="mono" style="color:#8fa3c4">13:58</span>HMA-UPS-05 부하 55%</span>
+    </div>
+    <span class="mono" style="font-size:12px;color:#8fa3c4;white-space:nowrap">중복 제거 41 → 8 · AI 요약 14:35</span>
+  </footer>
+</div>

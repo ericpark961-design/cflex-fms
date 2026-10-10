@@ -1,0 +1,170 @@
+<div style="display:flex;flex-wrap:wrap;min-height:1180px;font-family:'IBM Plex Sans KR','IBM Plex Sans',sans-serif;color:#f4f4f4;background:#161616">
+
+  <nav aria-label="주 메뉴" style="flex:0 0 220px;background:#0b0b0b;border-right:1px solid #262626;display:flex;flex-direction:column">
+    <div style="padding:18px 16px 14px;border-bottom:1px solid #262626;display:flex;align-items:center;gap:10px">
+      <div style="width:30px;height:30px;background:{{accent}};display:grid;place-items:center;font-weight:700;font-size:15px;color:#fff;border-radius:2px">C</div>
+      <div><div style="font-size:15px;font-weight:700">C-Flex FMS <span style="font-size:11px;color:#78a9ff;font-weight:600;margin-left:4px">2.0</span></div><div style="font-size:11px;color:#8d8d8d;margin-top:1px">RingOn Service · {{tenant}}</div></div>
+    </div>
+    <div style="padding:10px 0;display:flex;flex-direction:column">
+      <a class="nav" href="#/dashboard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>대시보드</a>
+      <a class="nav" href="#/powerchain"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>전력체인 트윈</a>
+      <a class="nav" href="#/device"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="1"/><path d="M6 11h4M14 11h4"/></svg>장치</a>
+      <a class="nav on" href="#/alarms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>알람 센터</a>
+      <a class="nav" href="#/map"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/><path d="M8 2v16M16 6v16"/></svg>알람 지도</a>
+      <a class="nav" href="#/twin"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18"/><path d="M3 9h18M9 21V9"/></svg>3D 트윈</a>
+      <a class="nav" href="#/powerchain?panel=copilot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/></svg>AI 코파일럿</a>
+      <a class="nav" href="#/wall"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/></svg>관제 상황판</a>
+      <a class="nav" href="/fms"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>FMS 1.x (관리)</a>
+    </div>
+    <div style="margin-top:auto;padding:14px 16px;border-top:1px solid #262626;font-size:12px;color:#c6c6c6">{{me.name}}<br><span style="color:#8d8d8d">{{me.email}}</span></div>
+  </nav>
+
+  <main style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 20px;background:#0b0b0b;border-bottom:1px solid #262626">
+      <label for="q" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">알람 검색</label>
+      <input id="q" type="search" placeholder="알람 · 장치 · 티켓 번호 검색" style="flex:1 1 220px;max-width:360px;background:#262626;border:0;border-bottom:1px solid #525252;color:#f4f4f4;padding:9px 12px;font-family:inherit;font-size:13px">
+      <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#42be65"><span style="width:8px;height:8px;border-radius:50%;background:#42be65;box-shadow:0 0 0 4px rgba(66,190,101,.18)"></span>알람 스트림 연결됨</span>
+        <button class="ghost" aria-label="언어 전환">KO / EN</button>
+      </div>
+    </div>
+
+    <div style="padding:20px 20px 28px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px">
+        <div><div style="font-size:12px;color:#8d8d8d;letter-spacing:.04em">알람 엔진 2.0 · 근본원인 묶음 · 중복 제거 · 점검모드</div><h1 style="margin:4px 0 0;font-size:26px;font-weight:600">알람 센터<sc-if value="{{cbuFilter}}"><a href="#/alarms" style="display:inline-flex;align-items:center;gap:8px;margin-left:12px;vertical-align:middle;padding:4px 10px;background:#1c2a44;border:1px solid #4589ff;color:#f4f4f4;font-size:12px;font-weight:400;text-decoration:none">사이트 {{filterLabel}} <span style="color:#78a9ff">× 해제</span></a></sc-if></h1></div>
+        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost">알람 규칙</button><button class="ghost">점검모드 예약</button><button class="btn" style="background:{{accent}};color:#fff">선택 알람 확인 (2)</button></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(6, minmax(0, 1fr));gap:12px">
+        <div style="background:#262626;padding:12px 14px;border-left:3px solid #fa4d56"><div style="font-size:11px;color:#c6c6c6">활성 알람</div><div class="mono" style="font-size:26px;font-weight:600">8</div></div>
+        <div style="background:#262626;padding:12px 14px;border-left:3px solid #ff832b"><div style="font-size:11px;color:#c6c6c6">미확인</div><div class="mono" style="font-size:26px;font-weight:600;color:#ff832b">2</div></div>
+        <div style="background:#262626;padding:12px 14px;border-left:3px solid #8d8d8d"><div style="font-size:11px;color:#c6c6c6">점검모드 억제</div><div class="mono" style="font-size:26px;font-weight:600;color:#c6c6c6">3</div></div>
+        <div style="background:#262626;padding:12px 14px;border-left:3px solid #4589ff"><div style="font-size:11px;color:#c6c6c6">중복 제거 (24h)</div><div class="mono" style="font-size:26px;font-weight:600">41 <span style="font-size:12px;color:#8d8d8d">→ 8</span></div></div>
+        <div style="background:#262626;padding:12px 14px;border-left:3px solid #42be65"><div style="font-size:11px;color:#c6c6c6">MTTA (30d)</div><div class="mono" style="font-size:26px;font-weight:600">2.4<span style="font-size:12px;color:#8d8d8d">분</span></div></div>
+        <div style="background:#262626;padding:12px 14px;border-left:3px solid #42be65"><div style="font-size:11px;color:#c6c6c6">MTTR (30d)</div><div class="mono" style="font-size:26px;font-weight:600">1.8<span style="font-size:12px;color:#8d8d8d">h</span></div></div>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        <span style="font-size:12px;color:#8d8d8d;margin-right:4px">우선순위</span>
+        <button class="chip on">P1 2</button><button class="chip on">P2 3</button><button class="chip on">P3 2</button><button class="chip">P4 1</button>
+        <span style="font-size:12px;color:#8d8d8d;margin-left:10px;margin-right:4px">CBU</span>
+        <button class="chip on">전체</button><button class="chip">HMA</button><button class="chip">KUS</button><button class="chip">HAEA_HQ</button>
+        <span style="font-size:12px;color:#8d8d8d;margin-left:10px;margin-right:4px">상태</span>
+        <button class="chip on">활성</button><button class="chip">확인됨</button><button class="chip">점검모드</button><button class="chip">종료 (7d)</button>
+        <label style="margin-left:auto;display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#c6c6c6"><input type="checkbox" checked style="accent-color:#4589ff;width:16px;height:16px">근본원인으로 묶기</label>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0, 1fr) 340px;gap:12px">
+
+        <!-- Alarm list -->
+        <section style="min-width:0;display:flex;flex-direction:column;gap:12px">
+
+          <!-- Root-cause group -->
+          <article style="background:#262626;border:1px solid #5a4a16;padding:0">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 14px;background:#2b2614">
+              <span class="badge" style="background:#f1c21b;color:#161616">P2 · 근본원인</span>
+              <div style="min-width:0"><div style="font-size:14px;font-weight:600">HMA 서버실 냉방 저하 — CRAC-2 팬 감속</div><div style="font-size:12px;color:#c6c6c6">하위 알람 4건 묶음 · 14:20 시작 · 경과 <span class="mono">0h 16m</span> · AI 상관분석 신뢰도 91%</div></div>
+              <div style="margin-left:auto;display:flex;gap:6px"><button class="mini">확인</button><button class="mini">TCI 출동</button><a href="#/powerchain" class="mini" style="text-decoration:none;display:inline-flex;align-items:center">트윈 보기</a><button class="mini" aria-label="펼치기">▾</button></div>
+            </div>
+            <div style="padding:4px 14px 10px">
+              <sc-for list="{{kids}}" as="k" hint-placeholder-count="4">
+                <div style="display:grid;grid-template-columns:34px 1fr 150px 90px 60px;gap:10px;align-items:center;padding:7px 0;border-top:1px solid #2b2b2b;font-size:12px">
+                  <span class="badge" style="background:{{k.bg}};color:{{k.fg}};text-align:center">{{k.p}}</span>
+                  <span style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{k.msg}}</span>
+                  <a href="#/device?id={{k.devId}}" class="mono" style="text-decoration:none;color:#e0e0e0">{{k.dev}}</a>
+                  <span class="mono" style="color:#c6c6c6">{{k.val}}</span>
+                  <span class="mono" style="color:#8d8d8d;text-align:right">{{k.t}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </article>
+
+          <!-- Table -->
+          <div style="background:#262626;overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;min-width:860px">
+              <thead><tr>
+                <th class="th" style="width:30px"><input type="checkbox" aria-label="전체 선택" style="accent-color:#4589ff"></th>
+                <th class="th">P</th><th class="th">상태</th><th class="th">메시지</th><th class="th">장치</th><th class="th">값 / 임계</th><th class="th">발생</th><th class="th">경과</th><th class="th">담당</th><th class="th">작업</th>
+              </tr></thead>
+              <tbody>
+                <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+                  <tr style="background:{{r.rowbg}}">
+                    <td class="td"><input type="checkbox" aria-label="선택" style="accent-color:#4589ff"></td>
+                    <td class="td"><span class="badge" style="background:{{r.bg}};color:{{r.fg}}">{{r.p}}</span></td>
+                    <td class="td"><span class="badge" style="background:#393939;color:{{r.stc}}">{{r.st}}</span></td>
+                    <td class="td"><span style="display:block">{{r.msg}}</span><span style="font-size:11px;color:#8d8d8d">{{r.sub}}</span></td>
+                    <td class="td"><button class="alarm-open mono" data-alarm="{{r.alertId}}" data-pri="{{r.p}}" data-msg="{{r.msg}}" data-dev="{{r.dev}}" data-devid="{{r.devId}}" data-metric="{{r.metric}}" data-value="{{r.rawValue}}" data-threshold="{{r.rawThreshold}}" data-at="{{r.at}}" style="background:none;border:0;padding:0;color:#e0e0e0;cursor:pointer;font-family:inherit;text-align:left">{{r.dev}}</button><span style="display:block;font-size:11px;color:#8d8d8d">{{r.site}}</span></td>
+                    <td class="td mono">{{r.val}}</td>
+                    <td class="td mono" style="color:#c6c6c6">{{r.t}}</td>
+                    <td class="td mono" style="color:{{r.agec}}">{{r.age}}</td>
+                    <td class="td" style="color:#c6c6c6">{{r.who}}</td>
+                    <td class="td"><div style="display:flex;gap:4px"><button class="mini">확인</button><button class="mini">점검 1h</button></div></td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Rules -->
+          <section style="background:#262626;padding:14px 16px">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;font-size:12px">
+              <span style="color:#8d8d8d;font-weight:600;letter-spacing:.04em">통보 채널</span>
+              <sc-for list="{{channels}}" as="ch">
+                <span style="display:inline-flex;align-items:center;gap:6px;background:#1f1f1f;padding:4px 9px"><i style="width:8px;height:8px;border-radius:50%;background:{{ch.color}};display:inline-block"></i>{{ch.name}} <span style="color:#8d8d8d">{{ch.note}}</span></span>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h2 style="margin:0;font-size:15px;font-weight:600">적용 중인 알람 규칙 · {{tenant}}</h2><span style="font-size:11px;color:#8d8d8d">임계치 + 지속시간 + 중복제거 윈도우</span><button class="mini" style="margin-left:auto">규칙 편집</button></div>
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;min-width:720px">
+                <thead><tr><th class="th">메트릭</th><th class="th">P1</th><th class="th">P2</th><th class="th">P3</th><th class="th">지속</th><th class="th">중복제거</th><th class="th">자동 종료</th><th class="th">통보</th></tr></thead>
+                <tbody>
+                  <sc-for list="{{rules}}" as="ru">
+                    <tr><td class="td mono">{{ru.metric}}</td><td class="td mono" style="color:{{ru.color}}">{{ru.threshold}}</td><td class="td mono">{{ru.priority}}</td><td class="td mono">{{ru.duration}}</td><td class="td mono">{{ru.dedup}}</td><td class="td mono">{{ru.channels}}</td><td class="td">{{ru.state}}</td></tr>
+                  </sc-for>
+                  <sc-if value="{{rulesEmpty}}"><tr><td class="td" colspan="7" style="color:#8d8d8d">등록된 알람 규칙 없음</td></tr></sc-if>
+                  </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- Right rail -->
+        <aside style="min-width:0;display:flex;flex-direction:column;gap:12px">
+          <section style="background:#262626;padding:14px 16px">
+            <h2 style="margin:0 0 10px;font-size:15px;font-weight:600">에스컬레이션 · P1</h2>
+            <div style="display:flex;flex-direction:column">
+              <div style="display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:start;padding-bottom:12px"><span class="mono" style="font-size:11px;color:#42be65;padding-top:2px">0 분</span><div style="border-left:2px solid #42be65;padding-left:10px;font-size:12px;line-height:1.5"><b>Runless 기술센터</b> 24×7<br><span style="color:#8d8d8d">Teams 웹훅 · SMS · 전화 · ack 1시간 내</span></div></div>
+              <div style="display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:start;padding-bottom:12px"><span class="mono" style="font-size:11px;color:#42be65;padding-top:2px">15 분</span><div style="border-left:2px solid #42be65;padding-left:10px;font-size:12px;line-height:1.5"><b>RingOn NOC</b> Eric Park<br><span style="color:#8d8d8d">미확인 시 자동 상향</span></div></div>
+              <div style="display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:start;padding-bottom:12px"><span class="mono" style="font-size:11px;color:#f1c21b;padding-top:2px">30 분</span><div style="border-left:2px solid #f1c21b;padding-left:10px;font-size:12px;line-height:1.5"><b>TCI 현장 출동</b> Tier 2<br><span style="color:#8d8d8d">4시간 내 현장 · 배터리 운전 시 1시간</span></div></div>
+              <div style="display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:start"><span class="mono" style="font-size:11px;color:#8d8d8d;padding-top:2px">60 분</span><div style="border-left:2px solid #393939;padding-left:10px;font-size:12px;line-height:1.5"><b>고객 담당</b> HAEA 시설<br><span style="color:#8d8d8d">상황 보고 메일 자동 발송</span></div></div>
+            </div>
+          </section>
+
+          <section style="background:#262626;padding:14px 16px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><h2 style="margin:0;font-size:15px;font-weight:600">이번 주 당번</h2><span style="font-size:11px;color:#8d8d8d">10/6 – 10/12</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+              <div style="display:flex;justify-content:space-between;background:#1f1f1f;padding:8px 10px"><span>기술센터 1차</span><span style="color:#c6c6c6">Runless · 당번 A</span></div>
+              <div style="display:flex;justify-content:space-between;background:#1f1f1f;padding:8px 10px"><span>NOC 2차</span><span style="color:#c6c6c6">Eric Park</span></div>
+              <div style="display:flex;justify-content:space-between;background:#1f1f1f;padding:8px 10px"><span>현장 (TCI)</span><span style="color:#c6c6c6">[담당 엔지니어]</span></div>
+            </div>
+          </section>
+
+          <section style="background:#262626;padding:14px 16px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><h2 style="margin:0;font-size:15px;font-weight:600">점검모드 일정</h2><button class="mini" style="margin-left:auto">추가</button></div>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+              <div style="background:#1f1f1f;padding:8px 10px;border-left:3px solid #8d8d8d"><div style="display:flex;justify-content:space-between"><b>HAEA HQ · Q3 PM</b><span class="mono" style="color:#8d8d8d">10/2 17:00–01:00</span></div><div style="color:#8d8d8d">완료 · 알람 억제 31건 기록</div></div>
+              <div style="background:#1f1f1f;padding:8px 10px;border-left:3px solid #f1c21b"><div style="display:flex;justify-content:space-between"><b>HMA FV · Q3 PM</b><span class="mono" style="color:#8d8d8d">10/5 17:00–</span></div><div style="color:#f1c21b">진행 중 · 7대 억제</div></div>
+              <div style="background:#1f1f1f;padding:8px 10px;border-left:3px solid #4589ff"><div style="display:flex;justify-content:space-between"><b>KUS · Q3 PM</b><span class="mono" style="color:#8d8d8d">10/6 17:00–</span></div><div style="color:#8d8d8d">예약 · MOP-HAEA-2026-0922</div></div>
+            </div>
+          </section>
+
+          <section style="background:linear-gradient(180deg,#1c2a44 0%,#262626 70%);border:1px solid #2f4470;padding:14px 16px">
+            <div style="display:flex;align-items:center;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#78a9ff" stroke-width="2"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/></svg><h2 style="margin:0;font-size:14px;font-weight:600">AI 알람 요약 · 지난 24h</h2></div>
+            <p style="font-size:12px;line-height:1.55;color:#e0e0e0;margin:8px 0 0">원시 알람 41건 중 33건은 CRAC-2 팬 감속 1건에서 파생된 온도·부하 알람으로 묶였고, 실제 조치 대상은 2건(KUS-UPS-03 배터리, HMA-UPS-12 입력 상실)입니다. HMA-UPS-12는 14:36 ONLINE 복귀.</p>
+            <button class="mini" style="margin-top:10px">보고서로 내보내기</button>
+          </section>
+        </aside>
+      </div>
+    </div>
+  </main>
+</div>
