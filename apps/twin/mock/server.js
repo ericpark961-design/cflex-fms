@@ -24,6 +24,62 @@ app.get('/v1/fms/assets', (q, r) => { const list = filt(q.query).map(a => ({ ...
 app.get('/v1/fms/assets/:id', (q, r) => { const a = assets.find(x => x.id === parseInt(q.params.id, 10)); if (!a) return r.status(404).json({ ok: false }); const metrics = Array.from({ length: 48 }, (_, i) => ({ ts: now - (47 - i) * 1800000, battery_pct: a.battery_pct, load_pct: a.load_pct + ((i * 7) % 5), temp_c: a.temp_c })); r.json({ ok: true, asset: { ...a, status: eff(a) }, metrics, thresholds: { battery_pct: { critical: 30, warn: 60, direction: 'below' }, load_pct: { critical: 90, warn: 75, direction: 'above' }, temp_c: { critical: 45, warn: 38, direction: 'above' } }, alerts: [] }); });
 app.get('/v1/fms/alerts', (q, r) => { const mk = (i, a, p, metric, message, value, threshold, rec) => ({ id: i, device_id: 'ups-' + a.id, site: a.location, priority: p, metric, message, value, threshold, received_at: now - i * 11 * 60000, device_label: a.label, room: a.room, rack: a.rack, muted_until: null, recurring: !!rec });
   r.json({ ok: true, alerts: [mk(1, assets[2], 'P1', 'battery_pct', '배터리 전압 저하 · 25.1 V (임계 26.0)', 25.1, 26, false), mk(2, assets[40], 'P1', 'output_status', '입력 전원 상실 · 배터리 운전', 'ON BATTERY', 'ONLINE', false), mk(3, assets[11], 'P2', 'temp_c', '온도 상승 · 38.4°C (임계 38.0)', 38.4, 38, true), mk(4, assets[17], 'P2', 'load_pct', '부하 76% · 경고 임계 초과', 76, 75, false), mk(5, assets[29], 'P3', 'load_pct', '부하 55% · 경고 임계 근접', 55, 75, false), mk(6, assets[22], 'P4', 'heartbeat', 'probe 하트비트 지연 90s', 90, 60, true), mk(7, assets[5], 'P3', 'battery_pct', '런타임 감소 추세 −18% / 90d', 21, 25, false)] }); });
+// ── v3 ledger endpoints ─────────────────────────────────────────────
+// These run the REAL backend service against an in-memory SQLite seeded with the
+// KMX ledger, so the frontend is developed against the production response shape
+// rather than a hand-written fake that can drift from it.
+const { DatabaseSync } = require('node:sqlite');
+const T = require('../../../backend/services/fms-topology');
+const TENANT = 10;
+const ledgerDb = (() => {
+  const raw = new DatabaseSync(':memory:');
+  raw.exec(`CREATE TABLE ups_devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, label TEXT, cbu TEXT,
+    location TEXT, room TEXT, rack TEXT, status TEXT, last_polled INTEGER,
+    health_score INTEGER, battery_pct INTEGER, load_pct INTEGER, temp_c REAL,
+    decommissioned_at INTEGER, rack_id INTEGER, u_pos INTEGER, u_height INTEGER)`);
+  const sql = require('fs').readFileSync(require('path').join(__dirname, '../../../backend/migrations/004_fms_topology.sql'), 'utf8');
+  for (const st of sql.split('\n').filter(l => !/^\s*--/.test(l)).join('\n').split(';').map(x => x.trim()).filter(Boolean)) {
+    try { raw.exec(st); } catch (e) { if (!/duplicate column name/.test(e.message)) throw e; }
+  }
+  const db = {
+    prepare: (q) => { const st = raw.prepare(q); return { all: (...p) => st.all(...p), get: (...p) => st.get(...p), run: (...p) => st.run(...p) }; },
+    exec: (q) => raw.exec(q),
+  };
+  // The 44 mock devices, so HMA/KUS/HAEA_HQ come back as `unplaced` and the
+  // frontend has to fall back to v2 estimated placement for them.
+  const ins = db.prepare('INSERT INTO ups_devices (tenant_id,label,cbu,location,room,rack,status,last_polled,health_score,battery_pct,load_pct,temp_c) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+  for (const a of assets) ins.run(TENANT, a.label, a.cbu, a.location, a.room, a.rack, eff(a), a.last_polled, a.health_score, a.battery_pct, a.load_pct, a.temp_c);
+  T.importTopology(db, TENANT, require('../../../backend/seed/kmx_ccr_topology.json'), { mode: 'merge' });
+  return db;
+})();
+
+// MOCK_NO_TOPOLOGY=1 simulates a server that has not had the v3 backend deployed
+// yet — the frontend must fall back to v2 placement rather than showing an empty scene.
+app.get('/v1/fms/topology', (q, r) => {
+  if (process.env.MOCK_NO_TOPOLOGY) return r.status(404).json({ error: 'not found' });
+  const { rooms, unplaced } = T.getTopology(ledgerDb, TENANT, (q.query.cbu || '').trim() || null);
+  r.json({ ok: true, rooms, unplaced });
+});
+app.get('/v1/fms/topology/export', (q, r) => r.json({ ok: true, ...T.exportTopology(ledgerDb, TENANT, (q.query.cbu || '').trim() || null) }));
+app.get('/v1/fms/topology/heat', (q, r) => {
+  const metric = q.query.metric === 'temp' ? 'temp' : 'load';
+  const rooms = T.getHeat(ledgerDb, TENANT, (q.query.cbu || '').trim() || null, metric);
+  // KMX has no polled devices, so fall back to the ledger's design figures —
+  // otherwise there is nothing to draw offline.
+  const key = metric === 'temp' ? 'design_temp_c' : 'design_kw';
+  for (const room of rooms) {
+    if (room.cells.length) continue;
+    const objs = T.getTopology(ledgerDb, TENANT, null).rooms.find(x => x.id === room.id)?.objects || [];
+    room.cells = objs.filter(o => o.kind === 'rack' && o.attrs && o.attrs[key] != null && !o.attrs.empty)
+      .map(o => ({ col: o.col, row: o.row, v: metric === 'temp' ? o.attrs[key] : Math.round((o.attrs[key] / 7) * 100) }));
+    room.source = 'design';
+  }
+  r.json({ ok: true, metric, rooms });
+});
+app.get('/v1/fms/power-chain/object/:id', (q, r) => r.json({ ok: true, ...T.powerChainForObject(ledgerDb, TENANT, q.params.id) }));
+app.get('/v1/fms/power-chain/:deviceId', (q, r) => r.json({ ok: true, ...T.powerChainForDevice(ledgerDb, TENANT, q.params.deviceId) }));
+
 // Stub of POST /v1/fms/copilot. Shape only — no Claude call, no key needed.
 // Set MOCK_COPILOT=503|404|429 to exercise the panel's failure states.
 app.post('/v1/fms/copilot', (q, r) => {

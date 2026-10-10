@@ -18,12 +18,44 @@ const PR = { P1: { bg: '#fa4d56', fg: '#fff' }, P2: { bg: '#f1c21b', fg: '#16161
 export const hhmm = (ms) => ms ? new Date(ms).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '—';
 const pct = (n, t) => t ? `${Math.max(2, Math.round((n / t) * 100))}%` : '0%';
 
-export const store = { me: null, summary: null, summaryAll: null, assets: [], alerts: [], floor: null, loadedAt: 0 };
+export const store = { me: null, summary: null, summaryAll: null, assets: [], alerts: [], floor: null, topology: null, heat: {}, loadedAt: 0 };
 export async function refresh() {
-  const [s, sa, a, al, f] = await Promise.all([api('/v1/fms/summary' + withCbu()), api('/v1/fms/summary'), api('/v1/fms/assets' + withCbu()), api('/v1/fms/alerts?hours=24'), api('/v1/fms/floor' + withCbu())]);
+  const [s, sa, a, al, f, t] = await Promise.all([
+    api('/v1/fms/summary' + withCbu()), api('/v1/fms/summary'), api('/v1/fms/assets' + withCbu()),
+    api('/v1/fms/alerts?hours=24'), api('/v1/fms/floor' + withCbu()), api('/v1/fms/topology' + withCbu()),
+  ]);
   if (s?.ok) store.summary = s; if (sa?.ok) store.summaryAll = sa; if (a?.ok) store.assets = a.assets || []; if (al?.ok) store.alerts = al.alerts || []; if (f?.ok) store.floor = f.tree;
+  // A server without the v3 ledger endpoint simply has no topology; the 3D scene
+  // then falls back to v2 placement for everything, which is the v2 behaviour.
+  store.topology = t?.ok ? { rooms: t.rooms || [], unplaced: t.unplaced || [] } : null;
   store.loadedAt = Date.now(); return store;
 }
+
+// ── v3: heat layer and power chain ──────────────────────────────────
+const CACHE_MS = 30000;
+const chainCache = new Map();
+
+export async function heatFor(metric) {
+  const key = `${metric}|${getCbu()}`;
+  const hit = store.heat[key];
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.rooms;
+  const r = await api(`/v1/fms/topology/heat${withCbu(`?metric=${metric}`)}`);
+  const rooms = r?.ok ? (r.rooms || []) : [];
+  store.heat[key] = { at: Date.now(), rooms };
+  return rooms;
+}
+
+async function chain(path, key) {
+  const hit = chainCache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  const r = await api(path);
+  // No links is a legitimate answer, not a failure — the panel says so.
+  const value = r?.ok ? { chain: r.chain || [], load_pct: r.load_pct ?? null, upstream_capacity_a: r.upstream_capacity_a ?? null } : null;
+  chainCache.set(key, { at: Date.now(), value });
+  return value;
+}
+export const powerChain = (deviceId) => chain(`/v1/fms/power-chain/${devId(deviceId)}`, `d:${devId(deviceId)}`);
+export const powerChainObject = (objectId) => chain(`/v1/fms/power-chain/object/${objectId}`, `o:${objectId}`);
 const meData = () => ({ me: { name: store.me?.displayName || store.me?.name || '', email: store.me?.email || '' }, tenant: store.me?.tenantName || store.me?.tenant?.display_name || 'HAEA' });
 function kpi() {
   const d = store.summary?.devices; if (!d) return { critical: '—', warn: '—', normal: '—', nodata: '—', total: '—', pc_critical: '0%', pc_warn: '0%', pc_normal: '0%', pc_nodata: '0%' };

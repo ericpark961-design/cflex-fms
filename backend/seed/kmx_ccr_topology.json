@@ -1,0 +1,1825 @@
+{
+  "cbu": "KMX",
+  "rooms": [
+    {
+      "location": "KMX Pesquería",
+      "name": "CCR",
+      "cols": 25,
+      "rows": 26,
+      "tile_mm": 600,
+      "height_mm": 3000,
+      "note": "Extracted from apps/twin/src/DemoScene.js by backend/seed/build_kmx_ledger.js. Room sized to contents: DemoScene rack row F sits past its drawn south wall.",
+      "objects": [
+        {
+          "name": "A01",
+          "kind": "rack",
+          "col": 6,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.8,
+            "design_temp_c": 23.8
+          }
+        },
+        {
+          "name": "A02",
+          "kind": "rack",
+          "col": 8,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0.9,
+            "design_temp_c": 23.2
+          }
+        },
+        {
+          "name": "A03",
+          "kind": "rack",
+          "col": 9,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.7,
+            "design_temp_c": 23.7
+          }
+        },
+        {
+          "name": "A04",
+          "kind": "rack",
+          "col": 10,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 4.8,
+            "design_temp_c": 25.4
+          }
+        },
+        {
+          "name": "A05",
+          "kind": "rack",
+          "col": 11,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0.8,
+            "design_temp_c": 24.4
+          }
+        },
+        {
+          "name": "A06",
+          "kind": "rack",
+          "col": 12,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2,
+            "design_temp_c": 23.5
+          }
+        },
+        {
+          "name": "A07",
+          "kind": "rack",
+          "col": 13,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.3,
+            "design_temp_c": 24.2
+          }
+        },
+        {
+          "name": "A08",
+          "kind": "rack",
+          "col": 14,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.2,
+            "design_temp_c": 22.9
+          }
+        },
+        {
+          "name": "A09",
+          "kind": "rack",
+          "col": 15,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0,
+            "design_temp_c": 23,
+            "empty": true
+          }
+        },
+        {
+          "name": "A10",
+          "kind": "rack",
+          "col": 16,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0,
+            "design_temp_c": 23,
+            "empty": true
+          }
+        },
+        {
+          "name": "A11",
+          "kind": "rack",
+          "col": 17,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.8,
+            "design_temp_c": 23.2
+          }
+        },
+        {
+          "name": "B01",
+          "kind": "rack",
+          "col": 7,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.2,
+            "design_temp_c": 23.1
+          }
+        },
+        {
+          "name": "B02",
+          "kind": "rack",
+          "col": 8,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 4.3,
+            "design_temp_c": 25.1
+          }
+        },
+        {
+          "name": "B03",
+          "kind": "rack",
+          "col": 9,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.9,
+            "design_temp_c": 23.7
+          }
+        },
+        {
+          "name": "B04",
+          "kind": "rack",
+          "col": 10,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1,
+            "design_temp_c": 22.9
+          }
+        },
+        {
+          "name": "B05",
+          "kind": "rack",
+          "col": 11,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.9,
+            "design_temp_c": 24.5
+          }
+        },
+        {
+          "name": "B06",
+          "kind": "rack",
+          "col": 12,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0.9,
+            "design_temp_c": 23.6
+          }
+        },
+        {
+          "name": "B07",
+          "kind": "rack",
+          "col": 13,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 6.4,
+            "design_temp_c": 27.9
+          }
+        },
+        {
+          "name": "B08",
+          "kind": "rack",
+          "col": 14,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.9,
+            "design_temp_c": 23.1
+          }
+        },
+        {
+          "name": "B09",
+          "kind": "rack",
+          "col": 15,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.6,
+            "design_temp_c": 23.8
+          }
+        },
+        {
+          "name": "B10",
+          "kind": "rack",
+          "col": 16,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.2,
+            "design_temp_c": 23.3
+          }
+        },
+        {
+          "name": "B11",
+          "kind": "rack",
+          "col": 17,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1,
+            "design_temp_c": 24.6
+          }
+        },
+        {
+          "name": "C01",
+          "kind": "rack",
+          "col": 7,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 3.9,
+            "design_temp_c": 26.3
+          }
+        },
+        {
+          "name": "C02",
+          "kind": "rack",
+          "col": 8,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.7,
+            "design_temp_c": 23.2
+          }
+        },
+        {
+          "name": "C03",
+          "kind": "rack",
+          "col": 9,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 3.6,
+            "design_temp_c": 26.1
+          }
+        },
+        {
+          "name": "C04",
+          "kind": "rack",
+          "col": 10,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.9,
+            "design_temp_c": 23.4
+          }
+        },
+        {
+          "name": "C05",
+          "kind": "rack",
+          "col": 11,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1,
+            "design_temp_c": 24.2
+          }
+        },
+        {
+          "name": "C06",
+          "kind": "rack",
+          "col": 12,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.4,
+            "design_temp_c": 23.4
+          }
+        },
+        {
+          "name": "C07",
+          "kind": "rack",
+          "col": 13,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0.8,
+            "design_temp_c": 24.5
+          }
+        },
+        {
+          "name": "C08",
+          "kind": "rack",
+          "col": 14,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.2,
+            "design_temp_c": 24.4
+          }
+        },
+        {
+          "name": "C09",
+          "kind": "rack",
+          "col": 15,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.7,
+            "design_temp_c": 23.2
+          }
+        },
+        {
+          "name": "C10",
+          "kind": "rack",
+          "col": 16,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0,
+            "design_temp_c": 23,
+            "empty": true
+          }
+        },
+        {
+          "name": "D01",
+          "kind": "rack",
+          "col": 8,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2,
+            "design_temp_c": 23.5
+          }
+        },
+        {
+          "name": "D02",
+          "kind": "rack",
+          "col": 9,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.4,
+            "design_temp_c": 24
+          }
+        },
+        {
+          "name": "D03",
+          "kind": "rack",
+          "col": 10,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0.9,
+            "design_temp_c": 23.2
+          }
+        },
+        {
+          "name": "D04",
+          "kind": "rack",
+          "col": 11,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.7,
+            "design_temp_c": 23
+          }
+        },
+        {
+          "name": "D05",
+          "kind": "rack",
+          "col": 12,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 4.6,
+            "design_temp_c": 24.9
+          }
+        },
+        {
+          "name": "D06",
+          "kind": "rack",
+          "col": 13,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 4.1,
+            "design_temp_c": 24.7
+          }
+        },
+        {
+          "name": "D07",
+          "kind": "rack",
+          "col": 14,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0.7,
+            "design_temp_c": 23.5
+          }
+        },
+        {
+          "name": "D08",
+          "kind": "rack",
+          "col": 15,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.2,
+            "design_temp_c": 24
+          }
+        },
+        {
+          "name": "D09",
+          "kind": "rack",
+          "col": 16,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.9,
+            "design_temp_c": 23.4
+          }
+        },
+        {
+          "name": "D10",
+          "kind": "rack",
+          "col": 17,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.7,
+            "design_temp_c": 23.7
+          }
+        },
+        {
+          "name": "E01",
+          "kind": "rack",
+          "col": 7,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.7,
+            "design_temp_c": 24.3
+          }
+        },
+        {
+          "name": "E02",
+          "kind": "rack",
+          "col": 8,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.7,
+            "design_temp_c": 23.6
+          }
+        },
+        {
+          "name": "E03",
+          "kind": "rack",
+          "col": 9,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.2,
+            "design_temp_c": 23.2
+          }
+        },
+        {
+          "name": "E04",
+          "kind": "rack",
+          "col": 10,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.4,
+            "design_temp_c": 23
+          }
+        },
+        {
+          "name": "E05",
+          "kind": "rack",
+          "col": 11,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.2,
+            "design_temp_c": 24.2
+          }
+        },
+        {
+          "name": "E06",
+          "kind": "rack",
+          "col": 12,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.7,
+            "design_temp_c": 24.5
+          }
+        },
+        {
+          "name": "E07",
+          "kind": "rack",
+          "col": 13,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.8,
+            "design_temp_c": 24.3
+          }
+        },
+        {
+          "name": "E08",
+          "kind": "rack",
+          "col": 14,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.4,
+            "design_temp_c": 24
+          }
+        },
+        {
+          "name": "E09",
+          "kind": "rack",
+          "col": 15,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0,
+            "design_temp_c": 23,
+            "empty": true
+          }
+        },
+        {
+          "name": "E10",
+          "kind": "rack",
+          "col": 16,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "S",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0,
+            "design_temp_c": 23,
+            "empty": true
+          }
+        },
+        {
+          "name": "F01",
+          "kind": "rack",
+          "col": 8,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.9,
+            "design_temp_c": 22.8
+          }
+        },
+        {
+          "name": "F02",
+          "kind": "rack",
+          "col": 9,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.4,
+            "design_temp_c": 23.4
+          }
+        },
+        {
+          "name": "F03",
+          "kind": "rack",
+          "col": 10,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 4.2,
+            "design_temp_c": 24.4
+          }
+        },
+        {
+          "name": "F04",
+          "kind": "rack",
+          "col": 11,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.1,
+            "design_temp_c": 23.5
+          }
+        },
+        {
+          "name": "F05",
+          "kind": "rack",
+          "col": 12,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 2.2,
+            "design_temp_c": 24.1
+          }
+        },
+        {
+          "name": "F06",
+          "kind": "rack",
+          "col": 13,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 1.2,
+            "design_temp_c": 24.5
+          }
+        },
+        {
+          "name": "F07",
+          "kind": "rack",
+          "col": 14,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0,
+            "design_temp_c": 23,
+            "empty": true
+          }
+        },
+        {
+          "name": "F08",
+          "kind": "rack",
+          "col": 15,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0,
+            "design_temp_c": 23,
+            "empty": true
+          }
+        },
+        {
+          "name": "F09",
+          "kind": "rack",
+          "col": 16,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0,
+            "design_temp_c": 23,
+            "empty": true
+          }
+        },
+        {
+          "name": "F10",
+          "kind": "rack",
+          "col": 17,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "N",
+          "u_height": 42,
+          "attrs": {
+            "design_kw": 0,
+            "design_temp_c": 23,
+            "empty": true
+          }
+        },
+        {
+          "name": "CRAC-1",
+          "kind": "crac",
+          "col": 4,
+          "row": 1,
+          "w": 2,
+          "d": 2,
+          "face": "S",
+          "attrs": {
+            "rt": 30
+          }
+        },
+        {
+          "name": "CRAC-2",
+          "kind": "crac",
+          "col": 12,
+          "row": 1,
+          "w": 2,
+          "d": 2,
+          "face": "S",
+          "attrs": {
+            "rt": 30
+          }
+        },
+        {
+          "name": "CRAC-3",
+          "kind": "crac",
+          "col": 19,
+          "row": 1,
+          "w": 2,
+          "d": 2,
+          "face": "S",
+          "attrs": {
+            "rt": 20
+          }
+        },
+        {
+          "name": "UPS-1",
+          "kind": "ups_cabinet",
+          "col": 22,
+          "row": 6,
+          "w": 2,
+          "d": 2,
+          "face": "W",
+          "attrs": {
+            "capacity_kw": 40
+          }
+        },
+        {
+          "name": "UPS-2",
+          "kind": "ups_cabinet",
+          "col": 22,
+          "row": 8,
+          "w": 2,
+          "d": 2,
+          "face": "W",
+          "attrs": {
+            "capacity_kw": 40
+          }
+        },
+        {
+          "name": "PDU-A",
+          "kind": "pdu_cabinet",
+          "col": 4,
+          "row": 3,
+          "w": 1,
+          "d": 2,
+          "face": "E",
+          "attrs": {
+            "rated_a": 63
+          }
+        },
+        {
+          "name": "PDU-B",
+          "kind": "pdu_cabinet",
+          "col": 4,
+          "row": 7,
+          "w": 1,
+          "d": 2,
+          "face": "E",
+          "attrs": {
+            "rated_a": 63
+          }
+        },
+        {
+          "name": "PDU-C",
+          "kind": "pdu_cabinet",
+          "col": 5,
+          "row": 11,
+          "w": 1,
+          "d": 2,
+          "face": "E",
+          "attrs": {
+            "rated_a": 63
+          }
+        },
+        {
+          "name": "PDU-D",
+          "kind": "pdu_cabinet",
+          "col": 5,
+          "row": 15,
+          "w": 1,
+          "d": 2,
+          "face": "E",
+          "attrs": {
+            "rated_a": 63
+          }
+        },
+        {
+          "name": "PDU-E",
+          "kind": "pdu_cabinet",
+          "col": 5,
+          "row": 19,
+          "w": 1,
+          "d": 2,
+          "face": "E",
+          "attrs": {
+            "rated_a": 63
+          }
+        },
+        {
+          "name": "PDU-F",
+          "kind": "pdu_cabinet",
+          "col": 5,
+          "row": 23,
+          "w": 1,
+          "d": 2,
+          "face": "E",
+          "attrs": {
+            "rated_a": 63
+          }
+        },
+        {
+          "name": "PANEL-A",
+          "kind": "panel",
+          "col": 23,
+          "row": 1,
+          "attrs": {
+            "rated_a": 200
+          }
+        },
+        {
+          "name": "PANEL-B",
+          "kind": "panel",
+          "col": 23,
+          "row": 21,
+          "attrs": {
+            "rated_a": 200
+          }
+        },
+        {
+          "name": "UTILITY",
+          "kind": "panel",
+          "col": 0,
+          "row": 21,
+          "attrs": {
+            "utility": true,
+            "rated_a": 400
+          }
+        },
+        {
+          "name": "TH-01",
+          "kind": "sensor",
+          "col": 3,
+          "row": 5,
+          "w": 1,
+          "d": 1,
+          "attrs": {
+            "metrics": [
+              "temp_c",
+              "humidity"
+            ]
+          }
+        },
+        {
+          "name": "TH-02",
+          "kind": "sensor",
+          "col": 12,
+          "row": 5,
+          "w": 1,
+          "d": 1,
+          "attrs": {
+            "metrics": [
+              "temp_c",
+              "humidity"
+            ]
+          }
+        },
+        {
+          "name": "TH-03",
+          "kind": "sensor",
+          "col": 20,
+          "row": 5,
+          "w": 1,
+          "d": 1,
+          "attrs": {
+            "metrics": [
+              "temp_c",
+              "humidity"
+            ]
+          }
+        },
+        {
+          "name": "TH-04",
+          "kind": "sensor",
+          "col": 3,
+          "row": 16,
+          "w": 1,
+          "d": 1,
+          "attrs": {
+            "metrics": [
+              "temp_c",
+              "humidity"
+            ]
+          }
+        },
+        {
+          "name": "TH-05",
+          "kind": "sensor",
+          "col": 12,
+          "row": 16,
+          "w": 1,
+          "d": 1,
+          "attrs": {
+            "metrics": [
+              "temp_c",
+              "humidity"
+            ]
+          }
+        },
+        {
+          "name": "TH-06",
+          "kind": "sensor",
+          "col": 20,
+          "row": 16,
+          "w": 1,
+          "d": 1,
+          "attrs": {
+            "metrics": [
+              "temp_c",
+              "humidity"
+            ]
+          }
+        },
+        {
+          "name": "ZONE-1",
+          "kind": "leak_zone",
+          "col": 2,
+          "row": 1,
+          "attrs": {
+            "zone_poly": [
+              [
+                2,
+                1
+              ],
+              [
+                6,
+                1
+              ],
+              [
+                6,
+                3
+              ],
+              [
+                2,
+                3
+              ]
+            ]
+          }
+        },
+        {
+          "name": "ZONE-2",
+          "kind": "leak_zone",
+          "col": 10,
+          "row": 1,
+          "attrs": {
+            "zone_poly": [
+              [
+                10,
+                1
+              ],
+              [
+                14,
+                1
+              ],
+              [
+                14,
+                3
+              ],
+              [
+                10,
+                3
+              ]
+            ]
+          }
+        },
+        {
+          "name": "ZONE-3",
+          "kind": "leak_zone",
+          "col": 17,
+          "row": 1,
+          "attrs": {
+            "zone_poly": [
+              [
+                17,
+                1
+              ],
+              [
+                21,
+                1
+              ],
+              [
+                21,
+                3
+              ],
+              [
+                17,
+                3
+              ]
+            ]
+          }
+        },
+        {
+          "name": "ZONE-4",
+          "kind": "leak_zone",
+          "col": 20,
+          "row": 5,
+          "attrs": {
+            "zone_poly": [
+              [
+                20,
+                5
+              ],
+              [
+                23,
+                5
+              ],
+              [
+                23,
+                9
+              ],
+              [
+                20,
+                9
+              ]
+            ]
+          }
+        }
+      ],
+      "devices": [],
+      "power_links": [
+        {
+          "src": "A01",
+          "src_type": "object",
+          "dst": "PDU-A",
+          "dst_type": "object",
+          "dst_port": "CB-1",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "A02",
+          "src_type": "object",
+          "dst": "PDU-A",
+          "dst_type": "object",
+          "dst_port": "CB-2",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "A03",
+          "src_type": "object",
+          "dst": "PDU-A",
+          "dst_type": "object",
+          "dst_port": "CB-3",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "A04",
+          "src_type": "object",
+          "dst": "PDU-A",
+          "dst_type": "object",
+          "dst_port": "CB-4",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "A05",
+          "src_type": "object",
+          "dst": "PDU-A",
+          "dst_type": "object",
+          "dst_port": "CB-5",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "A06",
+          "src_type": "object",
+          "dst": "PDU-A",
+          "dst_type": "object",
+          "dst_port": "CB-6",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "A07",
+          "src_type": "object",
+          "dst": "PDU-A",
+          "dst_type": "object",
+          "dst_port": "CB-7",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "A08",
+          "src_type": "object",
+          "dst": "PDU-A",
+          "dst_type": "object",
+          "dst_port": "CB-8",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "A11",
+          "src_type": "object",
+          "dst": "PDU-A",
+          "dst_type": "object",
+          "dst_port": "CB-11",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "PDU-A",
+          "src_type": "object",
+          "dst": "UPS-1",
+          "dst_type": "object",
+          "dst_port": "OUT-1",
+          "rated_a": 63
+        },
+        {
+          "src": "B01",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-1",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "B02",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-2",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "B03",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-3",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "B04",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-4",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "B05",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-5",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "B06",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-6",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "B07",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-7",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "B08",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-8",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "B09",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-9",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "B10",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-10",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "B11",
+          "src_type": "object",
+          "dst": "PDU-B",
+          "dst_type": "object",
+          "dst_port": "CB-11",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "PDU-B",
+          "src_type": "object",
+          "dst": "UPS-1",
+          "dst_type": "object",
+          "dst_port": "OUT-2",
+          "rated_a": 63
+        },
+        {
+          "src": "C01",
+          "src_type": "object",
+          "dst": "PDU-C",
+          "dst_type": "object",
+          "dst_port": "CB-1",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "C02",
+          "src_type": "object",
+          "dst": "PDU-C",
+          "dst_type": "object",
+          "dst_port": "CB-2",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "C03",
+          "src_type": "object",
+          "dst": "PDU-C",
+          "dst_type": "object",
+          "dst_port": "CB-3",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "C04",
+          "src_type": "object",
+          "dst": "PDU-C",
+          "dst_type": "object",
+          "dst_port": "CB-4",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "C05",
+          "src_type": "object",
+          "dst": "PDU-C",
+          "dst_type": "object",
+          "dst_port": "CB-5",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "C06",
+          "src_type": "object",
+          "dst": "PDU-C",
+          "dst_type": "object",
+          "dst_port": "CB-6",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "C07",
+          "src_type": "object",
+          "dst": "PDU-C",
+          "dst_type": "object",
+          "dst_port": "CB-7",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "C08",
+          "src_type": "object",
+          "dst": "PDU-C",
+          "dst_type": "object",
+          "dst_port": "CB-8",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "C09",
+          "src_type": "object",
+          "dst": "PDU-C",
+          "dst_type": "object",
+          "dst_port": "CB-9",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "PDU-C",
+          "src_type": "object",
+          "dst": "UPS-1",
+          "dst_type": "object",
+          "dst_port": "OUT-3",
+          "rated_a": 63
+        },
+        {
+          "src": "D01",
+          "src_type": "object",
+          "dst": "PDU-D",
+          "dst_type": "object",
+          "dst_port": "CB-1",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "D02",
+          "src_type": "object",
+          "dst": "PDU-D",
+          "dst_type": "object",
+          "dst_port": "CB-2",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "D03",
+          "src_type": "object",
+          "dst": "PDU-D",
+          "dst_type": "object",
+          "dst_port": "CB-3",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "D04",
+          "src_type": "object",
+          "dst": "PDU-D",
+          "dst_type": "object",
+          "dst_port": "CB-4",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "D05",
+          "src_type": "object",
+          "dst": "PDU-D",
+          "dst_type": "object",
+          "dst_port": "CB-5",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "D06",
+          "src_type": "object",
+          "dst": "PDU-D",
+          "dst_type": "object",
+          "dst_port": "CB-6",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "D07",
+          "src_type": "object",
+          "dst": "PDU-D",
+          "dst_type": "object",
+          "dst_port": "CB-7",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "D08",
+          "src_type": "object",
+          "dst": "PDU-D",
+          "dst_type": "object",
+          "dst_port": "CB-8",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "D09",
+          "src_type": "object",
+          "dst": "PDU-D",
+          "dst_type": "object",
+          "dst_port": "CB-9",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "D10",
+          "src_type": "object",
+          "dst": "PDU-D",
+          "dst_type": "object",
+          "dst_port": "CB-10",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "PDU-D",
+          "src_type": "object",
+          "dst": "UPS-2",
+          "dst_type": "object",
+          "dst_port": "OUT-4",
+          "rated_a": 63
+        },
+        {
+          "src": "E01",
+          "src_type": "object",
+          "dst": "PDU-E",
+          "dst_type": "object",
+          "dst_port": "CB-1",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "E02",
+          "src_type": "object",
+          "dst": "PDU-E",
+          "dst_type": "object",
+          "dst_port": "CB-2",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "E03",
+          "src_type": "object",
+          "dst": "PDU-E",
+          "dst_type": "object",
+          "dst_port": "CB-3",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "E04",
+          "src_type": "object",
+          "dst": "PDU-E",
+          "dst_type": "object",
+          "dst_port": "CB-4",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "E05",
+          "src_type": "object",
+          "dst": "PDU-E",
+          "dst_type": "object",
+          "dst_port": "CB-5",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "E06",
+          "src_type": "object",
+          "dst": "PDU-E",
+          "dst_type": "object",
+          "dst_port": "CB-6",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "E07",
+          "src_type": "object",
+          "dst": "PDU-E",
+          "dst_type": "object",
+          "dst_port": "CB-7",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "E08",
+          "src_type": "object",
+          "dst": "PDU-E",
+          "dst_type": "object",
+          "dst_port": "CB-8",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "PDU-E",
+          "src_type": "object",
+          "dst": "UPS-2",
+          "dst_type": "object",
+          "dst_port": "OUT-5",
+          "rated_a": 63
+        },
+        {
+          "src": "F01",
+          "src_type": "object",
+          "dst": "PDU-F",
+          "dst_type": "object",
+          "dst_port": "CB-1",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "F02",
+          "src_type": "object",
+          "dst": "PDU-F",
+          "dst_type": "object",
+          "dst_port": "CB-2",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "F03",
+          "src_type": "object",
+          "dst": "PDU-F",
+          "dst_type": "object",
+          "dst_port": "CB-3",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "F04",
+          "src_type": "object",
+          "dst": "PDU-F",
+          "dst_type": "object",
+          "dst_port": "CB-4",
+          "rated_a": 16,
+          "phase": "L1"
+        },
+        {
+          "src": "F05",
+          "src_type": "object",
+          "dst": "PDU-F",
+          "dst_type": "object",
+          "dst_port": "CB-5",
+          "rated_a": 16,
+          "phase": "L2"
+        },
+        {
+          "src": "F06",
+          "src_type": "object",
+          "dst": "PDU-F",
+          "dst_type": "object",
+          "dst_port": "CB-6",
+          "rated_a": 16,
+          "phase": "L3"
+        },
+        {
+          "src": "PDU-F",
+          "src_type": "object",
+          "dst": "UPS-2",
+          "dst_type": "object",
+          "dst_port": "OUT-6",
+          "rated_a": 63
+        },
+        {
+          "src": "UPS-1",
+          "src_type": "object",
+          "dst": "PANEL-A",
+          "dst_type": "object",
+          "circuit": "LP-A1",
+          "rated_a": 200
+        },
+        {
+          "src": "UPS-2",
+          "src_type": "object",
+          "dst": "PANEL-B",
+          "dst_type": "object",
+          "circuit": "LP-B1",
+          "rated_a": 200
+        },
+        {
+          "src": "CRAC-1",
+          "src_type": "object",
+          "dst": "PANEL-A",
+          "dst_type": "object",
+          "circuit": "LP-A4",
+          "rated_a": 60
+        },
+        {
+          "src": "CRAC-2",
+          "src_type": "object",
+          "dst": "PANEL-A",
+          "dst_type": "object",
+          "circuit": "LP-A5",
+          "rated_a": 60
+        },
+        {
+          "src": "CRAC-3",
+          "src_type": "object",
+          "dst": "PANEL-B",
+          "dst_type": "object",
+          "circuit": "LP-B4",
+          "rated_a": 40
+        },
+        {
+          "src": "PANEL-A",
+          "src_type": "object",
+          "dst": "UTILITY",
+          "dst_type": "object",
+          "circuit": "MAIN-A",
+          "rated_a": 400
+        },
+        {
+          "src": "PANEL-B",
+          "src_type": "object",
+          "dst": "UTILITY",
+          "dst_type": "object",
+          "circuit": "MAIN-B",
+          "rated_a": 400
+        }
+      ]
+    }
+  ]
+}

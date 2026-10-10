@@ -301,6 +301,17 @@ export const EN = {
   'AI 예측·RCA·추세는 Phase 2 샘플': 'AI forecast, RCA and trends are Phase 2 samples',
   '전력체인·코파일럿 · Phase 3 샘플': 'Power chain and copilot · Phase 3 sample',
   '← 대시보드': '← Dashboard',
+
+  // ── v3: ledger, power chain, heat layers ──
+  '레이어': 'Layers', '라벨': 'Labels', '객체': 'objects', '타일': 'tile',
+  '전력 히트맵': 'Power heatmap', '온도 히트맵': 'Temp heatmap',
+  '전원 체인': 'Power chain', '추적 해제': 'clear trace',
+  '포트/회로': 'Port / circuit', '현재 부하': 'Current load', '최소 정격': 'Weakest rating',
+  '연결 정보 없음': 'No link recorded',
+  '랙·UPS를 클릭하면 상류 전원 경로를 추적한다.': 'Click a rack or UPS to trace its supply upstream.',
+  '원장 좌표': 'Ledger coordinates', '추정 배치': 'Estimated placement',
+  'KMX CCR 서버실(178 ㎡ · 랙 62 · CRAC 3 · UPS 2 · 센서 6 · 누수 존 4 · FM-200) 설계안을 샘플 값으로 보여주는 시연 씬이다. 12월 UAT에서 실제 수집값으로 교체된다.':
+    'A demo scene showing the KMX CCR server room design (178 m², 62 racks, 3 CRAC, 2 UPS, 6 sensors, 4 leak zones, FM-200) with sample values. Replaced by collected data at the December UAT.',
 };
 
 // Entity-decoded alias: templates are authored with &gt; but the lookup sees ">".

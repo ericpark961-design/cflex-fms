@@ -486,6 +486,61 @@ router.put('/assets/:id/thresholds', (req, res) => {
 
 
 
+// ─── /v1/fms/topology* ── v3 placement ledger ───────────────────
+// Additive: no existing endpoint's response shape changes.
+const topo = () => require('../services/fms-topology');
+
+router.get('/topology', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  try {
+    const { rooms, unplaced } = topo().getTopology(db, tid, (req.query.cbu || '').trim() || null);
+    res.json({ ok: true, rooms, unplaced });
+  } catch (e) { console.error('[fms.topology]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+router.get('/topology/heat', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const metric = req.query.metric === 'temp' ? 'temp' : 'load';
+  try {
+    res.json({ ok: true, metric, rooms: topo().getHeat(db, tid, (req.query.cbu || '').trim() || null, metric) });
+  } catch (e) { console.error('[fms.topology.heat]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Declared before /power-chain/:deviceId so "object" is not swallowed as an id.
+router.get('/power-chain/object/:objectId', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  try { res.json({ ok: true, ...topo().powerChainForObject(db, tid, req.params.objectId) }); }
+  catch (e) { console.error('[fms.power-chain.object]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+router.get('/power-chain/:deviceId', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  try { res.json({ ok: true, ...topo().powerChainForDevice(db, tid, req.params.deviceId) }); }
+  catch (e) { console.error('[fms.power-chain]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+router.get('/topology/export', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  try { res.json({ ok: true, ...topo().exportTopology(db, tid, (req.query.cbu || '').trim() || null) }); }
+  catch (e) { console.error('[fms.topology.export]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+router.post('/topology/import', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'super_admin') return res.status(403).json({ error: 'admin only' });
+  const mode = req.body?.mode === 'replace' ? 'replace' : 'merge';
+  try {
+    const r = topo().importTopology(db, tid, req.body, { mode, cbu: (req.body?.cbu || '').trim() || null });
+    res.json({ ok: true, mode, ...r });
+  } catch (e) {
+    // A malformed ledger is the caller's problem, not a server fault.
+    if (/^invalid ledger/.test(e.message)) return res.status(400).json({ error: e.message });
+    console.error('[fms.topology.import]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── POST /v1/fms/copilot ── Claude-backed operator Q&A ─────────
 // Backs the 전력체인·코파일럿 panel in /twin. Read-only: it answers from the
 // tenant's own rows and cannot act on anything.

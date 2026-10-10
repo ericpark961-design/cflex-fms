@@ -17,6 +17,12 @@ const KEYS = new Set([...body.matchAll(/'((?:[^'\\]|\\.)*)'\s*:/g)].map(m => m[1
 const KO = /[가-힣]/;
 const found = new Set();
 
+// t('...') calls in the JSX screens (the 3D twin is React, not a template).
+for (const f of ['App.jsx', 'Twin3D.jsx', 'data.js']) {
+  const s = readFileSync(path.join(here, f), 'utf8');
+  for (const [, k] of s.matchAll(/\bt\('((?:[^'\\]|\\.)*)'\)/g)) if (KO.test(k)) found.add(k.replace(/\\'/g, "'"));
+}
+
 for (const f of readdirSync(screens)) {
   const s = readFileSync(path.join(screens, f), 'utf8');
   if (f.endsWith('.tpl.html')) {
