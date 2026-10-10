@@ -12,7 +12,7 @@
 // and an invented triage card would be worse than either.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { token } from './theme';
-import { ticketForAlert, hhmm } from './data';
+import { ticketForAlert, hhmm, tzMark, SIM_NOTE } from './data';
 import { t } from './i18n';
 import { AlarmPanel } from './AlarmModal';
 
@@ -86,7 +86,7 @@ function Trend({ series, threshold }) {
       <circle cx={x(xs[xs.length - 1])} cy={y(ys[ys.length - 1])} r="3" fill="#4589ff" />
     </svg>
     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#6f6f6f', marginTop: 2 }}>
-      <span>{hhmm(xs[0])}</span><span>{pts.length} {t('표본')}</span><span>{hhmm(xs[xs.length - 1])}</span>
+      <span>{hhmm(xs[0], series.cbu)}</span><span>{pts.length} {t('표본')}</span><span>{hhmm(xs[xs.length - 1], series.cbu)}</span>
     </div>
   </div>;
 }
@@ -326,6 +326,7 @@ export default function Workbench() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
           <span style={{ ...S.badge, background: PRI[pri], color: pri === 'P2' ? '#161616' : '#fff', fontSize: 11, padding: '3px 7px' }}>{pri}</span>
           {inc && <span style={{ ...S.badge, background: STATE_COLOR[inc.status] || '#393939', color: '#fff' }}>{t(STATE_LABEL[inc.status] || inc.status)}</span>}
+          {(inc?.simulated || alarm?.simulated) ? <span title={SIM_NOTE()} style={{ ...S.badge, background: '#ff832b', color: '#161616' }}>SIM</span> : null}
           {inc?.verify_state && <span style={{ ...S.badge, background: inc.verify_state === 'ok' ? '#042d1c' : inc.verify_state === 'failed' ? '#3d0a0e' : '#262626', color: inc.verify_state === 'ok' ? '#42be65' : inc.verify_state === 'failed' ? '#fa4d56' : '#c6c6c6' }}>
             Verify {inc.verify_state}
           </span>}
@@ -339,7 +340,7 @@ export default function Workbench() {
           <span className="mono">{inc?.device_label || alarm?.device || inc?.device_id || '—'}</span>
           {wb?.device?.model && <span>{wb.device.model}</span>}
           <span>{[inc?.site || wb?.device?.location, wb?.device?.room, wb?.device?.rack].filter(Boolean).join(' · ') || '—'}</span>
-          <span>{hhmm(inc?.created_at || alarm?.at)} ({ago(inc?.created_at || alarm?.at)} {t('전')})</span>
+          <span>{hhmm(inc?.created_at || alarm?.at, inc?.cbu)} {tzMark(inc?.cbu) && <span style={{ color: '#6f6f6f' }}>{tzMark(inc?.cbu)}</span>} ({ago(inc?.created_at || alarm?.at)} {t('전')})</span>
           {inc?.assignee && <span>{t('담당')} {inc.assignee}</span>}
         </div>
 
@@ -424,7 +425,7 @@ export default function Workbench() {
               {[['accept', '수락', d.accepted_at], ['arrive', '도착', d.arrived_at], ['done', '작업 완료', d.done_at]].map(([step, label, at]) => (
                 <button key={step} onClick={() => patchDispatch(d.id, step)} disabled={!!busy || !!at}
                   style={{ ...(at ? { ...S.btn, borderColor: '#42be65', color: '#42be65' } : S.btn), padding: narrow ? '11px 16px' : '7px 12px', flex: narrow ? '1 1 30%' : '0 0 auto' }}>
-                  {t(label)}{at ? ` ✓ ${hhmm(at)}` : ''}
+                  {t(label)}{at ? ` ✓ ${hhmm(at, inc?.cbu)}` : ''}
                 </button>
               ))}
             </div>
@@ -465,7 +466,7 @@ export default function Workbench() {
             {wb.alarms.map(a => <div key={a.id} style={{ fontSize: 12, padding: '4px 0', borderTop: '1px solid #2a2a2a', display: 'flex', gap: 8 }}>
               <span style={{ color: PRI[a.priority] }}>{a.priority}</span>
               <span style={{ flex: 1 }}>{a.message}</span>
-              <span className="mono" style={{ color: '#8d8d8d' }}>{hhmm(a.received_at)}</span>
+              <span className="mono" style={{ color: '#8d8d8d' }}>{hhmm(a.received_at, inc?.cbu)}</span>
             </div>)}
           </div>}
 
@@ -473,7 +474,7 @@ export default function Workbench() {
           <div style={S.card}>
             <div style={S.h}>{t('타임라인')}</div>
             {(wb.timeline || []).map(ev => <div key={ev.id} style={{ display: 'flex', gap: 9, padding: '6px 0', borderTop: '1px solid #2a2a2a', fontSize: 12 }}>
-              <span className="mono" style={{ color: '#6f6f6f', flex: '0 0 42px' }}>{hhmm(ev.created_at)}</span>
+              <span className="mono" style={{ color: '#6f6f6f', flex: '0 0 42px' }}>{hhmm(ev.created_at, inc?.cbu)}</span>
               <span style={{ ...S.badge, background: '#262626', color: '#c6c6c6', flex: '0 0 auto', alignSelf: 'flex-start' }}>
                 {t(KIND_LABEL[ev.kind] || ev.kind)}
               </span>

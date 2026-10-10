@@ -17,7 +17,9 @@ function makeDb() {
     id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, label TEXT, cbu TEXT,
     location TEXT, room TEXT, rack TEXT, status TEXT, last_polled INTEGER,
     health_score INTEGER, battery_pct INTEGER, load_pct INTEGER, temp_c REAL,
-    vendor TEXT, model TEXT, decommissioned_at INTEGER)`);
+    vendor TEXT, model TEXT, decommissioned_at INTEGER,
+    ip TEXT, serial TEXT, criticality TEXT, polling_enabled INTEGER,
+    created_at INTEGER, updated_at INTEGER)`);
   const sql = fs.readFileSync(path.join(__dirname, '../migrations/004_fms_topology.sql'), 'utf8');
   for (const s of sql.split('\n').filter(l => !/^\s*--/.test(l)).join('\n').split(';').map(x => x.trim()).filter(Boolean)) raw.exec(s);
   return {
@@ -207,6 +209,118 @@ t('a stale device reads as nodata, not as its last status', () => {
   assert.strictEqual(dev.status, 'nodata');
   assert.strictEqual(dev.load_pct, null);
 });
+
+console.log('ups registration (부록 K1)');
+{
+  // A ledger UPS with no ups_devices row must become one — that table is what
+  // the KPIs, the CBU toggle, the device list and the alarm map all read.
+  const d = makeDb();
+  const r = T.importTopology(d, 10, {
+    cbu: 'KMX',
+    rooms: [{ location: 'KMX Pesquería', name: 'CCR', objects: [{ name: 'B07', kind: 'rack', col: 1, row: 1 }],
+      devices: [
+        { label: 'B07-UPS', kind: 'ups', rack: 'B07', u_pos: 2, vendor: 'APC', model: 'Smart-UPS SRT 5000VA RM', ip: '10.60.1.14', status: 'critical', battery_pct: 71, load_pct: 88, temp_c: 29.4 },
+        { label: 'MDF-SW-1', kind: 'switch', rack: 'B07', u_pos: 40, ports_total: 48 },
+      ] }],
+  }, { mode: 'merge' });
+
+  t('registers a ledger UPS in ups_devices, not fms_devices', () => {
+    assert.strictEqual(r.ups_registered, 1);
+    const up = d.prepare("SELECT * FROM ups_devices WHERE label='B07-UPS'").get();
+    assert.ok(up, 'the UPS is in ups_devices');
+    assert.strictEqual(up.cbu, 'KMX');
+    assert.strictEqual(up.room, 'CCR');
+    assert.strictEqual(up.rack, 'B07');
+    assert.ok(up.rack_id > 0, 'bound to the ledger rack');
+    assert.strictEqual(up.ip, '10.60.1.14');
+    assert.strictEqual(d.prepare("SELECT COUNT(*) c FROM fms_devices WHERE label='B07-UPS'").get().c, 0);
+  });
+
+  t('a registered UPS is nodata with polling off — a ledger is a design document', () => {
+    const up = d.prepare("SELECT status, polling_enabled FROM ups_devices WHERE label='B07-UPS'").get();
+    assert.strictEqual(up.status, 'nodata', 'the ledger\'s own "critical" is not trusted');
+    assert.strictEqual(up.polling_enabled, 0, 'no poller starts against an unconfirmed address');
+  });
+
+  t('non-UPS gear still goes to fms_devices', () => {
+    assert.strictEqual(d.prepare("SELECT COUNT(*) c FROM fms_devices WHERE label='MDF-SW-1'").get().c, 1);
+    assert.strictEqual(d.prepare("SELECT COUNT(*) c FROM ups_devices WHERE label='MDF-SW-1'").get().c, 0);
+  });
+
+  t('re-import does not duplicate the UPS', () => {
+    T.importTopology(d, 10, {
+      cbu: 'KMX',
+      rooms: [{ location: 'KMX Pesquería', name: 'CCR', objects: [{ name: 'B07', kind: 'rack', col: 1, row: 1 }],
+        devices: [{ label: 'B07-UPS', kind: 'ups', rack: 'B07', u_pos: 2, ip: '10.60.1.14' }] }],
+    }, { mode: 'merge' });
+    assert.strictEqual(d.prepare("SELECT COUNT(*) c FROM ups_devices WHERE label='B07-UPS'").get().c, 1);
+  });
+
+  t('an existing fms_devices UPS row is cleaned up on import', () => {
+    const d2 = makeDb();
+    d2.prepare("INSERT INTO fms_devices (tenant_id, cbu, kind, label, status) VALUES (10,'KMX','ups','KMX-UPS-01','nodata')").run();
+    const r2 = T.importTopology(d2, 10, {
+      cbu: 'KMX',
+      rooms: [{ location: 'KMX Pesquería', name: 'CCR', objects: [{ name: 'UPS-1', kind: 'ups_cabinet', col: 1, row: 1 }],
+        devices: [{ label: 'KMX-UPS-01', kind: 'ups', rack: 'UPS-1', u_pos: 1 }] }],
+    }, { mode: 'merge' });
+    assert.strictEqual(r2.ups_dedup, 1, 'the duplicate was removed');
+    assert.strictEqual(d2.prepare("SELECT COUNT(*) c FROM fms_devices WHERE label='KMX-UPS-01'").get().c, 0);
+    assert.strictEqual(d2.prepare("SELECT COUNT(*) c FROM ups_devices WHERE label='KMX-UPS-01'").get().c, 1);
+  });
+
+  t('removing the duplicate takes its power links with it', () => {
+    // Regression: deleting only the fms_devices row left links pointing at a
+    // device id that no longer existed. A chain trace then walked into the
+    // dangling edge and stopped — B07-UPS reached PDU-A and no further, with
+    // the correct ups_device link sitting unused beside it.
+    const d4 = makeDb();
+    const LED = {
+      cbu: 'KMX',
+      rooms: [{ location: 'L', name: 'CCR',
+        objects: [
+          { name: 'B07', kind: 'rack', col: 1, row: 1 },
+          { name: 'PDU-A', kind: 'pdu_cabinet', col: 2, row: 1, attrs: { rated_a: 63 } },
+          { name: 'PANEL-1', kind: 'panel', col: 3, row: 1, attrs: { rated_a: 200 } },
+        ],
+        devices: [{ label: 'B07-UPS', kind: 'ups', rack: 'B07', u_pos: 2 }],
+        power_links: [
+          { src: 'B07', src_type: 'object', dst: 'B07-UPS', dst_type: 'ups_device', rated_a: 16 },
+          { src: 'B07-UPS', src_type: 'ups_device', dst: 'PDU-A', dst_type: 'object', rated_a: 32 },
+          { src: 'PDU-A', src_type: 'object', dst: 'PANEL-1', dst_type: 'object', rated_a: 63 },
+        ] }],
+    };
+    // First import as the old code would have left things: the UPS in
+    // fms_devices, with links bound to that row.
+    T.importTopology(d4, 10, LED, { mode: 'merge' });
+    const links = d4.prepare('SELECT COUNT(*) c FROM fms_power_links WHERE tenant_id=10').get().c;
+
+    const r4 = T.importTopology(d4, 10, LED, { mode: 'merge' });
+    assert.strictEqual(d4.prepare('SELECT COUNT(*) c FROM fms_power_links WHERE tenant_id=10').get().c, links,
+      're-import does not accumulate links');
+    const dangling = d4.prepare(`SELECT COUNT(*) c FROM fms_power_links WHERE tenant_id=10 AND (
+        (src_type='device' AND src_id NOT IN (SELECT id FROM fms_devices)) OR
+        (dst_type='device' AND dst_id NOT IN (SELECT id FROM fms_devices)) OR
+        (src_type='ups_device' AND src_id NOT IN (SELECT id FROM ups_devices)) OR
+        (dst_type='ups_device' AND dst_id NOT IN (SELECT id FROM ups_devices)))`).get().c;
+    assert.strictEqual(dangling, 0, 'no link points at a row that was removed');
+
+    const up = d4.prepare("SELECT id FROM ups_devices WHERE label='B07-UPS'").get();
+    const chain = T.powerChainForDevice(d4, 10, up.id).chain.map(c => c.name);
+    assert.ok(chain.includes('PANEL-1'), `the chain reaches the panel, got ${chain.join(' → ')}`);
+    assert.ok(r4 !== null);
+  });
+
+  t('a polled UPS keeps its real data and is only placed', () => {
+    const d3 = dbWithDevice();
+    const before = d3.prepare("SELECT status, battery_pct FROM ups_devices WHERE label='KMX-UPS-01'").get();
+    T.importTopology(d3, 10, LEDGER, { mode: 'merge' });
+    const after = d3.prepare("SELECT status, battery_pct, rack_id FROM ups_devices WHERE label='KMX-UPS-01'").get();
+    assert.strictEqual(after.status, before.status, 'a live status is never overwritten by the ledger');
+    assert.strictEqual(after.battery_pct, before.battery_pct);
+    assert.ok(after.rack_id > 0, 'but it does get placed');
+  });
+}
 
 console.log('heat');
 t('emits one cell per rack that has a reading, and skips the rest', () => {

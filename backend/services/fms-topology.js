@@ -275,6 +275,67 @@ function importTopology(db, tenantId, doc, { mode = 'merge', cbu = null } = {}) 
           continue;
         }
         if (!d.label) { out.unplaced.push(String(d.id)); continue; }
+
+        // A UPS belongs in ups_devices even before a collector reaches it
+        // (부록 K1). It used to land in fms_devices, which meant the same unit
+        // existed twice as soon as polling started, and it stayed invisible to
+        // the dashboard KPIs, the CBU toggle, the device list and the alarm map
+        // — all of which read ups_devices. That table is the single source of
+        // truth for a UPS; fms_devices keeps the network/UC/server gear.
+        if ((d.kind || '') === 'ups') {
+          // ups_devices has no UNIQUE(tenant_id, label) — tenant 1 still carries
+          // a duplicate BULK-TEST-01 from an old CSV import — so this is a
+          // select-then-write rather than an upsert. Adding the constraint would
+          // fail on that row, and deleting another tenant's data to make a
+          // migration pass is not this service's call.
+          const prior = db.prepare('SELECT id, ip FROM ups_devices WHERE tenant_id=? AND label=? LIMIT 1').get(tenantId, d.label);
+          let upsId = prior?.id ?? null;
+          if (prior) {
+            db.prepare(`UPDATE ups_devices SET cbu=?, location=?, room=?, rack=?, rack_id=?, u_pos=?, u_height=?,
+                               vendor=COALESCE(?, vendor), model=COALESCE(?, model), serial=COALESCE(?, serial),
+                               ip=COALESCE(ip, ?), updated_at=?
+                        WHERE id=?`)
+              .run(theCbu, room.location, room.name, d.rack, rackId, d.u_pos ?? null, d.u_height ?? null,
+                d.vendor ?? null, d.model ?? null, d.serial ?? null, d.ip ?? null, ts, prior.id);
+          } else {
+            // status stays nodata and polling stays off: a ledger entry is a
+            // design document, and it must never make a device look healthy or
+            // start a poller against an unconfirmed address.
+            const r = db.prepare(
+              `INSERT INTO ups_devices (tenant_id, label, cbu, location, room, rack, rack_id, u_pos, u_height,
+                                        vendor, model, serial, ip, criticality, status, polling_enabled,
+                                        created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'nodata', 0, ?, ?)`,
+            ).run(tenantId, d.label, theCbu, room.location, room.name, d.rack, rackId,
+              d.u_pos ?? null, d.u_height ?? null, d.vendor ?? null, d.model ?? null, d.serial ?? null,
+              d.ip ?? null, d.criticality ?? null, ts, ts);
+            upsId = r.lastInsertRowid;
+            out.ups_registered = (out.ups_registered || 0) + 1;
+          }
+          if (upsId != null) {
+            upsIdByLabel.set(d.label, upsId);
+            // Drop the duplicate an earlier import left in fms_devices — and its
+            // power links with it. Deleting only the row left the links pointing
+            // at a device id that no longer existed, so a chain trace walked into
+            // the dangling edge and stopped: B07-UPS traced to PDU-A and no
+            // further, while the correct ups_device link sat beside it unused.
+            const stale = db.prepare('SELECT id FROM fms_devices WHERE tenant_id=? AND label=? AND kind=?').get(tenantId, d.label, 'ups');
+            if (stale) {
+              const cut = db.prepare(
+                `DELETE FROM fms_power_links WHERE tenant_id=?
+                   AND ((src_type='device' AND src_id=?) OR (dst_type='device' AND dst_id=?))`,
+              ).run(tenantId, stale.id, stale.id);
+              db.prepare('DELETE FROM fms_devices WHERE id=? AND tenant_id=?').run(stale.id, tenantId);
+              out.ups_dedup = (out.ups_dedup || 0) + 1;
+              out.links_repaired = (out.links_repaired || 0) + (cut.changes || 0);
+            }
+            out.placed_devices++;
+          } else {
+            out.unplaced.push(d.label);
+          }
+          continue;
+        }
+
         // status is NOT taken from the ledger: without a collector it stays nodata,
         // so a design document can never make a device look healthy.
         db.prepare(

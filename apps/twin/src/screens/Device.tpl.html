@@ -186,7 +186,7 @@
                   <td class="td"><button class="alarm-open" data-alarm="{{h.alertId}}" data-pri="{{h.p}}" data-msg="{{h.msg}}" data-dev="{{h.dev}}" data-devid="{{h.devId}}" data-metric="{{h.rawMetric}}" data-value="{{h.rawValue}}" data-threshold="{{h.rawThreshold}}" data-at="{{h.at}}" style="background:none;border:0;padding:0;color:#e0e0e0;cursor:pointer;font-family:inherit;font-size:inherit;text-align:left">{{h.msg}}</button></td>
                   <td class="td mono" style="color:#c6c6c6">{{h.metric}}</td>
                   <td class="td mono">{{h.val}}</td>
-                  <td class="td mono" style="color:#c6c6c6">{{h.start}}</td>
+                  <td class="td mono" style="color:#c6c6c6">{{h.start}}<sc-if value="{{h.tz}}"><span style="color:#8d8d8d;font-size:10px;margin-left:3px">{{h.tz}}</span></sc-if><sc-if value="{{h.sim}}"><span style="display:block;background:#ff832b;color:#161616;font-size:9px;font-weight:700;padding:1px 4px">{{h.sim}}</span></sc-if></td>
                   <td class="td mono" style="color:#c6c6c6">{{h.end}}</td>
                   <td class="td" style="color:#c6c6c6">{{h.who}}</td>
                 </tr>

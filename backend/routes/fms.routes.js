@@ -67,7 +67,8 @@ router.get('/summary', (req, res) => {
     console.warn('[fms.summary] count mismatch', { tid, sum, total,
                   ok, warn, critical, unreachable, nodata });
   }
-  const alerts24h = db.prepare('SELECT COUNT(*) c FROM alerts WHERE tenant_id=? AND received_at > ?').get(tid, now - 24*3600*1000).c;
+  // simulated=1 rows are demo-only: they must never move a KPI (부록 K2).
+  const alerts24h = db.prepare('SELECT COUNT(*) c FROM alerts WHERE tenant_id=? AND received_at > ? AND COALESCE(simulated,0)=0').get(tid, now - 24*3600*1000).c;
   const openTickets = db.prepare("SELECT COUNT(*) c FROM tickets WHERE tenant_id=? AND status NOT IN ('closed','resolved')").get(tid).c;
   const p1 = db.prepare("SELECT COUNT(*) c FROM tickets WHERE tenant_id=? AND priority='P1' AND status NOT IN ('closed','resolved')").get(tid).c;
   const sites = db.prepare(
@@ -93,13 +94,24 @@ router.get('/summary', (req, res) => {
     freshSince, freshSince, freshSince, freshSince, freshSince, tid,
   );
 
+  // cbu_list carries the registry's identity and timezone (부록 K1): every
+  // screen already fetches summary, and alarm times were rendering in the
+  // viewer's zone — a Monterrey alarm read as a California time in Irvine.
+  const reg = cbuRegistry(tid);
+  const cbuEnriched = cbuList.map(c => ({
+    ...c,
+    company: reg[c.cbu]?.company || null,
+    display: reg[c.cbu]?.display || null,
+    timezone: reg[c.cbu]?.timezone || null,
+  }));
+
   res.json({
     ok: true,
     devices: { total, polling, online, unreachable, nodata, critical, warn, normal: ok },
     alerts_24h: alerts24h,
     tickets: { open: openTickets, p1 },
     sites,
-    cbu_list: cbuList,
+    cbu_list: cbuEnriched,
     // 검증용 정합 sum (프론트 디버그 표시 가능)
     _sum_check: ok + warn + critical + unreachable + nodata,
   });
@@ -138,7 +150,7 @@ router.get('/fleet-live', (req, res) => {
                                   COUNT(DISTINCT m.device_id) AS devices
                            FROM ups_metrics m
                            JOIN ups_devices d ON d.id = m.device_id
-                           WHERE d.tenant_id = ? AND m.ts > ?` + cf.clause.replace('cbu', 'd.cbu') + `
+                           WHERE d.tenant_id = ? AND m.ts > ? AND COALESCE(m.simulated,0)=0` + cf.clause.replace('cbu', 'd.cbu') + `
                            GROUP BY bucket ORDER BY bucket ASC`).all(tid, cutoff, ...cf.params);
 
   res.json({ ok: true, minutes, fleet, series: rows, generated_at: Date.now() });
@@ -180,13 +192,39 @@ router.get('/floor', (req, res) => {
 
 // ─── GET /v1/fms/sites-map ── sites grouped by CBU for the Alarm Map view ──
 // Each CBU = one campus pin. Sub-locations are listed in `buildings`.
-const CBU_ADDRESS = {
+// CBU registry (부록 K1). These three were hard-coded here, so adding a site
+// meant a code deploy and the alarm map could only pin a CBU whose devices
+// already carried lat/lng. They live in fms_cbu now; the literals below remain
+// only as the pre-005 fallback, so a server without the table keeps working.
+const CBU_ADDRESS_FALLBACK = {
   HMA:     { full: '10550 Talbert Ave, Fountain Valley, CA 92708', display: 'Fountain Valley, CA', company: 'Hyundai Motor America' },
   KUS:     { full: '111 Peters Canyon Rd, Irvine, CA 92606',       display: 'Irvine, CA',          company: 'Kia America' },
   HAEA_HQ: { full: '2300 Main St, Irvine, CA 92614',                display: 'Irvine, CA',          company: 'HAEA HQ' },
 };
+const CBU_TTL_MS = 60 * 1000;
+let cbuCache = { at: 0, byTenant: new Map() };
+
+/** cbu -> { company, display, full, lat, lng, timezone }. Cached for a minute. */
+function cbuRegistry(tenantId) {
+  if (Date.now() - cbuCache.at > CBU_TTL_MS) cbuCache = { at: Date.now(), byTenant: new Map() };
+  const hit = cbuCache.byTenant.get(tenantId);
+  if (hit) return hit;
+  let map = {};
+  try {
+    for (const r of db.prepare('SELECT cbu, company, display, full_address, lat, lng, timezone FROM fms_cbu WHERE tenant_id=?').all(tenantId)) {
+      map[r.cbu] = { company: r.company || r.cbu, display: r.display || '—', full: r.full_address || '—', lat: r.lat, lng: r.lng, timezone: r.timezone };
+    }
+  } catch { /* pre-005 */ }
+  if (!Object.keys(map).length) {
+    map = Object.fromEntries(Object.entries(CBU_ADDRESS_FALLBACK)
+      .map(([k, v]) => [k, { ...v, lat: null, lng: null, timezone: 'America/Los_Angeles' }]));
+  }
+  cbuCache.byTenant.set(tenantId, map);
+  return map;
+}
 router.get('/sites-map', (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const reg = cbuRegistry(tid);
   const freshSince = Date.now() - STALE_MS;
   // 신선도 게이트 — critical/warn/ok는 last_polled 신선해야만. 나머지는 nodata.
   const rows = db.prepare(`SELECT cbu, AVG(lat) AS lat, AVG(lng) AS lng,
@@ -200,7 +238,7 @@ router.get('/sites-map', (req, res) => {
                                             OR status NOT IN ('ok','warn','critical','unreachable')
                                             THEN 1 ELSE 0 END) AS nodata
                            FROM ups_devices
-                           WHERE tenant_id=? AND cbu IS NOT NULL AND lat IS NOT NULL
+                           WHERE tenant_id=? AND cbu IS NOT NULL
                            GROUP BY cbu`).all(
     freshSince, freshSince, freshSince, freshSince, freshSince, tid,
   );
@@ -209,7 +247,7 @@ router.get('/sites-map', (req, res) => {
                                      WHERE tenant_id=? AND cbu IS NOT NULL AND location != ''
                                      GROUP BY cbu, location`).all(tid);
   const sites = rows.map(r => {
-    const addr = CBU_ADDRESS[r.cbu] || { full: '—', display: '—', company: r.cbu };
+    const addr = reg[r.cbu] || { full: '—', display: '—', company: r.cbu, lat: null, lng: null, timezone: null };
     const buildings = buildingsByCbu.filter(b => b.cbu === r.cbu).map(b => ({ name: b.location, total: b.total }));
     return {
       name: r.cbu.replace('_', ' '),
@@ -217,13 +255,15 @@ router.get('/sites-map', (req, res) => {
       company: addr.company,
       address: addr.full,
       city: addr.display,
-      lat: r.lat, lng: r.lng,
+      lat: addr.lat ?? r.lat, lng: addr.lng ?? r.lng,
+      timezone: addr.timezone || null,
       total: r.total, critical: r.critical, warn: r.warn,
       unreachable: r.unreachable, nodata: r.nodata, ok: r.ok,
       buildings,
     };
   });
-  res.json({ ok: true, sites });
+  // A CBU with no coordinates anywhere is omitted rather than pinned at 0,0.
+  res.json({ ok: true, sites: sites.filter(x => x.lat != null && x.lng != null) });
 });
 
 // ─── GET /v1/fms/assets ─────────────────────────────────────────
@@ -288,12 +328,24 @@ router.get('/assets/:id', (req, res) => {
 router.get('/alerts', (req, res) => {
   const tid = tenantOf(req);
   const hours = parseInt(req.query.hours || '24', 10);
-  const rows = db.prepare(`SELECT a.id, a.device_id, a.site, a.priority, a.metric, a.message, a.value, a.threshold, a.received_at,
-                                  d.label AS device_label, d.room, d.rack, d.muted_until
+  const cbu = (req.query.cbu || '').trim();
+  // The cbu query parameter used to be accepted and ignored here, so every
+  // screen fell back to filtering client-side. It is applied now, against the
+  // device's CBU or — for an alarm raised on a ledger object such as a CRAC or
+  // a leak zone, which has no ups_devices row — the room's (부록 K2).
+  const scope = (!cbu || cbu === 'all') ? '' : ' AND COALESCE(d.cbu, ro.cbu) = ?';
+  const rows = db.prepare(`SELECT a.id, a.device_id, a.site, a.priority, a.metric, a.message, a.value, a.threshold,
+                                  a.received_at, a.object_id, COALESCE(a.simulated, 0) AS simulated,
+                                  d.label AS device_label, d.room, d.rack, d.muted_until,
+                                  rk.name AS object_name, rk.kind AS object_kind,
+                                  COALESCE(d.cbu, ro.cbu) AS cbu, COALESCE(d.room, ro.name) AS room_name
                            FROM alerts a
                            LEFT JOIN ups_devices d ON ('ups-' || d.id) = a.device_id
-                           WHERE a.tenant_id=? AND a.received_at > ?
-                           ORDER BY a.received_at DESC LIMIT 300`).all(tid, Date.now() - hours*3600*1000);
+                           LEFT JOIN fms_racks rk ON rk.id = a.object_id
+                           LEFT JOIN fms_rooms ro ON ro.id = rk.room_id
+                           WHERE a.tenant_id=? AND a.received_at > ?` + scope + `
+                           ORDER BY a.received_at DESC LIMIT 300`)
+    .all(tid, Date.now() - hours*3600*1000, ...(scope ? [cbu] : []));
   // Recurring detection: same device + metric ≥ 3 occurrences
   const counts = {};
   rows.forEach(r => { const k = r.device_id + ':' + r.metric; counts[k] = (counts[k] || 0) + 1; });
@@ -340,10 +392,12 @@ router.get('/reports/monthly', (req, res) => {
   const start = new Date(year, month - 1, 1).getTime();
   const end = new Date(year, month, 1).getTime();
   const tickets = db.prepare(`SELECT priority, mttr_seconds, created_at, resolved_at FROM tickets
-                              WHERE tenant_id=? AND created_at >= ? AND created_at < ?`).all(tid, start, end);
+                              WHERE tenant_id=? AND created_at >= ? AND created_at < ?
+                                AND COALESCE(simulated,0)=0`).all(tid, start, end);
   const resolved = tickets.filter(t => t.resolved_at);
   const avgMttrSec = resolved.length ? Math.round(resolved.reduce((s,t)=>s+(t.mttr_seconds||0),0)/resolved.length) : null;
-  const alertsCount = db.prepare(`SELECT COUNT(*) c FROM alerts WHERE tenant_id=? AND received_at >= ? AND received_at < ?`).get(tid, start, end).c;
+  const alertsCount = db.prepare(`SELECT COUNT(*) c FROM alerts WHERE tenant_id=? AND received_at >= ? AND received_at < ?
+                                   AND COALESCE(simulated,0)=0`).get(tid, start, end).c;
   const totalDevices = db.prepare(`SELECT COUNT(*) c FROM ups_devices WHERE tenant_id=? AND polling_enabled=1`).get(tid).c;
   res.json({
     ok: true, year, month,

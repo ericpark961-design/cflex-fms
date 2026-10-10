@@ -47,6 +47,7 @@ export const EN = {
     'This server has no copilot endpoint (/v1/fms/copilot) deployed yet.',
   '원장': 'Ledger',
   // v5 alarm workbench
+  '시뮬레이션 데이터 — 집계·SLA·리포트에서 제외됨': 'Simulated data — excluded from KPIs, SLA and reports',
   '24시간 내 알람 없음': 'No alarms in 24h',
   '클릭하면 워크벤치': 'click for the workbench',
   '활성 알람': 'Active alarms',

@@ -15,16 +15,44 @@ const SC = { ok: OK, warn: WARN, critical: CRIT, nodata: NA, unreachable: NA, un
 const SL = { ok: () => t('정상'), warn: () => t('경고'), critical: () => t('위험'), nodata: () => t('데이터없음'), unreachable: () => t('데이터없음'), unknown: () => t('데이터없음') };
 const slabel = (s) => (SL[s] || SL.unknown)();
 const PR = { P1: { bg: '#fa4d56', fg: '#fff' }, P2: { bg: '#f1c21b', fg: '#161616' }, P3: { bg: '#393939', fg: '#f4f4f4' }, P4: { bg: '#393939', fg: '#c6c6c6' } };
-export const hhmm = (ms) => ms ? new Date(ms).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '—';
+// Times are shown in the SITE's timezone, not the viewer's (부록 K1). A KMX
+// alarm at 11:02 Monterrey read as 09:02 in Irvine, which is a real way to
+// mis-sequence an incident. `cbu` is optional: without it this is the viewer's
+// zone exactly as before.
+export const SIM_NOTE = () => t('시뮬레이션 데이터 — 집계·SLA·리포트에서 제외됨');
+export const cbuTz = (cbu) => (cbu && store.cbuMeta?.[cbu]?.timezone) || undefined;
+export const hhmm = (ms, cbu) => ms
+  ? new Date(ms).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: cbuTz(cbu) })
+  : '—';
+
+/**
+ * Short zone marker, shown only when the site's zone differs from the viewer's
+ * — a label on every timestamp would be noise, and no label at all is the bug.
+ */
+export function tzMark(cbu) {
+  const tz = cbuTz(cbu);
+  if (!tz) return '';
+  try {
+    const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (here === tz) return '';
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' }).formatToParts(new Date());
+    return parts.find(p => p.type === 'timeZoneName')?.value || tz.split('/').pop();
+  } catch { return ''; }
+}
 const pct = (n, t) => t ? `${Math.max(2, Math.round((n / t) * 100))}%` : '0%';
 
-export const store = { me: null, summary: null, summaryAll: null, assets: [], alerts: [], floor: null, topology: null, heat: {}, fleet: null, loadedAt: 0 };
+export const store = { me: null, cbuMeta: {}, summary: null, summaryAll: null, assets: [], alerts: [], floor: null, topology: null, heat: {}, fleet: null, loadedAt: 0 };
 export async function refresh() {
   const [s, sa, a, al, f, t] = await Promise.all([
     api('/v1/fms/summary' + withCbu()), api('/v1/fms/summary'), api('/v1/fms/assets' + withCbu()),
     api('/v1/fms/alerts' + withCbu('?hours=24')), api('/v1/fms/floor' + withCbu()), api('/v1/fms/topology' + withCbu()),
   ]);
-  if (s?.ok) store.summary = s; if (sa?.ok) store.summaryAll = sa; if (a?.ok) store.assets = a.assets || []; if (al?.ok) store.alerts = al.alerts || []; if (f?.ok) store.floor = f.tree;
+  if (s?.ok) store.summary = s; if (sa?.ok) store.summaryAll = sa;
+  // cbu -> { company, display, timezone }, used by hhmm()/tzMark().
+  for (const c of (sa?.cbu_list || s?.cbu_list || [])) store.cbuMeta[c.cbu] = { company: c.company, display: c.display, timezone: c.timezone };
+  if (a?.ok) store.assets = a.assets || [];
+  if (al?.ok) store.alerts = al.alerts || [];
+  if (f?.ok) store.floor = f.tree;
   // A server without the v3 ledger endpoint simply has no topology; the 3D scene
   // then falls back to v2 placement for everything, which is the v2 behaviour.
   store.topology = t?.ok ? { rooms: t.rooms || [], unplaced: t.unplaced || [] } : null;
@@ -151,7 +179,14 @@ export function cbus() {
   return list.map(c => ({ ...c, crit: c.critical ? `●${c.critical}` : '', bg: c.cbu === cur ? '#393939' : 'transparent', fg: c.cbu === cur ? '#fff' : '#f4f4f4' }));
 }
 function alarmRows(limit = 6) {
-  return store.alerts.slice(0, limit).map(a => ({ p: a.priority, ...(PR[a.priority] || PR.P4), msg: a.message, dev: a.device_label || a.device_id, devId: devId(a.device_id), alertId: a.id, metric: a.metric || '', rawValue: a.value ?? '', rawThreshold: a.threshold ?? '', at: a.received_at, t: hhmm(a.received_at) }));
+  return store.alerts.slice(0, limit).map(a => ({
+    p: a.priority, ...(PR[a.priority] || PR.P4), msg: a.message,
+    dev: a.device_label || a.object_name || a.device_id, devId: devId(a.device_id),
+    alertId: a.id, metric: a.metric || '', rawValue: a.value ?? '', rawThreshold: a.threshold ?? '',
+    at: a.received_at, cbu: a.cbu || '',
+    t: hhmm(a.received_at, a.cbu), tz: tzMark(a.cbu),
+    sim: a.simulated ? 'SIM' : '',
+  }));
 }
 
 export function mainData() {
@@ -253,7 +288,8 @@ export async function deviceData(id, _fellBack = false, range = '24h') {
   const hist = a && a._alerts.length ? a._alerts.map(x => ({
     p: x.priority, ...(PR[x.priority] || PR.P4), msg: x.message,
     metric: x.metric || '—', val: x.value != null ? `${x.value} / ${x.threshold ?? '—'}` : '—',
-    start: hhmm(x.received_at), end: '—', who: '—',
+    start: hhmm(x.received_at, x.cbu || a.cbu), tz: tzMark(x.cbu || a.cbu), end: '—', who: '—',
+    sim: x.simulated ? 'SIM' : '',
     alertId: x.id, dev: a.label || devId(a.id), devId: devId(a.id),
     rawMetric: x.metric || '', rawValue: x.value ?? '', rawThreshold: x.threshold ?? '', at: x.received_at,
   })) : base.hist;
@@ -294,7 +330,8 @@ export function alarmsData(cbuFilter = null) {
   const cbuOf = new Map(store.assets.map(a => [devId(a.id), a.cbu]));
   const inScope = (a) => !cbuFilter || cbuOf.get(devId(a.device_id)) === cbuFilter;
   const scoped = store.alerts.filter(inScope);
-  const rows = scoped.length ? scoped.slice(0, 12).map(a => ({ p: a.priority, ...(PR[a.priority] || PR.P4), st: t(a.muted_until ? '점검모드' : '미확인'), stc: a.muted_until ? '#8d8d8d' : '#ff832b', rowbg: a.priority === 'P1' ? 'rgba(250,77,86,.06)' : 'transparent', msg: a.message, sub: `${a.metric || ''}${a.recurring ? ` · ${t('반복')}` : ''}`, dev: a.device_label || a.device_id, devId: devId(a.device_id), alertId: a.id, metric: a.metric || '', rawValue: a.value ?? '', rawThreshold: a.threshold ?? '', at: a.received_at, site: a.site || a.room || '', val: a.value != null ? `${a.value} / ${a.threshold ?? '—'}` : '—', t: hhmm(a.received_at), age: a.received_at ? `${Math.max(0, Math.round((Date.now() - a.received_at) / 60000))}m` : '—', agec: a.priority === 'P1' ? '#ff8389' : '#c6c6c6', who: '—' })) : base.rows;
+  const rows = scoped.length ? scoped.slice(0, 12).map(a => ({ p: a.priority, ...(PR[a.priority] || PR.P4), st: t(a.muted_until ? '점검모드' : '미확인'), stc: a.muted_until ? '#8d8d8d' : '#ff832b', rowbg: a.priority === 'P1' ? 'rgba(250,77,86,.06)' : 'transparent', msg: a.message, sub: `${a.metric || ''}${a.recurring ? ` · ${t('반복')}` : ''}`, dev: a.device_label || a.device_id, devId: devId(a.device_id), alertId: a.id, metric: a.metric || '', rawValue: a.value ?? '', rawThreshold: a.threshold ?? '', at: a.received_at, site: a.site || a.room_name || a.room || '', val: a.value != null ? `${a.value} / ${a.threshold ?? '—'}` : '—',
+    cbu: a.cbu || '', t: hhmm(a.received_at, a.cbu), tz: tzMark(a.cbu), sim: a.simulated ? 'SIM' : '', age: a.received_at ? `${Math.max(0, Math.round((Date.now() - a.received_at) / 60000))}m` : '—', agec: a.priority === 'P1' ? '#ff8389' : '#c6c6c6', who: '—' })) : base.rows;
   const rules = (aux.rules || []).map(r => ({
     metric: r.metric, priority: r.priority,
     threshold: r.threshold != null ? String(r.threshold) : '—',
@@ -392,8 +429,9 @@ export function nocData() {
   // every alarm surface. An empty feed shows one quiet row, not invented ones.
   const ticker = store.alerts.slice(0, 12).map(x => ({
     p: x.priority, ...(PR[x.priority] || PR.P4),
-    t: hhmm(x.received_at), msg: x.message,
-    dev: x.device_label || x.device_id, devId: devId(x.device_id),
+    t: hhmm(x.received_at, x.cbu), msg: x.message,
+    dev: x.device_label || x.object_name || x.device_id, devId: devId(x.device_id),
+    sim: x.simulated ? '· SIM' : '',
     alertId: x.id, metric: x.metric || '', rawValue: x.value ?? '', rawThreshold: x.threshold ?? '',
     at: x.received_at,
   }));

@@ -169,3 +169,49 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_tickets_dedup_active
 CREATE INDEX IF NOT EXISTS idx_tickets_severity ON tickets(severity, status);
 CREATE INDEX IF NOT EXISTS idx_tickets_cbu ON tickets(cbu, status);
 CREATE INDEX IF NOT EXISTS idx_notes_kind ON ticket_notes(ticket_id, kind);
+
+-- ══ 부록 K — CBU registry and simulation flags ══════════════════════
+
+-- CBU_ADDRESS was three hard-coded objects in fms.routes.js, so adding KMX
+-- meant a code deploy and the alarm map could only pin sites whose devices
+-- already carried lat/lng. The registry is a table now; summary.cbu_list,
+-- sites-map, the alarm map and the CBU toggle all read it.
+--
+-- Keyed on (tenant_id, cbu) but joined on cbu alone, so splitting HAEM onto its
+-- own tenant before UAT is an UPDATE of fms_cbu.tenant_id and nothing else.
+CREATE TABLE IF NOT EXISTS fms_cbu (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id    INTEGER NOT NULL,
+  cbu          TEXT NOT NULL,
+  company      TEXT,
+  display      TEXT,
+  full_address TEXT,
+  lat          REAL, lng REAL,
+  timezone     TEXT NOT NULL DEFAULT 'America/Los_Angeles',
+  note         TEXT,
+  updated_at   INTEGER,
+  UNIQUE(tenant_id, cbu)
+);
+
+-- The three that were hard-coded, plus KMX. Coordinates are pin-grade; the
+-- Pesqueria address is provisional until the survey (부록 K1).
+INSERT OR IGNORE INTO fms_cbu (tenant_id, cbu, company, display, full_address, lat, lng, timezone, note, updated_at)
+VALUES
+  (10, 'HMA',     'Hyundai Motor America', 'Fountain Valley, CA', '10550 Talbert Ave, Fountain Valley, CA 92708', 33.7033, -117.9470, 'America/Los_Angeles', NULL, 0),
+  (10, 'KUS',     'Kia America',           'Irvine, CA',          '111 Peters Canyon Rd, Irvine, CA 92606',       33.6978, -117.7700, 'America/Los_Angeles', NULL, 0),
+  (10, 'HAEA_HQ', 'HAEA HQ',               'Irvine, CA',          '2300 Main St, Irvine, CA 92614',               33.6846, -117.8265, 'America/Los_Angeles', NULL, 0),
+  (10, 'KMX',     'Kia Mexico (KMX)',      'Pesqueria, NL',       'Pesqueria, Nuevo Leon, Mexico',                25.7800, -100.0500, 'America/Monterrey', 'plant-area pin, address pending survey', 0);
+
+-- Simulation, kept in the schema rather than in a naming convention. A demo
+-- row must never reach a KPI, an SLA number, fleet-live or a monthly report,
+-- and must be removable in one statement.
+ALTER TABLE alerts ADD COLUMN simulated INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ups_metrics ADD COLUMN simulated INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tickets ADD COLUMN simulated INTEGER NOT NULL DEFAULT 0;
+
+-- Object-level alarms: a CRAC or a leak zone has no ups_devices row, so an
+-- alarm against a ledger object needs its own reference (부록 K2).
+ALTER TABLE alerts ADD COLUMN object_id INTEGER;
+
+CREATE INDEX IF NOT EXISTS idx_alerts_simulated ON alerts(tenant_id, simulated, received_at);
+CREATE INDEX IF NOT EXISTS idx_metrics_simulated ON ups_metrics(device_id, simulated, ts);

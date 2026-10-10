@@ -93,9 +93,9 @@
                     <td class="td"><span class="badge" style="background:{{r.bg}};color:{{r.fg}}">{{r.p}}</span></td>
                     <td class="td"><span class="badge" style="background:#393939;color:{{r.stc}}">{{r.st}}</span></td>
                     <td class="td"><span style="display:block">{{r.msg}}</span><span style="font-size:11px;color:#8d8d8d">{{r.sub}}</span></td>
-                    <td class="td"><button class="alarm-open mono" data-alarm="{{r.alertId}}" data-pri="{{r.p}}" data-msg="{{r.msg}}" data-dev="{{r.dev}}" data-devid="{{r.devId}}" data-metric="{{r.metric}}" data-value="{{r.rawValue}}" data-threshold="{{r.rawThreshold}}" data-at="{{r.at}}" style="background:none;border:0;padding:0;color:#e0e0e0;cursor:pointer;font-family:inherit;text-align:left">{{r.dev}}</button><span style="display:block;font-size:11px;color:#8d8d8d">{{r.site}}</span></td>
+                    <td class="td"><button class="alarm-open mono" data-alarm="{{r.alertId}}" data-pri="{{r.p}}" data-msg="{{r.msg}}" data-dev="{{r.dev}}" data-devid="{{r.devId}}" data-metric="{{r.metric}}" data-value="{{r.rawValue}}" data-threshold="{{r.rawThreshold}}" data-at="{{r.at}}" style="background:none;border:0;padding:0;color:#e0e0e0;cursor:pointer;font-family:inherit;text-align:left">{{r.dev}}</button><span style="display:block;font-size:11px;color:#8d8d8d">{{r.site}}<sc-if value="{{r.sim}}"><span style="margin-left:5px;background:#ff832b;color:#161616;font-size:9px;font-weight:700;padding:1px 4px">{{r.sim}}</span></sc-if></span></td>
                     <td class="td mono">{{r.val}}</td>
-                    <td class="td mono" style="color:#c6c6c6">{{r.t}}</td>
+                    <td class="td mono" style="color:#c6c6c6">{{r.t}}<sc-if value="{{r.tz}}"><span style="color:#8d8d8d;font-size:10px;margin-left:3px">{{r.tz}}</span></sc-if></td>
                     <td class="td mono" style="color:{{r.agec}}">{{r.age}}</td>
                     <td class="td" style="color:#c6c6c6">{{r.who}}</td>
                     <td class="td"><div style="display:flex;gap:4px"><button class="mini">확인</button><button class="mini">점검 1h</button></div></td>
