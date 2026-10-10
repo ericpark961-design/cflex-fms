@@ -40,6 +40,12 @@ export const EN = {
   '위험': 'Critical', '경고': 'Warning', '정상': 'Normal', '데이터없음': 'No data',
   '데이터 없음': 'No data', '주의': 'Caution', '온도 주의': 'Temp caution',
   '고부하': 'High load', '공랙': 'Empty rack', '전체': 'All', '전체 →': 'All →',
+  // copilot / twin strings — surfaced when the i18n test began scanning every source
+  'AI 기능이 꺼져 있습니다. 서버에서 `cflex-ai on` 으로 켜야 합니다.':
+    'AI features are off. Enable them on the server with `cflex-ai on`.',
+  '이 서버에는 아직 코파일럿 엔드포인트(/v1/fms/copilot)가 배포되지 않았습니다.':
+    'This server has no copilot endpoint (/v1/fms/copilot) deployed yet.',
+  '원장': 'Ledger',
   'CBU 필터': 'CBU filter', '사이트': 'Sites', '글로벌 사이트': 'Global sites',
   '미국 3 · 멕시코 1 · 한국 1 (파일럿)': 'US 3 · Mexico 1 · Korea 1 (pilot)',
   '최근 알람': 'Recent alarms', '알람 센터 →': 'Alarm centre →', '알람 지도 →': 'Alarm map →',

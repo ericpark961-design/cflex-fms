@@ -4,6 +4,7 @@ import { api, tx } from './theme';
 import { t } from './i18n';
 import Twin3D from './Twin3D';
 import { buildLedgerScene } from './twin/LedgerScene';
+import { CbuBar } from './cbubar';
 import { iconIdForModel, iconUrl, UPS_ICON_META } from './twin/upsIcons';
 import kmx from './demo/kmx_ccr_topology.json';
 
@@ -79,7 +80,8 @@ export default function TwinScreen({ q, standalone = false, tick = 0 }) {
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, padding: '10px 20px', background: '#0b0b0b', borderBottom: '1px solid #262626' }}>
           <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>3D 디지털트윈</h1>
           <div style={{ display: 'flex', gap: 6, marginLeft: 12 }}>{!standalone && <button style={btn(scene === 'real')} onClick={() => setScene('real')}>{tx('실데이터', 'Live')} · {store.me?.tenantName || 'HAEA'} {store.assets.length}{tx('대', ' UPS')}</button>}<button style={btn(scene === 'kmx')} onClick={() => setScene('kmx')}>KMX CCR · {t('원장')} {nRack}{tx('랙', ' racks')}</button></div>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {!standalone && <CbuBar style={{ marginLeft: 'auto' }} />}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {[['status', '상태'], ['load', '부하 kW'], ['temp', '온도']].map(([k, l]) => <button key={k} style={btn(mode === k)} onClick={() => setMode(k)}>{l}</button>)}<span style={{ width: 10 }} />
             {[['iso', '아이소'], ['top', '탑뷰'], ['aisle', '통로'], ...(scene === 'kmx' ? [['crac', 'CRAC']] : [])].map(([k, l]) => <button key={k} style={btn(view === k)} onClick={() => { setView(k); if (k === view) ledgerRef.current?.preset(k); }}>{l}</button>)}
             {scene === 'kmx' && <><span style={{ width: 10, borderLeft: '1px solid #393939' }} /><span style={{ fontSize: 11, color: '#8d8d8d', alignSelf: 'center' }}>레이어</span>{[['labels', '라벨'], ['sensors', '센서'], ['leak', '누수 존']].map(([k, l]) => <button key={k} style={btn(layers[k])} onClick={() => setLayers({ ...layers, [k]: !layers[k] })}>{l}</button>)}{[['load', '전력 히트맵'], ['temp', '온도 히트맵']].map(([k, l]) => <button key={k} style={btn(heat === k)} onClick={() => setHeat(heat === k ? 'off' : k)}>{l}</button>)}</>}

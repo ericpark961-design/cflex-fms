@@ -22,7 +22,7 @@ export const store = { me: null, summary: null, summaryAll: null, assets: [], al
 export async function refresh() {
   const [s, sa, a, al, f, t] = await Promise.all([
     api('/v1/fms/summary' + withCbu()), api('/v1/fms/summary'), api('/v1/fms/assets' + withCbu()),
-    api('/v1/fms/alerts?hours=24'), api('/v1/fms/floor' + withCbu()), api('/v1/fms/topology' + withCbu()),
+    api('/v1/fms/alerts' + withCbu('?hours=24')), api('/v1/fms/floor' + withCbu()), api('/v1/fms/topology' + withCbu()),
   ]);
   if (s?.ok) store.summary = s; if (sa?.ok) store.summaryAll = sa; if (a?.ok) store.assets = a.assets || []; if (al?.ok) store.alerts = al.alerts || []; if (f?.ok) store.floor = f.tree;
   // A server without the v3 ledger endpoint simply has no topology; the 3D scene
@@ -146,7 +146,7 @@ function kpi() {
   const nd = (d.nodata || 0) + (d.unreachable || 0);
   return { critical: d.critical ?? 0, warn: d.warn ?? 0, normal: d.normal ?? 0, nodata: nd, total: d.total ?? 0, pc_critical: pct(d.critical || 0, d.total), pc_warn: pct(d.warn || 0, d.total), pc_normal: pct(d.normal || 0, d.total), pc_nodata: pct(nd, d.total) };
 }
-function cbus() {
+export function cbus() {
   const cur = getCbu(); const S = store.summaryAll || store.summary; const list = [{ cbu: 'all', label: '전체', total: S?.devices?.total ?? '', critical: S?.devices?.critical }, ...(S?.cbu_list || []).map(c => ({ cbu: c.cbu, label: c.cbu, total: c.total, critical: c.critical }))];
   return list.map(c => ({ ...c, crit: c.critical ? `●${c.critical}` : '', bg: c.cbu === cur ? '#393939' : 'transparent', fg: c.cbu === cur ? '#fff' : '#f4f4f4' }));
 }
@@ -261,7 +261,7 @@ export async function deviceData(id, _fellBack = false, range = '24h') {
     : null;
 
   return {
-    ...base, ...meData(), d, hist, trend, ranges, actions,
+    ...base, ...meData(), cbus: cbus(), d, hist, trend, ranges, actions,
     hasActions: !!actions.length,
     rca, rcaEmpty: !rca,
     rcaNote: ticket ? 'RCA 생성 전 — 티켓 ' + ticket.ticket_no : 'P1 알람 발생 시 자동 생성',
@@ -305,7 +305,7 @@ export function alarmsData(cbuFilter = null) {
   }));
 
   return {
-    ...base, ...meData(), rows, rules, rulesEmpty: !rules.length, channels,
+    ...base, ...meData(), cbus: cbus(), rows, rules, rulesEmpty: !rules.length, channels,
     cbuFilter: cbuFilter || '',
     filterLabel: cbuFilter ? `${cbuFilter} · ${scoped.length}건` : '',
     sample: !scoped.length,
@@ -380,7 +380,7 @@ export function nocData() {
     };
   });
   return {
-    ...base, ...meData(), kpi: k,
+    ...base, ...meData(), cbus: cbus(), kpi: k,
     sites: sites.length ? sites : base.sites,
     siteSummary: sites.length ? `사이트 ${sites.length} · UPS ${sites.reduce((n, x) => n + (x.ups || 0), 0)}` : '',
     clock: new Date().toLocaleTimeString('en-GB', { hour12: false }),

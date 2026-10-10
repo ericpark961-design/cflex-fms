@@ -38,7 +38,7 @@
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 20px;background:#0b0b0b;border-bottom:1px solid #262626">
       <label for="q" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">검색</label>
       <input id="q" type="search" placeholder="장치 · IP · 알람 · 사이트 검색" style="flex:1 1 220px;max-width:360px;background:#262626;border:0;border-bottom:1px solid #525252;color:#f4f4f4;padding:9px 12px;font-family:inherit;font-size:13px">
-      <div role="group" aria-label="CBU 필터" style="display:flex;border:1px solid #393939"><sc-for list="{{cbus}}" as="c"><button class="ghost cbu-btn" data-cbu="{{c.cbu}}" style="border:0;border-left:1px solid #393939;background:{{c.bg}};color:{{c.fg}}">{{c.label}} <span class="mono" style="color:#8d8d8d">{{c.total}}</span><span style="color:#ff8389;font-weight:700;margin-left:4px">{{c.crit}}</span></button></sc-for></div>
+      
       <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
         <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#42be65"><span style="width:8px;height:8px;border-radius:50%;background:#42be65;box-shadow:0 0 0 4px rgba(66,190,101,.18)"></span>LIVE · 30s 폴링</span>
         <button class="ghost" aria-label="언어 전환">KO / EN</button>

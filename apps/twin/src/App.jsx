@@ -8,10 +8,11 @@ import nocTpl from './screens/NOC.tpl.html?raw';
 import { render } from './tpl';
 import { buildLedgerScene } from './twin/LedgerScene';
 import { store, refresh, mainData, deviceData, alarmsData, powerData, nocData, heatFor, powerChain, powerChainObject, fleetLive, ackAlert, muteDevice, runControlAction } from './data';
-import { api, lang, tx } from './theme';
+import { api, lang, tx, cbu as globalCbu } from './theme';
 import { devId } from './ids';
 import { mountCopilot } from './copilot';
 import { t } from './i18n';
+import { mountCbuBar, CbuBar } from './cbubar';
 import TwinScreen from './TwinScreen';
 import MapScreen from './MapScreen';
 import AlarmModal from './AlarmModal';
@@ -37,7 +38,7 @@ const SampleBadge = ({ on, text }) => on ? <div style={{ position: 'fixed', righ
 function WallScreen({ data }) {
   const ref = useRef(null); const [scale, setScale] = useState(1);
   const sceneBox = useRef(null); const sceneRef = useRef(null);
-  useLayoutEffect(() => { if (data) render(ref.current, nocTpl, data); }, [data]);
+  useLayoutEffect(() => { if (!data) return; render(ref.current, nocTpl, data); mountCbuBar(ref.current, () => location.reload()); }, [data]);
 
   // The wall's isometric panel is the real twin, read-only in top view: the
   // ledger when there is one, otherwise nothing (the panel says so) rather than
@@ -66,7 +67,7 @@ export default function App() {
   useEffect(() => { api('/v1/me').then(async m => { if (!m || (!m.userId && !m.email)) { location.replace('/login'); return; } store.me = m; await refresh(); setReady(true); }); const t = setInterval(async () => { await refresh(); setTick(x => x + 1); }, 30000); return () => clearInterval(t); }, []);
   useEffect(() => { if (!ready) return; if (route.path === 'device') deviceData(route.q.id, false, devRange).then(setDevData); }, [ready, route.path, route.q.id, tick, devRange]);
   const wire = useCallback((root) => {
-    root.querySelectorAll('.cbu-btn').forEach(b => b.addEventListener('click', async () => { localStorage.setItem('fms_cbu', b.dataset.cbu); await refresh(); setTick(x => x + 1); }));
+    mountCbuBar(root, () => setTick(x => x + 1));
     // The copilot form is a real request; every other form in the mockup is inert
     // and just jumps to the copilot panel.
     // Every screen's header carries a KO / EN button from the mockup markup.
@@ -125,7 +126,7 @@ export default function App() {
   if (p === 'twin') return withModal(<TwinScreen q={route.q} tick={tick} />);
   if (p === 'wall') return <WallScreen data={nocData()} />;
   if (p === 'device') return <><Screen name="Device" html={deviceTpl} data={devData} onReady={wire} /><SampleBadge on={!!devData?.sample} /><SampleBadge on={!devData?.sample} text={t('AI 예측·RCA는 Phase 2 샘플')} /></>;
-  if (p === 'alarms') { const d = alarmsData(route.q.cbu || null); return withModal(<><Screen name="Alarms" html={alarmsTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>); }
+  if (p === 'alarms') { const d = alarmsData(route.q.cbu || (globalCbu() === 'all' ? null : globalCbu())); return withModal(<><Screen name="Alarms" html={alarmsTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>); }
   if (p === 'powerchain') return <><Screen name="PowerChain" html={powerTpl} data={powerData()} onReady={wire} /><SampleBadge on text={t('전력체인·코파일럿 · Phase 3 샘플')} /></>;
   const d = mainData(); return withModal(<><Screen name="Main" html={mainTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>);
 }

@@ -12,6 +12,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { store, sitesMap } from './data';
 import { t } from './i18n';
 import { tx } from './theme';
+import { CbuBar } from './cbubar';
 
 const BASEMAP = 'https://tiles.openfreemap.org/styles/positron';
 const C = { crit: '#fa4d56', warn: '#f1c21b', ok: '#42be65', nodata: '#6f6f6f', ink: '#161616', muted: '#525252' };
@@ -147,6 +148,7 @@ export default function MapScreen({ q = {} }) {
               ? tx(`사이트 ${sites.length} · 핀을 누르면 건물 목록`, `${sites.length} sites · click a pin for its buildings`)
               : tx('불러오는 중…', 'Loading…')}
           </span>
+          <CbuBar style={{ marginLeft: 'auto' }} onChange={() => Promise.resolve(sitesMap()).then(setSites).catch(() => {})} />
         </div>
 
         <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 12, padding: 16 }}>

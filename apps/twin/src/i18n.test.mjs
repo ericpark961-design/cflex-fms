@@ -18,7 +18,10 @@ const KO = /[가-힣]/;
 const found = new Set();
 
 // t('...') calls in the JSX screens (the 3D twin is React, not a template).
-for (const f of ['App.jsx', 'Twin3D.jsx', 'data.js']) {
+// Every source that calls t() — listing them by hand let cbubar.jsx ship
+// untested, so the list is now derived from the directory.
+const sources = readdirSync(here).filter(f => /\.(jsx|js)$/.test(f) && !/\.test\.|^i18n\.js$/.test(f));
+for (const f of sources) {
   const s = readFileSync(path.join(here, f), 'utf8');
   for (const [, k] of s.matchAll(/\bt\('((?:[^'\\]|\\.)*)'\)/g)) if (KO.test(k)) found.add(k.replace(/\\'/g, "'"));
 }
