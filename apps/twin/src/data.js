@@ -1,6 +1,6 @@
 // Data adapters: merge real /v1 data into the screen templates' sample data.
 // Rule: anything the API provides overrides the sample; AI/prediction/twin figures stay sample until Phase 2/3 APIs exist.
-import { api, withCbu, cbu as getCbu } from './theme';
+import { api, withCbu, cbu as getCbu, lang } from './theme';
 import { devId } from './ids';
 import { t } from './i18n';
 import * as Main from './screens/Main.logic.js';
@@ -105,6 +105,27 @@ export const ackAlert = (id, on = true) =>
 export const muteDevice = (id, minutes, reason) =>
   api(`/v1/fms/devices/${devId(id)}/${minutes ? 'mute' : 'unmute'}`, { method: 'POST', body: JSON.stringify({ minutes, reason }) });
 
+// ── alarm → resolution → ticket ─────────────────────────────────────
+export async function ticketForAlert(alertId) {
+  const r = await api(`/v1/fms/alerts/${alertId}/ticket`);
+  return r?.ok ? (r.ticket || null) : null;
+}
+export async function createTicketFromAlert(alertId, extra = {}) {
+  return api('/v1/fms/tickets/from-alert', { method: 'POST', body: JSON.stringify({ alert_id: alertId, ...extra }) });
+}
+/** Copilot answer plus the HTTP status, so the caller can tell AI-off from broken. */
+export async function askCopilot(question, deviceId) {
+  try {
+    const r = await fetch('/v1/fms/copilot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('cflex_token') || localStorage.getItem('token') || ''}` },
+      body: JSON.stringify({ question, device_id: deviceId || undefined, lang: lang() }),
+    });
+    const d = await r.json().catch(() => null);
+    return { ...(d || {}), status: r.status };
+  } catch { return { ok: false, status: 0 }; }
+}
+
 export const powerChain = (deviceId) => chain(`/v1/fms/power-chain/${devId(deviceId)}`, `d:${devId(deviceId)}`);
 export const powerChainObject = (objectId) => chain(`/v1/fms/power-chain/object/${objectId}`, `o:${objectId}`);
 const meData = () => ({ me: { name: store.me?.displayName || store.me?.name || '', email: store.me?.email || '' }, tenant: store.me?.tenantName || store.me?.tenant?.display_name || 'HAEA' });
@@ -118,7 +139,7 @@ function cbus() {
   return list.map(c => ({ ...c, crit: c.critical ? `●${c.critical}` : '', bg: c.cbu === cur ? '#393939' : 'transparent', fg: c.cbu === cur ? '#fff' : '#f4f4f4' }));
 }
 function alarmRows(limit = 6) {
-  return store.alerts.slice(0, limit).map(a => ({ p: a.priority, ...(PR[a.priority] || PR.P4), msg: a.message, dev: a.device_label || a.device_id, devId: devId(a.device_id), t: hhmm(a.received_at) }));
+  return store.alerts.slice(0, limit).map(a => ({ p: a.priority, ...(PR[a.priority] || PR.P4), msg: a.message, dev: a.device_label || a.device_id, devId: devId(a.device_id), alertId: a.id, metric: a.metric || '', rawValue: a.value ?? '', rawThreshold: a.threshold ?? '', at: a.received_at, t: hhmm(a.received_at) }));
 }
 
 export function mainData() {
@@ -178,10 +199,72 @@ export async function deviceData(id, _fellBack = false) {
   return { ...base, ...meData(), d, hist, sample: !a };
 }
 
-export function alarmsData() {
+export function alarmsData(cbuFilter = null) {
   const base = evalLogic(Alarms.source, Alarms.props);
-  const rows = store.alerts.length ? store.alerts.slice(0, 12).map(a => ({ p: a.priority, ...(PR[a.priority] || PR.P4), st: t(a.muted_until ? '점검모드' : '미확인'), stc: a.muted_until ? '#8d8d8d' : '#ff832b', rowbg: a.priority === 'P1' ? 'rgba(250,77,86,.06)' : 'transparent', msg: a.message, sub: `${a.metric || ''}${a.recurring ? ` · ${t('반복')}` : ''}`, dev: a.device_label || a.device_id, devId: devId(a.device_id), site: a.site || a.room || '', val: a.value != null ? `${a.value} / ${a.threshold ?? '—'}` : '—', t: hhmm(a.received_at), age: a.received_at ? `${Math.max(0, Math.round((Date.now() - a.received_at) / 60000))}m` : '—', agec: a.priority === 'P1' ? '#ff8389' : '#c6c6c6', who: '—' })) : base.rows;
-  return { ...base, ...meData(), rows, sample: !store.alerts.length };
+  // Alerts carry no cbu, so resolve it through the device they belong to.
+  const cbuOf = new Map(store.assets.map(a => [devId(a.id), a.cbu]));
+  const inScope = (a) => !cbuFilter || cbuOf.get(devId(a.device_id)) === cbuFilter;
+  const scoped = store.alerts.filter(inScope);
+  const rows = scoped.length ? scoped.slice(0, 12).map(a => ({ p: a.priority, ...(PR[a.priority] || PR.P4), st: t(a.muted_until ? '점검모드' : '미확인'), stc: a.muted_until ? '#8d8d8d' : '#ff832b', rowbg: a.priority === 'P1' ? 'rgba(250,77,86,.06)' : 'transparent', msg: a.message, sub: `${a.metric || ''}${a.recurring ? ` · ${t('반복')}` : ''}`, dev: a.device_label || a.device_id, devId: devId(a.device_id), alertId: a.id, metric: a.metric || '', rawValue: a.value ?? '', rawThreshold: a.threshold ?? '', at: a.received_at, site: a.site || a.room || '', val: a.value != null ? `${a.value} / ${a.threshold ?? '—'}` : '—', t: hhmm(a.received_at), age: a.received_at ? `${Math.max(0, Math.round((Date.now() - a.received_at) / 60000))}m` : '—', agec: a.priority === 'P1' ? '#ff8389' : '#c6c6c6', who: '—' })) : base.rows;
+  return {
+    ...base, ...meData(), rows,
+    cbuFilter: cbuFilter || '',
+    filterLabel: cbuFilter ? `${cbuFilter} · ${scoped.length}건` : '',
+    sample: !scoped.length,
+  };
 }
-export function powerData() { const base = evalLogic(Power.source, Power.props); return { ...base, ...meData() }; }
+// Power chain, built from the ledger's power_links for the selected CBU.
+// Tiers are derived by walking links upstream: anything nothing feeds is a load,
+// anything that feeds nothing is the utility end.
+const TIER_LABEL = { utility: '수전 · 상위', panel: '분전반', ups: 'UPS', pdu: 'PDU', load: '부하 (랙)' };
+const KIND_TIER = { panel: 'panel', ups_cabinet: 'ups', ups: 'ups', pdu_cabinet: 'pdu', pdu: 'pdu', rack: 'load' };
+
+export function powerData() {
+  const base = evalLogic(Power.source, Power.props);
+  const cur = getCbu();
+  const rooms = store.topology?.rooms || [];
+  const nodes = new Map();      // name -> node
+  const feeds = new Set();      // names that supply someone (i.e. upstream of something)
+
+  for (const room of rooms) {
+    for (const o of room.objects || []) {
+      const tier = KIND_TIER[o.kind];
+      if (!tier) continue;
+      const devs = o.devices || [];
+      const load = devs.map(d => d.load_pct).filter(v => v != null);
+      nodes.set(o.name, {
+        name: o.name, kind: o.kind, tier: o.attrs?.utility ? 'utility' : tier,
+        objectId: o.id,
+        sub: devs.length ? devs.map(d => d.label).join(', ') : (o.attrs?.rated_a ? `${o.attrs.rated_a} A` : o.kind),
+        value: load.length ? `부하 ${Math.max(...load)}%`
+          : (o.attrs?.capacity_kw ? `${o.attrs.capacity_kw} kW` : (o.attrs?.design_kw != null ? `${o.attrs.design_kw} kW` : '—')),
+        color: devs.some(d => d.status === 'critical') ? '#fa4d56'
+          : devs.some(d => d.status === 'warn') ? '#f1c21b'
+            : devs.length ? '#42be65' : '#525252',
+      });
+    }
+    for (const l of room.power_links || []) if (l.dst) feeds.add(l.dst);
+  }
+  // A node that supplies others but is fed by nothing is the utility end.
+  for (const [name, n] of nodes) if (feeds.has(name) && n.kind === 'panel' && !rooms.some(r => (r.power_links || []).some(l => l.src === name))) n.tier = 'utility';
+
+  const order = ['utility', 'panel', 'ups', 'pdu', 'load'];
+  const tiers = order.map(k => ({
+    label: TIER_LABEL[k],
+    nodes: [...nodes.values()].filter(n => n.tier === k).slice(0, 24).map(n => ({
+      name: n.name, sub: n.sub, value: n.value, color: n.color,
+      href: n.objectId != null ? `#/twin?scene=kmx&focus=${encodeURIComponent(n.name)}` : '#/twin',
+    })),
+  })).filter(t => t.nodes.length);
+
+  const why = rooms.length
+    ? `선택한 CBU(${cur === 'all' ? '전체' : cur})의 원장에 전원 링크가 없다.`
+    : '이 테넌트에는 배치 원장이 없다. 서베이 시트를 import하면 여기에 실제 체인이 그려진다.';
+
+  return {
+    ...base, ...meData(), cbus: cbus(),
+    chainTitle: `${cur === 'all' ? (store.me?.tenantName || 'HAEA') : cur} 전력체인`,
+    chain: { tiers, empty: !tiers.length, emptyWhy: why },
+  };
+}
 export function nocData() { const base = evalLogic(NOC.source, NOC.props); const k = kpi(); return { ...base, ...meData(), kpi: k, clock: new Date().toLocaleTimeString('en-GB', { hour12: false }) }; }

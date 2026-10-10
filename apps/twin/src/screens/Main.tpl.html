@@ -234,7 +234,7 @@
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><h2 style="margin:0;font-size:15px;font-weight:600">최근 알람</h2><a href="#/alarms" style="margin-left:auto;font-size:12px">전체 →</a></div>
           <div style="display:flex;flex-direction:column">
             <sc-for list="{{alarms}}" as="a" hint-placeholder-count="6">
-              <a href="#/device?id={{a.devId}}" style="display:grid;grid-template-columns:34px 1fr 44px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid #2b2b2b;text-decoration:none;color:#e0e0e0">
+              <button class="alarm-open" data-alarm="{{a.alertId}}" data-pri="{{a.p}}" data-msg="{{a.msg}}" data-dev="{{a.dev}}" data-devid="{{a.devId}}" data-metric="{{a.metric}}" data-value="{{a.rawValue}}" data-threshold="{{a.rawThreshold}}" data-at="{{a.at}}" style="width:100%;display:grid;grid-template-columns:34px 1fr 44px;gap:8px;align-items:center;padding:7px 0;border:0;border-bottom:1px solid #2b2b2b;background:none;color:#e0e0e0;cursor:pointer;font-family:inherit;text-align:left">
                 <span class="badge" style="background:{{a.bg}};color:{{a.fg}};text-align:center">{{a.p}}</span>
                 <span style="min-width:0"><span style="display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{a.msg}}</span><span class="mono" style="display:block;font-size:11px;color:#8d8d8d">{{a.dev}}</span></span>
                 <span class="mono" style="font-size:11px;color:#8d8d8d;text-align:right">{{a.t}}</span>

@@ -22,10 +22,9 @@
   <main style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 20px;background:#0b0b0b;border-bottom:1px solid #262626">
       <div role="group" aria-label="사이트" style="display:flex;border:1px solid #393939">
-        <button class="ghost" style="border:0;background:#393939">HMA · Fountain Valley</button>
-        <button class="ghost" style="border:0;border-left:1px solid #393939">KUS · Irvine</button>
-        <button class="ghost" style="border:0;border-left:1px solid #393939">HAEA HQ</button>
-        <button class="ghost" style="border:0;border-left:1px solid #393939;color:#8d8d8d">KMX · Pesquería</button>
+        <sc-for list="{{cbus}}" as="c">
+          <button class="ghost cbu-btn" data-cbu="{{c.cbu}}" style="border:0;border-left:1px solid #393939;background:{{c.bg}};color:{{c.fg}}">{{c.label}} <span class="mono" style="color:#8d8d8d">{{c.total}}</span></button>
+        </sc-for>
       </div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
         <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#42be65"><span style="width:8px;height:8px;border-radius:50%;background:#42be65;box-shadow:0 0 0 4px rgba(66,190,101,.18)"></span>트윈 동기화 14:35:10</span>
@@ -38,7 +37,7 @@
       <!-- Left: twin -->
       <div style="min-width:0;display:flex;flex-direction:column;gap:16px">
         <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px">
-          <div><div style="font-size:12px;color:#8d8d8d;letter-spacing:.04em">디지털트윈 · 전력체인 · 냉방 · 용량</div><h1 style="margin:4px 0 0;font-size:26px;font-weight:600">HMA 서버실 전력체인</h1></div>
+          <div><div style="font-size:12px;color:#8d8d8d;letter-spacing:.04em">디지털트윈 · 전력체인 · 냉방 · 용량</div><h1 style="margin:4px 0 0;font-size:26px;font-weight:600">{{chainTitle}}</h1></div>
           <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost">플로어 뷰</button><button class="ghost">What-if 시나리오</button><button class="btn" style="background:{{accent}};color:#fff">용량 리포트</button></div>
         </div>
 
@@ -46,36 +45,27 @@
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:22px"><h2 style="margin:0;font-size:15px;font-weight:600">전력 흐름 · 실시간</h2><span style="font-size:11px;color:#8d8d8d">N+1 구성 · 총 IT 부하 184 kW</span>
             <div style="margin-left:auto;display:flex;gap:12px;font-size:11px;color:#c6c6c6"><span><span style="display:inline-block;width:14px;border-top:2px solid #4589ff;vertical-align:middle"></span> 급전 중</span><span><span style="display:inline-block;width:14px;border-top:2px dashed #6f6f6f;vertical-align:middle"></span> 대기</span><span><span style="display:inline-block;width:14px;border-top:2px solid #f1c21b;vertical-align:middle"></span> 주의</span></div>
           </div>
-          <div style="display:grid;grid-template-columns:150px 44px 150px 44px 170px 44px 150px 44px minmax(190px, 1fr);grid-template-rows:auto 18px auto 18px auto;gap:0;min-width:1000px">
-            <!-- row 1 -->
-            <div class="node" style="grid-row:1;grid-column:1;border-top:3px solid #42be65"><span class="t">수전 · SCE</span><span class="n">480 V 3Φ</span><span class="v mono">1,250 kVA · 정상</span></div>
-            <div class="conn" style="grid-row:1;grid-column:2"><div><span class="lab">212 kW</span></div></div>
-            <div class="node" style="grid-row:1 / span 5;grid-column:3;border-top:3px solid #42be65"><span class="t">ATS · 메인 분전반</span><span class="n">MSB-1</span><span class="v mono">상용 · 480 V</span><span class="v">전환 시험 09/14 PASS</span><div style="margin-top:8px;height:5px;background:#393939"><div style="width:17%;height:100%;background:#4589ff"></div></div><span class="v mono">17% 사용</span></div>
-            <div class="conn" style="grid-row:1;grid-column:4"><div><span class="lab">108 kW</span></div></div>
-            <a href="#/device" class="node" style="grid-row:1;grid-column:5;border-top:3px solid #42be65;text-decoration:none;color:#f4f4f4"><span class="t">UPS-A · Symmetra LX</span><span class="n">HMA-UPS-01 · 16 kVA ×4</span><span class="v mono">부하 54% · 배터리 100% · RT 22 min</span><div style="margin-top:6px;height:5px;background:#393939"><div style="width:54%;height:100%;background:#4589ff"></div></div></a>
-            <div class="conn" style="grid-row:1;grid-column:6"><div><span class="lab">A 11.2 kW</span></div></div>
-            <div class="node" style="grid-row:1;grid-column:7;border-top:3px solid #42be65"><span class="t">PDU-A</span><span class="n">RPP-A1 · 42 회로</span><span class="v mono">11.2 kW · 3상 균형 ±4%</span></div>
-            <div class="conn" style="grid-row:1;grid-column:8"><div></div></div>
-            <div class="node" style="grid-row:1;grid-column:9;border-top:3px solid #4589ff"><span class="t">랙 B01–B06 · A계통</span>
-              <div style="display:grid;grid-template-columns:repeat(6, minmax(0, 1fr));gap:4px;margin-top:4px">
-                <sc-for list="{{racksA}}" as="r" hint-placeholder-count="6"><div title="{{r.id}}" style="height:34px;background:{{r.color}};display:flex;align-items:flex-end;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#161616;padding-bottom:2px">{{r.kw}}</div></sc-for>
-              </div>
-            </div>
-            <!-- row 3 -->
-            <div class="node" style="grid-row:3;grid-column:1;border-top:3px solid #6f6f6f"><span class="t">발전기 · 대기</span><span class="n">GEN-1 · 1,000 kW</span><span class="v mono">연료 92% · 주간 시운전 PASS</span></div>
-            <div class="conn std" style="grid-row:3;grid-column:2"><div></div></div>
-            <div class="conn std" style="grid-row:3;grid-column:4"><div><span class="lab" style="color:#8d8d8d">STS</span></div></div>
-            <div class="node" style="grid-row:3;grid-column:5;border-top:3px solid #6f6f6f;min-height:48px"><span class="t">정적 전환 스위치</span><span class="v mono">A ⇄ B 자동 · 대기</span></div>
-            <div class="conn std" style="grid-row:3;grid-column:6"><div></div></div>
-            <div class="node" style="grid-row:3;grid-column:7;border-top:3px solid #6f6f6f;min-height:48px"><span class="t">점검용 바이패스</span><span class="v mono">열림 · 점검모드 시 사용</span></div>
-            <!-- row 5 -->
-            <div class="node" style="grid-row:5;grid-column:1;border-top:3px solid #f1c21b"><span class="t">냉방 전원</span><span class="n">MCC-1 · CRAC ×3</span><span class="v mono">28 kW · CRAC-2 팬 68%</span></div>
-            <div class="conn warn" style="grid-row:5;grid-column:2"><div><span class="lab" style="color:#f1c21b">28 kW</span></div></div>
-            <div class="conn" style="grid-row:5;grid-column:4"><div><span class="lab">104 kW</span></div></div>
-            <a href="#/device" class="node" style="grid-row:5;grid-column:5;border-top:3px solid #f1c21b;text-decoration:none;color:#f4f4f4"><span class="t">UPS-B · Symmetra LX</span><span class="n">HMA-UPS-12 · 16 kVA ×4</span><span class="v mono" style="color:#f1c21b">부하 48% · 14:28 배터리 운전 7분 · 복귀</span><div style="margin-top:6px;height:5px;background:#393939"><div style="width:48%;height:100%;background:#f1c21b"></div></div></a>
-            <div class="conn" style="grid-row:5;grid-column:6"><div><span class="lab">B 9.8 kW</span></div></div>
-            <div class="node" style="grid-row:5;grid-column:7;border-top:3px solid #42be65"><span class="t">PDU-B</span><span class="n">RPP-B1 · 42 회로</span><span class="v mono">9.8 kW · L2 상 +9% 편중</span></div>
-            <div class="conn" style="grid-row:5;grid-column:8"><div></div></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-if value="{{chain.empty}}">
+                <div style="padding:26px;text-align:center;color:#f1c21b;font-size:13px;background:#1f1f1f;border:1px dashed #525252">
+                  원장 미등록 — 서베이 필요<div style="color:#8d8d8d;font-size:12px;margin-top:6px">{{chain.emptyWhy}}</div>
+                </div>
+              </sc-if>
+              <sc-for list="{{chain.tiers}}" as="tier">
+                <div>
+                  <div style="font-size:10px;color:#8d8d8d;font-weight:600;letter-spacing:.04em;margin-bottom:5px">{{tier.label}}</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:8px">
+                    <sc-for list="{{tier.nodes}}" as="nd">
+                      <a href="{{nd.href}}" class="node" style="min-width:160px;border-top:3px solid {{nd.color}};text-decoration:none;color:#f4f4f4">
+                        <span class="t">{{nd.name}}</span>
+                        <span class="n">{{nd.sub}}</span>
+                        <span class="v mono">{{nd.value}}</span>
+                      </a>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div></div>
             <div class="node" style="grid-row:5;grid-column:9;border-top:3px solid #4589ff"><span class="t">랙 B07–B12 · B계통</span>
               <div style="display:grid;grid-template-columns:repeat(6, minmax(0, 1fr));gap:4px;margin-top:4px">
                 <sc-for list="{{racksB}}" as="r" hint-placeholder-count="6"><div title="{{r.id}}" style="height:34px;background:{{r.color}};display:flex;align-items:flex-end;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:9px;color:#161616;padding-bottom:2px">{{r.kw}}</div></sc-for>

@@ -108,6 +108,22 @@ app.post('/v1/fms/devices/:id/mute', (q, r) => r.json({ ok: true, id: q.params.i
 app.post('/v1/fms/devices/:id/unmute', (q, r) => r.json({ ok: true, id: q.params.id, muted_until: null }));
 app.get('/v1/incidents', (q, r) => r.json({ ok: true, incidents: [] }));
 
+// alarm → ticket. Shapes from fms.routes.js: /alerts/:id/ticket returns the
+// linked ticket or null; /tickets/from-alert creates one.
+const tickets = new Map();
+let ticketSeq = 1140;
+app.get('/v1/fms/alerts/:id/ticket', (q, r) => r.json({ ok: true, ticket: tickets.get(+q.params.id) || null }));
+app.post('/v1/fms/tickets/from-alert', (q, r) => {
+  const id = parseInt(q.body?.alert_id, 10);
+  if (!id) return r.status(400).json({ error: 'alert_id required' });
+  if (tickets.has(id)) return r.json({ ok: true, ticket: tickets.get(id), existing: true });
+  const al = [1, 2, 3, 4, 5, 6, 7].includes(id) ? id : 1;
+  const t = { id: ticketSeq, ticket_no: `T-2026-${++ticketSeq}`, priority: 'P1', status: 'open',
+    title: q.body?.title || `알람 ${id} 대응`, created_at: Date.now(), alert_id: al };
+  tickets.set(id, t);
+  r.json({ ok: true, ticket: t });
+});
+
 // ── v3 ledger endpoints ─────────────────────────────────────────────
 // These run the REAL backend service against an in-memory SQLite seeded with the
 // KMX ledger, so the frontend is developed against the production response shape

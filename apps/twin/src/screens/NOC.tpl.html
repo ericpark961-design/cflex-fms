@@ -54,37 +54,7 @@
         <div style="margin-left:auto;display:flex;gap:14px;font-size:12px;color:#c6c6c6"><span><span style="display:inline-block;width:12px;height:12px;background:#1c4f8a;vertical-align:-2px"></span> 정상</span><span><span style="display:inline-block;width:12px;height:12px;background:#08bdba;vertical-align:-2px"></span> 고부하</span><span><span style="display:inline-block;width:12px;height:12px;background:#f1c21b;vertical-align:-2px"></span> 온도 주의</span><span><span style="display:inline-block;width:12px;height:12px;background:#fa4d56;vertical-align:-2px"></span> 알람</span><span><span style="display:inline-block;width:12px;height:12px;background:#2b2b2b;border:1px solid #525252;vertical-align:-2px"></span> 공랙</span></div>
       </div>
 
-      <div style="flex:1;position:relative;min-height:0;display:flex;align-items:center;justify-content:center">
-        <div aria-hidden="true" style="transform:rotateX(58deg) rotateZ(-38deg);transform-style:preserve-3d;display:flex;flex-direction:column;gap:14px;padding:30px;background:linear-gradient(135deg,rgba(69,137,255,.08),rgba(69,137,255,.02));border:1px solid rgba(120,169,255,.35);box-shadow:0 30px 60px rgba(0,0,0,.6)">
-          <!-- CRAC row top -->
-          <div style="display:flex;gap:10px;justify-content:space-between">
-            <div class="crac" style="width:150px;background:#42be65;box-shadow:6px 6px 0 #1f5c3a">CRAC-1 30RT · 72%</div>
-            <div class="crac" style="width:150px;background:#f1c21b;box-shadow:6px 6px 0 #8a6d0b">CRAC-2 30RT · 68% ↓</div>
-            <div class="crac" style="width:150px;background:#42be65;box-shadow:6px 6px 0 #1f5c3a">CRAC-3 20RT · 70%</div>
-          </div>
-          <!-- rack rows -->
-          <sc-for list="{{rows}}" as="row" hint-placeholder-count="6">
-            <div style="display:flex;flex-direction:column;gap:2px">
-              <div style="display:flex;gap:4px">
-                <sc-for list="{{row.racks}}" as="r" hint-placeholder-count="10"><div class="rack" style="background:{{r.color}};box-shadow:{{r.shadow}}"></div></sc-for>
-              </div>
-              <div style="height:{{row.aisle}};background:{{row.aisleColor}}"></div>
-            </div>
-          </sc-for>
-          <!-- UPS row bottom -->
-          <div style="display:flex;gap:10px;align-items:center">
-            <div class="crac" style="width:120px;background:#4589ff;box-shadow:6px 6px 0 #1c3f80;color:#fff">UPS-1 · 48%</div>
-            <div class="crac" style="width:120px;background:#4589ff;box-shadow:6px 6px 0 #1c3f80;color:#fff">UPS-2 · 44%</div>
-            <div class="crac" style="width:110px;background:#393939;box-shadow:6px 6px 0 #161616;color:#c6c6c6">FM-200 · 정상</div>
-            <div class="crac" style="margin-left:auto;width:170px;background:#fa4d56;box-shadow:6px 6px 0 #7a1a20;color:#fff">누수 ZONE-3 · 감지</div>
-          </div>
-        </div>
-        <!-- callouts -->
-        <div class="mono" style="position:absolute;left:36px;top:40px;background:#0b0b0b;border:1px solid #fa4d56;padding:8px 12px;font-size:12px;line-height:1.5;color:#e0e0e0"><span style="color:#ff8389;font-weight:700">LEAK · ZONE-3</span><br>CRAC-2 하부 · 11:02<br>HAEM 시설 확인 중</div>
-        <div class="mono" style="position:absolute;right:36px;top:40px;background:#0b0b0b;border:1px solid #f1c21b;padding:8px 12px;font-size:12px;line-height:1.5;color:#e0e0e0"><span style="color:#f1c21b;font-weight:700">HOTSPOT · B07 상단</span><br>27.9°C · 임계 27.0<br>AI: CRAC-2 팬 감속 연관 91%</div>
-        <div class="mono" style="position:absolute;left:36px;bottom:30px;background:#0b0b0b;border:1px solid #4589ff;padding:8px 12px;font-size:12px;line-height:1.5;color:#e0e0e0"><span style="color:#78a9ff;font-weight:700">전력</span><br>IT 184 kW · PUE 1.42<br>UPS N+1 유지 · RT 22 min</div>
-        <div class="mono" style="position:absolute;right:36px;bottom:30px;background:#0b0b0b;border:1px solid #42be65;padding:8px 12px;font-size:12px;line-height:1.5;color:#e0e0e0"><span style="color:#42be65;font-weight:700">환경</span><br>온습도 센서 6 · 평균 23.8°C · 44% RH<br>연기 3 · FM-200 인터록 정상</div>
-      </div>
+      <div id="wall-3d" style="flex:1;position:relative;min-height:0;overflow:hidden;background:#070a10"></div>
 
       <div style="display:grid;grid-template-columns:repeat(5, minmax(0, 1fr));gap:12px;margin-top:6px">
         <div style="background:rgba(255,255,255,.03);padding:10px 12px"><div style="font-size:11px;color:#8fa3c4">IT 부하</div><div class="big" style="font-size:26px">184 <span style="font-size:12px;font-weight:500;color:#8fa3c4">kW</span></div></div>

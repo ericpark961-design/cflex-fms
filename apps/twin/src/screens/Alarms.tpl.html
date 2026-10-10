@@ -31,7 +31,7 @@
 
     <div style="padding:20px 20px 28px;display:flex;flex-direction:column;gap:16px">
       <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px">
-        <div><div style="font-size:12px;color:#8d8d8d;letter-spacing:.04em">알람 엔진 2.0 · 근본원인 묶음 · 중복 제거 · 점검모드</div><h1 style="margin:4px 0 0;font-size:26px;font-weight:600">알람 센터</h1></div>
+        <div><div style="font-size:12px;color:#8d8d8d;letter-spacing:.04em">알람 엔진 2.0 · 근본원인 묶음 · 중복 제거 · 점검모드</div><h1 style="margin:4px 0 0;font-size:26px;font-weight:600">알람 센터<sc-if value="{{cbuFilter}}"><a href="#/alarms" style="display:inline-flex;align-items:center;gap:8px;margin-left:12px;vertical-align:middle;padding:4px 10px;background:#1c2a44;border:1px solid #4589ff;color:#f4f4f4;font-size:12px;font-weight:400;text-decoration:none">사이트 {{filterLabel}} <span style="color:#78a9ff">× 해제</span></a></sc-if></h1></div>
         <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><button class="ghost">알람 규칙</button><button class="ghost">점검모드 예약</button><button class="btn" style="background:{{accent}};color:#fff">선택 알람 확인 (2)</button></div>
       </div>
 
@@ -93,7 +93,7 @@
                     <td class="td"><span class="badge" style="background:{{r.bg}};color:{{r.fg}}">{{r.p}}</span></td>
                     <td class="td"><span class="badge" style="background:#393939;color:{{r.stc}}">{{r.st}}</span></td>
                     <td class="td"><span style="display:block">{{r.msg}}</span><span style="font-size:11px;color:#8d8d8d">{{r.sub}}</span></td>
-                    <td class="td"><a href="#/device?id={{r.devId}}" class="mono" style="text-decoration:none;color:#e0e0e0">{{r.dev}}</a><span style="display:block;font-size:11px;color:#8d8d8d">{{r.site}}</span></td>
+                    <td class="td"><button class="alarm-open mono" data-alarm="{{r.alertId}}" data-pri="{{r.p}}" data-msg="{{r.msg}}" data-dev="{{r.dev}}" data-devid="{{r.devId}}" data-metric="{{r.metric}}" data-value="{{r.rawValue}}" data-threshold="{{r.rawThreshold}}" data-at="{{r.at}}" style="background:none;border:0;padding:0;color:#e0e0e0;cursor:pointer;font-family:inherit;text-align:left">{{r.dev}}</button><span style="display:block;font-size:11px;color:#8d8d8d">{{r.site}}</span></td>
                     <td class="td mono">{{r.val}}</td>
                     <td class="td mono" style="color:#c6c6c6">{{r.t}}</td>
                     <td class="td mono" style="color:{{r.agec}}">{{r.age}}</td>

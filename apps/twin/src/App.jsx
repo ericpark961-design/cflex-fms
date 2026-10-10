@@ -6,6 +6,7 @@ import alarmsTpl from './screens/Alarms.tpl.html?raw';
 import powerTpl from './screens/PowerChain.tpl.html?raw';
 import nocTpl from './screens/NOC.tpl.html?raw';
 import { render } from './tpl';
+import { buildLedgerScene } from './twin/LedgerScene';
 import { store, refresh, mainData, deviceData, alarmsData, powerData, nocData, heatFor, powerChain, powerChainObject, fleetLive, ackAlert } from './data';
 import { api, lang, tx } from './theme';
 import { devId } from './ids';
@@ -13,6 +14,7 @@ import { mountCopilot } from './copilot';
 import { t } from './i18n';
 import TwinScreen from './TwinScreen';
 import MapScreen from './MapScreen';
+import AlarmModal from './AlarmModal';
 
 // ---------- hash router
 function useRoute() {
@@ -34,7 +36,24 @@ const SampleBadge = ({ on, text }) => on ? <div style={{ position: 'fixed', righ
 // ---------- NOC wall (1920×1080, scaled to fit)
 function WallScreen({ data }) {
   const ref = useRef(null); const [scale, setScale] = useState(1);
+  const sceneBox = useRef(null); const sceneRef = useRef(null);
   useLayoutEffect(() => { if (data) render(ref.current, nocTpl, data); }, [data]);
+
+  // The wall's isometric panel is the real twin, read-only in top view: the
+  // ledger when there is one, otherwise nothing (the panel says so) rather than
+  // a drawn-on mockup.
+  useLayoutEffect(() => {
+    const host = ref.current?.querySelector('#wall-3d');
+    if (!host) return;
+    sceneBox.current = host;
+    const ledger = store.topology?.rooms?.length ? store.topology : null;
+    if (!ledger) { host.innerHTML = `<div style="display:grid;place-items:center;height:100%;color:#8d8d8d;font-size:13px">${t('원장 미등록 — 서베이 필요')}</div>`; return; }
+    const s3 = buildLedgerScene(host, ledger, { onSelect: () => {} });
+    sceneRef.current = s3;
+    s3.preset('top');
+    s3.setLayers({ labels: false, sensors: true, leak: true });
+    return () => { s3.dispose(); sceneRef.current = null; };
+  }, [data]);
   useEffect(() => { const f = () => setScale(Math.min(innerWidth / 1920, innerHeight / 1080)); f(); addEventListener('resize', f); return () => removeEventListener('resize', f); }, []);
   return <div style={{ background: '#070a10', minHeight: '100vh', overflow: 'hidden', position: 'relative' }}>
     <a href="#/dashboard" style={{ position: 'fixed', left: 12, top: 12, zIndex: 9, fontSize: 12, color: '#8fa3c4', textDecoration: 'none', background: 'rgba(13,18,28,.9)', border: '1px solid #1f2a3d', padding: '5px 10px' }}>{t('← 대시보드')}</a>
@@ -68,17 +87,29 @@ export default function App() {
       await refresh();
       setTick(x => x + 1);
     }));
+    // Alarm rows open the global modal — never a route change (house rule).
+    root.querySelectorAll('.alarm-open').forEach(b => b.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const d = b.dataset;
+      dispatchEvent(new CustomEvent('cflex:open-alarm', { detail: {
+        id: Number(d.alarm) || null, priority: d.pri, message: d.msg, device: d.dev,
+        deviceId: d.devid, metric: d.metric,
+        value: d.value === '' ? null : d.value, threshold: d.threshold === '' ? null : d.threshold,
+        at: Number(d.at) || null,
+      } }));
+    }));
     mountCopilot(root, { deviceId: route.q.id });
     root.querySelectorAll('form').forEach(f => { if (!f.dataset.wired) f.addEventListener('submit', e => { e.preventDefault(); location.hash = '#/powerchain?panel=copilot'; }); });
     if (route.q.panel === 'copilot') root.querySelector('#copilot')?.scrollIntoView({ behavior: 'smooth' });
   }, [route.q.panel, route.q.id]);
+  const withModal = (el) => <>{el}<AlarmModal /></>;
   if (!ready) return <div style={{ minHeight: '100vh', background: '#161616', color: '#8d8d8d', display: 'grid', placeItems: 'center', fontFamily: 'IBM Plex Sans KR, sans-serif' }}>{t('C-Flex FMS 2.0 불러오는 중…')}</div>;
   const p = route.path;
-  if (p === 'map') return <MapScreen />;
-  if (p === 'twin') return <TwinScreen q={route.q} tick={tick} />;
+  if (p === 'map') return withModal(<MapScreen />);
+  if (p === 'twin') return withModal(<TwinScreen q={route.q} tick={tick} />);
   if (p === 'wall') return <WallScreen data={nocData()} />;
   if (p === 'device') return <><Screen name="Device" html={deviceTpl} data={devData} onReady={wire} /><SampleBadge on={!!devData?.sample} /><SampleBadge on={!devData?.sample} text={t('AI 예측·RCA·추세는 Phase 2 샘플')} /></>;
-  if (p === 'alarms') { const d = alarmsData(); return <><Screen name="Alarms" html={alarmsTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>; }
+  if (p === 'alarms') { const d = alarmsData(route.q.cbu || null); return withModal(<><Screen name="Alarms" html={alarmsTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>); }
   if (p === 'powerchain') return <><Screen name="PowerChain" html={powerTpl} data={powerData()} onReady={wire} /><SampleBadge on text={t('전력체인·코파일럿 · Phase 3 샘플')} /></>;
-  const d = mainData(); return <><Screen name="Main" html={mainTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>;
+  const d = mainData(); return withModal(<><Screen name="Main" html={mainTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>);
 }
