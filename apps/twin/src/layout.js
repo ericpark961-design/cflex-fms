@@ -13,8 +13,38 @@ export function parseRack(name) {
   return null;
 }
 
+/**
+ * Arrange room boxes on a grid instead of one long row.
+ *
+ * Production has 31 rooms holding a single rack each (no rack names are
+ * recorded), which in a single row is a ~100 m line that reads as empty from any
+ * usable camera distance. A grid keeps the whole site in frame.
+ *
+ * @param boxes [{w, d}] in metres
+ * @param cols  columns before wrapping
+ * @returns {placed:[{x,z}], width, depth} — x,z are the CENTRE of each box
+ */
+export function packRooms(boxes, cols = 6) {
+  const n = boxes.length;
+  const perRow = Math.max(1, Math.min(cols, Math.ceil(Math.sqrt(n * 1.6))));
+  const placed = [];
+  let z = 0, width = 0;
+  for (let i = 0; i < n; i += perRow) {
+    const row = boxes.slice(i, i + perRow);
+    const rowDepth = Math.max(...row.map(b => b.d));
+    let x = 0;
+    for (const b of row) {
+      placed.push({ x: x + b.w / 2, z: z + rowDepth / 2 });
+      x += b.w + ROOM_GAP;
+    }
+    width = Math.max(width, x - ROOM_GAP);
+    z += rowDepth + ROOM_GAP;
+  }
+  return { placed, width, depth: Math.max(0, z - ROOM_GAP) };
+}
+
 export function layoutFloor(tree) {
-  const rooms = []; let ox = 0;
+  const rooms = [];
   for (const [locName, loc] of Object.entries(tree || {})) {
     for (const [roomName, room] of Object.entries(loc.rooms || {})) {
       const rackNames = Object.keys(room.racks || {});
@@ -27,10 +57,19 @@ export function layoutFloor(tree) {
         racks.push({ name: x.n, row: p.row, col: p.col, node: room.racks[x.n] });
       });
       const w = maxCol * (RACK_W + 0.04) + 1.6, d = maxRow * (RACK_D + AISLE) + 1.2;
-      racks.forEach(r => { r.x = ox + 0.8 + (r.col - 0.5) * (RACK_W + 0.04); r.z = 0.6 + (r.row - 0.5) * (RACK_D + AISLE) - d / 2; r.face = r.row % 2 ? 1 : -1; });
-      rooms.push({ location: locName, name: roomName, x: ox, w, d, racks, node: room });
-      ox += w + ROOM_GAP;
+      rooms.push({ location: locName, name: roomName, w, d, racks, node: room, estimated: true });
     }
   }
-  return { rooms, width: ox - ROOM_GAP, RACK_W, RACK_D };
+  // Place the rooms, then position each rack relative to its room's centre.
+  const { placed, width, depth } = packRooms(rooms);
+  rooms.forEach((room, i) => {
+    room.x = placed[i].x - room.w / 2;      // left edge, as callers expect
+    room.z = placed[i].z;                   // centre, as the rack maths assumes
+    room.racks.forEach(r => {
+      r.x = room.x + 0.8 + (r.col - 0.5) * (RACK_W + 0.04);
+      r.z = room.z + 0.6 + (r.row - 0.5) * (RACK_D + AISLE) - room.d / 2;
+      r.face = r.row % 2 ? 1 : -1;
+    });
+  });
+  return { rooms, width, depth, RACK_W, RACK_D };
 }

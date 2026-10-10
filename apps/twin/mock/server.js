@@ -14,12 +14,32 @@ for (const [cbu, s] of Object.entries(sites)) for (const [room, cnt] of Object.e
   const bad = [3, 12, 18, 23, 30, 41]; const status = n === 3 || n === 41 ? 'critical' : bad.includes(n) ? 'warn' : n === 23 ? 'nodata' : 'ok';
   assets.push({ id, label: `${cbu}-UPS-${String(n).padStart(2, '0')}`, location: s.loc, room, rack, ip: `10.${cbu === 'HMA' ? 10 : cbu === 'KUS' ? 40 : 20}.1.${10 + n}`, vendor: 'APC', model: models[n % 4], status, health_score: status === 'ok' ? 90 + (n % 9) : status === 'warn' ? 65 : status === 'critical' ? 38 : null, battery_pct: status === 'critical' ? 71 : 96 + (n % 4), load_pct: 30 + (n * 7) % 45, temp_c: +(23 + (n % 6) * 0.7).toFixed(1), runtime_min: status === 'critical' ? 18 : 25 + (n % 20), output_v: 120.1, input_v: 118.2, output_status: 'ONLINE', battery_status: 'NORMAL', last_polled: status === 'nodata' ? now - 20 * 60000 : now - (n % 25) * 1000, polling_enabled: 1, consecutive_fails: 0, poll_error: null, criticality: 'A', muted_until: null, cbu, serial: `AS23${1000 + n}`, firmware: 'UPS 14.3' });
 }
+// REAL_LIKE=1 replaces the tidy demo fleet with the exact shape production has:
+// 31 location/room combinations, EVERY rack name empty, and 41 of 44 unreachable.
+// That is the configuration the live scene actually has to draw.
+if (process.env.REAL_LIKE) {
+  assets.length = 0;
+  const real = require('./real_shape.json');
+  real.forEach((d, i) => assets.push({
+    id: i + 1, label: d.label, location: d.location, room: d.room, rack: d.rack,
+    ip: `10.0.0.${10 + i}`, vendor: d.vendor, model: d.model, status: d.status,
+    health_score: d.status === 'ok' ? 93 : null,
+    battery_pct: d.status === 'ok' ? 100 : null,
+    load_pct: d.status === 'ok' ? 38 + (i % 20) : null,
+    temp_c: d.status === 'ok' ? 24.4 : null,
+    runtime_min: d.status === 'ok' ? 31 : null,
+    output_v: 120.1, input_v: 118.2, output_status: 'ONLINE', battery_status: 'NORMAL',
+    last_polled: d.last_polled, polling_enabled: 1, consecutive_fails: 0, poll_error: null,
+    criticality: 'A', muted_until: null, cbu: d.cbu, serial: `AS${2300 + i}`, firmware: 'UPS 14.3',
+  }));
+}
+
 const eff = a => (now - a.last_polled > 5 * 60000 ? 'nodata' : a.status);
 const filt = q => q.cbu && q.cbu !== 'all' ? assets.filter(a => a.cbu === q.cbu) : assets;
 app.get('/v1/me', (q, r) => r.json({ userId: 1, email: 'ericpark@ringonservice.com', displayName: 'Eric Park', role: 'fms_admin', persona: 'fms_admin', tenantId: 1, tenantName: 'HAEA', tenant: { id: 1, name: 'HAEA', display_name: 'HAEA', status: 'active', mode: 'prod', skus: ['fms'] }, sku: ['fms'], teamIds: [], landingRoute: '/fms' }));
 app.get('/v1/fms/summary', (q, r) => { const list = filt(q.query); const c = s => list.filter(a => eff(a) === s).length; const cbu_list = Object.keys(sites).map(cb => { const l = assets.filter(a => a.cbu === cb); const cc = s => l.filter(a => eff(a) === s).length; return { cbu: cb, total: l.length, polling: l.length, critical: cc('critical'), warn: cc('warn'), unreachable: 0, ok: cc('ok'), nodata: cc('nodata') }; });
   r.json({ ok: true, devices: { total: list.length, polling: list.length, online: list.length, unreachable: 0, nodata: c('nodata'), critical: c('critical'), warn: c('warn'), normal: c('ok') }, alerts_24h: 7, tickets: { open: 2, p1: 1 }, sites: 3, cbu_list, _sum_check: list.length }); });
-app.get('/v1/fms/floor', (q, r) => { const tree = {}; for (const a of filt(q.query)) { const L = tree[a.location] = tree[a.location] || { name: a.location, count: 0, critical: 0, warn: 0, ok: 0, unreachable: 0, nodata: 0, rooms: {} }; const R = L.rooms[a.room] = L.rooms[a.room] || { name: a.room, count: 0, critical: 0, warn: 0, ok: 0, unreachable: 0, nodata: 0, racks: {} }; const K = R.racks[a.rack] = R.racks[a.rack] || { name: a.rack, count: 0, critical: 0, warn: 0, ok: 0, unreachable: 0, nodata: 0, devices: [] }; const s = eff(a); for (const x of [L, R, K]) { x.count++; x[s] = (x[s] || 0) + 1; } K.devices.push({ id: a.id, label: a.label, status: s, battery_pct: a.battery_pct, last_polled: a.last_polled }); } r.json({ ok: true, tree }); });
+app.get('/v1/fms/floor', (q, r) => { const tree = {}; for (const a0 of filt(q.query)) { const a = { ...a0, location: a0.location || 'Unknown Location', room: a0.room || 'Default Room', rack: a0.rack || 'Default Rack' }; const L = tree[a.location] = tree[a.location] || { name: a.location, count: 0, critical: 0, warn: 0, ok: 0, unreachable: 0, nodata: 0, rooms: {} }; const R = L.rooms[a.room] = L.rooms[a.room] || { name: a.room, count: 0, critical: 0, warn: 0, ok: 0, unreachable: 0, nodata: 0, racks: {} }; const K = R.racks[a.rack] = R.racks[a.rack] || { name: a.rack, count: 0, critical: 0, warn: 0, ok: 0, unreachable: 0, nodata: 0, devices: [] }; const s = eff(a); for (const x of [L, R, K]) { x.count++; x[s] = (x[s] || 0) + 1; } K.devices.push({ id: a.id, label: a.label, status: s, battery_pct: a.battery_pct, last_polled: a.last_polled }); } r.json({ ok: true, tree }); });
 app.get('/v1/fms/assets', (q, r) => { const list = filt(q.query).map(a => ({ ...a, status: eff(a) })); r.json({ ok: true, count: list.length, assets: list }); });
 app.get('/v1/fms/assets/:id', (q, r) => { const a = assets.find(x => x.id === parseInt(q.params.id, 10)); if (!a) return r.status(404).json({ ok: false }); const metrics = Array.from({ length: 48 }, (_, i) => ({ ts: now - (47 - i) * 1800000, battery_pct: a.battery_pct, load_pct: a.load_pct + ((i * 7) % 5), temp_c: a.temp_c })); r.json({ ok: true, asset: { ...a, status: eff(a) }, metrics, thresholds: { battery_pct: { critical: 30, warn: 60, direction: 'below' }, load_pct: { critical: 90, warn: 75, direction: 'above' }, temp_c: { critical: 45, warn: 38, direction: 'above' } }, alerts: [] }); });
 app.get('/v1/fms/alerts', (q, r) => { const mk = (i, a, p, metric, message, value, threshold, rec) => ({ id: i, device_id: 'ups-' + a.id, site: a.location, priority: p, metric, message, value, threshold, received_at: now - i * 11 * 60000, device_label: a.label, room: a.room, rack: a.rack, muted_until: null, recurring: !!rec });

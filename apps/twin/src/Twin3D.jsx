@@ -151,6 +151,7 @@ export default function Twin3D({
     disposeTree(s.world);
     s.pickables = []; s.pulse = []; s.fans = [];
     s.centres = new Map();                       // objectId → world centre, for the chain line
+    s.depth = 0;
     s.selectedObjectId = selectedObjectId;
 
     const byRack = {};
@@ -289,21 +290,22 @@ export default function Twin3D({
       const L = layoutFloor(fallbackTree);
       for (const room of L.rooms) {
         const rx = ox + room.x;
+        const rz = room.z || 0;
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(room.w, room.d), new THREE.MeshStandardMaterial({ color: hex(TWIN.floor), roughness: 1 }));
         floor.rotation.x = -Math.PI / 2;
-        floor.position.set(rx + room.w / 2, 0, 0);
+        floor.position.set(rx + room.w / 2, 0, rz);
         floor.receiveShadow = true;
         s.world.add(floor);
         const grid = new THREE.GridHelper(Math.max(room.w, room.d), Math.round(Math.max(room.w, room.d) / 0.6), hex(TWIN.grid), hex(TWIN.gridSub));
-        grid.position.set(rx + room.w / 2, 0.005, 0);
+        grid.position.set(rx + room.w / 2, 0.005, rz);
         s.world.add(grid);
         const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(room.w, 3, room.d)), new THREE.LineBasicMaterial({ color: hex(TWIN.wall) }));
-        edge.position.set(rx + room.w / 2, 1.5, 0);
+        edge.position.set(rx + room.w / 2, 1.5, rz);
         s.world.add(edge);
         if (layers.labels !== false) {
           // The badge matters: these coordinates are guessed from rack names.
-          const lab = labelSprite(`${room.location} · ${room.name} · ${tx('추정 배치', 'estimated placement')}`, 30, TWIN.warn);
-          lab.position.set(rx + room.w / 2, 3.4, -room.d / 2);
+          const lab = labelSprite(`${room.location} · ${room.name} · ${tx('추정 배치', 'estimated placement')}`, 26, TWIN.warn);
+          lab.position.set(rx + room.w / 2, 3.1, rz - room.d / 2);
           s.world.add(lab);
         }
         for (const r of room.racks) {
@@ -339,10 +341,15 @@ export default function Twin3D({
         }
       }
       ox += L.width + ROOM_GAP;
+      s.depth = Math.max(s.depth || 0, L.depth || 0);
     }
 
     s.span = Math.max(ox - ROOM_GAP, 12);
     s.cx = s.span / 2;
+    s.cz = (s.depth || 0) / 2;
+    // Frame the whole site: with 31 grid rooms the depth, not the width, is what
+    // decides how far back the camera has to sit.
+    s.reach = Math.max(s.span, s.depth || 0, 12);
   }, [topology, tree, assets, selectedId, selectedObjectId, mode, layers]);
 
   // ── power chain overlay ───────────────────────────────────────────
@@ -398,13 +405,14 @@ export default function Twin3D({
   useEffect(() => {
     const s = state.current;
     if (!s.camera || !s.span) return;
+    const R = s.reach || s.span;
     const presets = {
-      iso: [s.cx + s.span * 0.5, s.span * 0.5, s.span * 0.75],
-      top: [s.cx, s.span * 1.0, 0.01],
-      aisle: [s.cx - s.span * 0.3, 1.6, s.span * 0.2],
+      iso: [s.cx + R * 0.55, R * 0.55, (s.cz || 0) + R * 0.8],
+      top: [s.cx, R * 1.15, (s.cz || 0) + 0.01],
+      aisle: [s.cx - R * 0.3, 1.6, (s.cz || 0) + R * 0.2],
     };
     s.camera.position.set(...(presets[view] || presets.iso));
-    s.controls.target.set(s.cx, 0.8, s.span * 0.12);
+    s.controls.target.set(s.cx, 0.8, s.cz || 0);
     s.controls.update();
   }, [view, sceneKey]);
 
