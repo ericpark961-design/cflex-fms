@@ -1,5 +1,5 @@
 // Shared 3D vocabulary for the twin: palette, labels, and one builder per object
-// kind. Twin3D (ledger-driven) and DemoScene (hand-placed KMX demo) both draw the
+// kind. Twin3D (the no-ledger fallback) and LedgerScene both draw the
 // same equipment, so the geometry lives here rather than in either of them.
 //
 // Sizes are in metres. A ledger object's footprint is given in tiles; callers

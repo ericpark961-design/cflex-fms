@@ -6,13 +6,13 @@ import alarmsTpl from './screens/Alarms.tpl.html?raw';
 import powerTpl from './screens/PowerChain.tpl.html?raw';
 import nocTpl from './screens/NOC.tpl.html?raw';
 import { render } from './tpl';
-import { store, refresh, mainData, deviceData, alarmsData, powerData, nocData, heatFor, powerChain, powerChainObject } from './data';
+import { store, refresh, mainData, deviceData, alarmsData, powerData, nocData, heatFor, powerChain, powerChainObject, fleetLive, ackAlert } from './data';
 import { api, lang, tx } from './theme';
 import { devId } from './ids';
 import { mountCopilot } from './copilot';
 import { t } from './i18n';
 import TwinScreen from './TwinScreen';
-import { buildDemoScene } from './DemoScene';
+import MapScreen from './MapScreen';
 
 // ---------- hash router
 function useRoute() {
@@ -55,12 +55,26 @@ export default function App() {
       if (!/^KO\s*\/\s*EN$/.test(b.textContent.trim())) return;
       b.addEventListener('click', e => { e.preventDefault(); localStorage.setItem('lang', lang() === 'en' ? 'ko' : 'en'); location.reload(); });
     });
+    // Fleet Live range buttons — refetch at the chosen window and re-render.
+    root.querySelectorAll('.fleet-range').forEach(b => b.addEventListener('click', async () => {
+      await fleetLive(parseInt(b.dataset.minutes, 10));
+      setTick(x => x + 1);
+    }));
+    // Alarm acknowledge / un-acknowledge.
+    root.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', async (e) => {
+      e.preventDefault();
+      b.disabled = true;
+      await ackAlert(b.dataset.ack, b.dataset.acked !== '1');
+      await refresh();
+      setTick(x => x + 1);
+    }));
     mountCopilot(root, { deviceId: route.q.id });
     root.querySelectorAll('form').forEach(f => { if (!f.dataset.wired) f.addEventListener('submit', e => { e.preventDefault(); location.hash = '#/powerchain?panel=copilot'; }); });
     if (route.q.panel === 'copilot') root.querySelector('#copilot')?.scrollIntoView({ behavior: 'smooth' });
   }, [route.q.panel, route.q.id]);
   if (!ready) return <div style={{ minHeight: '100vh', background: '#161616', color: '#8d8d8d', display: 'grid', placeItems: 'center', fontFamily: 'IBM Plex Sans KR, sans-serif' }}>{t('C-Flex FMS 2.0 불러오는 중…')}</div>;
   const p = route.path;
+  if (p === 'map') return <MapScreen />;
   if (p === 'twin') return <TwinScreen q={route.q} tick={tick} />;
   if (p === 'wall') return <WallScreen data={nocData()} />;
   if (p === 'device') return <><Screen name="Device" html={deviceTpl} data={devData} onReady={wire} /><SampleBadge on={!!devData?.sample} /><SampleBadge on={!devData?.sample} text={t('AI 예측·RCA·추세는 Phase 2 샘플')} /></>;

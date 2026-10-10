@@ -35,7 +35,7 @@ const worstOf = (devices) =>
 // can appear in the same scene.
 export default function Twin3D({
   topology, tree, assets, selectedId, selectedObjectId, onSelect, onSelectObject,
-  mode = 'status', view = 'iso', layers = {}, chain = null, focusId = null,
+  mode = 'status', view = 'iso', layers = {}, chain = null, focusId = null, focusSite = null, focusRoom = null,
 }) {
   const ref = useRef(null);
   const state = useRef({});
@@ -181,6 +181,7 @@ export default function Twin3D({
     disposeTree(s.world);
     s.pickables = []; s.pulse = []; s.fans = [];
     s.centres = new Map();                       // objectId → world centre, for the chain line
+    s.rooms = [];                                // {location, name, x, z, w, d} for ?site= framing
     s.depth = 0;
     s.selectedObjectId = selectedObjectId;
 
@@ -214,6 +215,7 @@ export default function Twin3D({
       edge.position.set(ox + W / 2, H / 2, D / 2);
       s.world.add(edge);
 
+      s.rooms.push({ location: room.location, name: room.name, x: ox + W / 2, z: D / 2, w: W, d: D });
       if (layers.labels !== false) {
         const lab = labelSprite(`${room.location} · ${room.name} · ${room.objects.length} ${tx('객체', 'objects')}`, 30);
         lab.position.set(ox + W / 2, H + 0.7, -0.4);
@@ -322,6 +324,7 @@ export default function Twin3D({
       for (const room of L.rooms) {
         const rx = ox + room.x;
         const rz = room.z || 0;
+        s.rooms.push({ location: room.location, name: room.name, x: rx + room.w / 2, z: rz, w: room.w, d: room.d });
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(room.w, room.d), new THREE.MeshStandardMaterial({ color: hex(TWIN.floor), roughness: 1 }));
         floor.rotation.x = -Math.PI / 2;
         floor.position.set(rx + room.w / 2, 0, rz);
@@ -446,6 +449,34 @@ export default function Twin3D({
     s.controls.target.set(s.cx, 0.8, s.cz || 0);
     s.controls.update();
   }, [view, sceneKey]);
+
+  // ── focus a site or room (deep link from the alarm map) ───────────
+  // A location can hold several rooms, so the camera frames their bounding box.
+  useEffect(() => {
+    const s = state.current;
+    if ((!focusSite && !focusRoom) || !s.camera || !s.rooms?.length) return;
+    const hits = s.rooms.filter(r =>
+      (!focusSite || r.location === focusSite) && (!focusRoom || r.name === focusRoom));
+    if (!hits.length) return;
+    const x0 = Math.min(...hits.map(r => r.x - r.w / 2)), x1 = Math.max(...hits.map(r => r.x + r.w / 2));
+    const z0 = Math.min(...hits.map(r => r.z - r.d / 2)), z1 = Math.max(...hits.map(r => r.z + r.d / 2));
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    const reach = Math.max(x1 - x0, z1 - z0, 6);
+    const from = s.camera.position.clone();
+    const to = new THREE.Vector3(cx, reach * 0.75, cz + reach * 1.05);
+    const look = new THREE.Vector3(cx, 0.8, cz);
+    const t0 = performance.now();
+    const DUR = 800;                       // the addendum asks for 0.8s easing, not a jump
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / DUR);
+      const e = 1 - (1 - k) ** 3;
+      s.camera.position.lerpVectors(from, to, e);
+      s.controls.target.lerp(look, e);
+      s.controls.update();
+      if (k < 1) requestAnimationFrame(step);
+    };
+    step();
+  }, [focusSite, focusRoom, sceneKey]);
 
   // ── focus one object (deep link from a device list) ───────────────
   useEffect(() => {

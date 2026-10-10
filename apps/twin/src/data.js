@@ -18,7 +18,7 @@ const PR = { P1: { bg: '#fa4d56', fg: '#fff' }, P2: { bg: '#f1c21b', fg: '#16161
 export const hhmm = (ms) => ms ? new Date(ms).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '—';
 const pct = (n, t) => t ? `${Math.max(2, Math.round((n / t) * 100))}%` : '0%';
 
-export const store = { me: null, summary: null, summaryAll: null, assets: [], alerts: [], floor: null, topology: null, heat: {}, loadedAt: 0 };
+export const store = { me: null, summary: null, summaryAll: null, assets: [], alerts: [], floor: null, topology: null, heat: {}, fleet: null, loadedAt: 0 };
 export async function refresh() {
   const [s, sa, a, al, f, t] = await Promise.all([
     api('/v1/fms/summary' + withCbu()), api('/v1/fms/summary'), api('/v1/fms/assets' + withCbu()),
@@ -28,6 +28,7 @@ export async function refresh() {
   // A server without the v3 ledger endpoint simply has no topology; the 3D scene
   // then falls back to v2 placement for everything, which is the v2 behaviour.
   store.topology = t?.ok ? { rooms: t.rooms || [], unplaced: t.unplaced || [] } : null;
+  await fleetLive(store.fleet?.minutes || 60).catch(() => {});
   store.loadedAt = Date.now(); return store;
 }
 
@@ -54,6 +55,56 @@ async function chain(path, key) {
   chainCache.set(key, { at: Date.now(), value });
   return value;
 }
+// ── S1: screens connected to endpoints that already exist ───────────
+// The real backend caps fleet-live at 180 minutes, so 24h is not offered until
+// that cap is raised (v4 §1.1, S2). Showing a 24h button that silently returns
+// 3h would be worse than not showing it.
+export const FLEET_RANGES = [15, 30, 60, 180];
+export async function fleetLive(minutes = 60) {
+  const r = await api(`/v1/fms/fleet-live?minutes=${Math.min(180, minutes)}`);
+  if (!r?.ok) return null;
+  store.fleet = { at: Date.now(), minutes: r.minutes, series: r.series || [], fleet: r.fleet || {} };
+  return store.fleet;
+}
+
+/** series → SVG polyline points in an 800x200 viewBox, scaled to [lo,hi]. */
+export function seriesPoints(series, key, lo, hi, { w = 800, h = 200 } = {}) {
+  const pts = (series || []).map((p, i) => [p[key], i]).filter(([v]) => v != null);
+  if (pts.length < 2) return '';
+  const n = series.length - 1 || 1;
+  return pts.map(([v, i]) => {
+    const x = (i / n) * w;
+    const y = h - ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * h;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+}
+const areaFrom = (points, h = 200, w = 800) => (points ? `0,${h} ${points} ${w},${h}` : '');
+
+export async function sitesMap() {
+  const r = await api('/v1/fms/sites-map');
+  return r?.ok ? (r.sites || []) : [];
+}
+export async function channelsHealth() {
+  const r = await api('/v1/fms/channels/health');
+  return r?.ok ? (r.channels || []) : [];
+}
+export async function alarmRoutes() {
+  const r = await api('/v1/fms/routes');
+  return r?.ok ? { routes: r.routes || [], stats: r.stats || {} } : { routes: [], stats: {} };
+}
+export async function controlActions() {
+  const r = await api('/v1/fms/control/actions');
+  return r?.ok ? (r.actions || []) : [];
+}
+export async function thresholdsFor(deviceId) {
+  const r = await api(`/v1/fms/assets/${devId(deviceId)}/thresholds`);
+  return r?.ok ? (r.thresholds || r) : null;
+}
+export const ackAlert = (id, on = true) =>
+  api(`/v1/fms/alerts/${id}/${on ? 'ack' : 'unack'}`, { method: 'POST', body: '{}' });
+export const muteDevice = (id, minutes, reason) =>
+  api(`/v1/fms/devices/${devId(id)}/${minutes ? 'mute' : 'unmute'}`, { method: 'POST', body: JSON.stringify({ minutes, reason }) });
+
 export const powerChain = (deviceId) => chain(`/v1/fms/power-chain/${devId(deviceId)}`, `d:${devId(deviceId)}`);
 export const powerChainObject = (objectId) => chain(`/v1/fms/power-chain/object/${objectId}`, `o:${objectId}`);
 const meData = () => ({ me: { name: store.me?.displayName || store.me?.name || '', email: store.me?.email || '' }, tenant: store.me?.tenantName || store.me?.tenant?.display_name || 'HAEA' });
@@ -76,7 +127,27 @@ export function mainData() {
   const groups = Object.values(assets.reduce((g, a) => { (g[a.cbu] = g[a.cbu] || { name: a.cbu, n: 0, units: [] }); g[a.cbu].n++; g[a.cbu].units.push({ id: a.label, devId: a.id, color: SC[a.status] || NA }); return g; }, {})).map(g => ({ ...g, w: `${Math.min(300, Math.ceil(Math.sqrt(g.n)) * 2 * 25 + 60)}px` }));
   const batt = [...assets].filter(a => a.battery_pct != null).sort((a, b) => (a.health_score ?? 100) - (b.health_score ?? 100)).slice(0, 5).map(a => ({ id: a.label, devId: a.id, w: `${Math.max(5, Math.min(100, a.health_score ?? 80))}%`, color: SC[a.status] || OK, eol: t((a.health_score ?? 80) < 50 ? '교체 권고' : (a.health_score ?? 80) < 70 ? '관찰' : '양호') }));
   const sites = (store.summary?.cbu_list || []).map(c => ({ name: c.cbu, addr: `${c.total} UPS · ${t('정상')} ${c.ok ?? '—'} · ${t('경고')} ${c.warn ?? 0} · ${t('위험')} ${c.critical ?? 0}`, ups: c.total, alarms: c.critical ? `${c.critical} ${t('위험')}` : c.warn ? `${c.warn} ${t('경고')}` : t('정상'), color: c.critical ? CRIT : c.warn ? WARN : OK }));
-  return { ...base, ...meData(), kpi: k, cbus: cbus(), groups: groups.length ? groups : base.groups, batt: batt.length ? batt : base.batt, sites: sites.length ? sites : base.sites, alarms: store.alerts.length ? alarmRows(6) : base.alarms, sample: !assets.length };
+  // Fleet Live: real polylines, or empty strings so the chart renders its grid
+  // with no curve rather than a fabricated one.
+  const fs = store.fleet?.series || [];
+  const fleet = store.fleet?.fleet || {};
+  const battPts = seriesPoints(fs, 'battery_avg', 90, 100);
+  const loadPts = seriesPoints(fs, 'load_pct' in (fs[0] || {}) ? 'load_pct' : 'load_avg', 0, 100);
+  const tempPts = seriesPoints(fs, 'temp_max', 15, 45);
+  const chart = {
+    batt: battPts, load: loadPts, temp: tempPts, loadArea: areaFrom(loadPts),
+    battAvg: fleet.battery_avg != null ? `${fleet.battery_avg}%` : '—',
+    loadAvg: fleet.load_avg != null ? `${fleet.load_avg}%` : '—',
+    tempMax: fleet.temp_max != null ? `${fleet.temp_max}°C` : '—',
+    minutes: store.fleet?.minutes ?? 60,
+    points: fs.length,
+    empty: !fs.length,
+  };
+
+  const curMin = store.fleet?.minutes ?? 60;
+  const ranges = FLEET_RANGES.map(m => ({ minutes: m, label: m >= 60 ? `${m / 60}h` : `${m}m`, bg: m === curMin ? '#393939' : 'transparent' }));
+
+  return { ...base, ...meData(), kpi: k, cbus: cbus(), chart, ranges, groups: groups.length ? groups : base.groups, batt: batt.length ? batt : base.batt, sites: sites.length ? sites : base.sites, alarms: store.alerts.length ? alarmRows(6) : base.alarms, sample: !assets.length };
 }
 
 // `_fellBack` stops the "no id / fetch failed -> show the worst device" path from

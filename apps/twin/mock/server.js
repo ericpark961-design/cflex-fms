@@ -44,6 +44,70 @@ app.get('/v1/fms/assets', (q, r) => { const list = filt(q.query).map(a => ({ ...
 app.get('/v1/fms/assets/:id', (q, r) => { const a = assets.find(x => x.id === parseInt(q.params.id, 10)); if (!a) return r.status(404).json({ ok: false }); const metrics = Array.from({ length: 48 }, (_, i) => ({ ts: now - (47 - i) * 1800000, battery_pct: a.battery_pct, load_pct: a.load_pct + ((i * 7) % 5), temp_c: a.temp_c })); r.json({ ok: true, asset: { ...a, status: eff(a) }, metrics, thresholds: { battery_pct: { critical: 30, warn: 60, direction: 'below' }, load_pct: { critical: 90, warn: 75, direction: 'above' }, temp_c: { critical: 45, warn: 38, direction: 'above' } }, alerts: [] }); });
 app.get('/v1/fms/alerts', (q, r) => { const mk = (i, a, p, metric, message, value, threshold, rec) => ({ id: i, device_id: 'ups-' + a.id, site: a.location, priority: p, metric, message, value, threshold, received_at: now - i * 11 * 60000, device_label: a.label, room: a.room, rack: a.rack, muted_until: null, recurring: !!rec });
   r.json({ ok: true, alerts: [mk(1, assets[2], 'P1', 'battery_pct', '배터리 전압 저하 · 25.1 V (임계 26.0)', 25.1, 26, false), mk(2, assets[40], 'P1', 'output_status', '입력 전원 상실 · 배터리 운전', 'ON BATTERY', 'ONLINE', false), mk(3, assets[11], 'P2', 'temp_c', '온도 상승 · 38.4°C (임계 38.0)', 38.4, 38, true), mk(4, assets[17], 'P2', 'load_pct', '부하 76% · 경고 임계 초과', 76, 75, false), mk(5, assets[29], 'P3', 'load_pct', '부하 55% · 경고 임계 근접', 55, 75, false), mk(6, assets[22], 'P4', 'heartbeat', 'probe 하트비트 지연 90s', 90, 60, true), mk(7, assets[5], 'P3', 'battery_pct', '런타임 감소 추세 −18% / 90d', 21, 25, false)] }); });
+// ── S1: endpoints that already exist on the real backend ────────────
+// Shapes copied from backend/routes/fms.routes.js so the frontend is built
+// against the production contract, not an invented one.
+app.get('/v1/fms/fleet-live', (q, r) => {
+  const minutes = Math.max(5, Math.min(180, parseInt(q.query.minutes || '30', 10)));   // real cap is 180
+  const list = filt(q.query);
+  const buckets = Math.min(180, minutes);
+  const series = Array.from({ length: buckets }, (_, i) => {
+    const ts = now - (buckets - 1 - i) * 60000;
+    const phase = i / buckets;
+    return {
+      ts,
+      battery_avg: +(96 + Math.sin(phase * 6) * 1.2).toFixed(1),
+      load_avg: +(42 + Math.sin(phase * 4) * 6).toFixed(1),
+      temp_max: +(24.5 + Math.sin(phase * 3) * 1.6).toFixed(1),
+      devices: list.length,
+    };
+  });
+  const last = series[series.length - 1] || {};
+  r.json({ ok: true, minutes, fleet: { battery_avg: last.battery_avg, load_avg: last.load_avg, temp_max: last.temp_max, devices: list.length }, series, generated_at: now });
+});
+
+app.get('/v1/fms/sites-map', (q, r) => {
+  const ADDR = { HMA: { display: 'Fountain Valley, CA', lat: 33.70, lng: -117.95 }, KUS: { display: 'Irvine, CA', lat: 33.69, lng: -117.80 }, HAEA_HQ: { display: 'Irvine, CA', lat: 33.68, lng: -117.83 } };
+  const byCbu = {};
+  for (const a of assets) (byCbu[a.cbu] = byCbu[a.cbu] || []).push(a);
+  r.json({ ok: true, sites: Object.entries(byCbu).map(([cbu, l]) => {
+    const c = (st) => l.filter(x => eff(x) === st).length;
+    const locs = {};
+    l.forEach(x => { locs[x.location] = (locs[x.location] || 0) + 1; });
+    return { cbu, ...(ADDR[cbu] || {}), total: l.length, critical: c('critical'), warn: c('warn'), ok: c('ok'), nodata: c('nodata'), unreachable: c('unreachable'),
+      buildings: Object.entries(locs).map(([name, total]) => ({ name, total })) };
+  }) });
+});
+
+app.get('/v1/fms/channels/health', (q, r) => r.json({ ok: true, channels: [
+  { channel: 'teams', configured: true, ok: true, last_ok: now - 120000, last_error: null },
+  { channel: 'sms', configured: true, ok: true, last_ok: now - 900000, last_error: null },
+  { channel: 'email', configured: true, ok: false, last_ok: now - 86400000, last_error: 'RESEND_API_KEY not set' },
+  { channel: 'line', configured: false, ok: false, last_ok: null, last_error: null },
+] }));
+
+app.get('/v1/fms/routes', (q, r) => r.json({ ok: true, routes: [
+  { id: 1, name: 'P1 즉시', metric: 'battery_pct', priority: 'P1', threshold: 26, duration_s: 60, dedup_min: 30, channels: 'teams,sms,phone', enabled: 1 },
+  { id: 2, name: '입력 상실', metric: 'output_status', priority: 'P1', threshold: null, duration_s: 30, dedup_min: 15, channels: 'teams,sms', enabled: 1 },
+  { id: 3, name: '온도 경고', metric: 'temp_c', priority: 'P2', threshold: 38, duration_s: 300, dedup_min: 60, channels: 'teams', enabled: 1 },
+  { id: 4, name: '부하 경고', metric: 'load_pct', priority: 'P2', threshold: 75, duration_s: 300, dedup_min: 60, channels: 'teams', enabled: 1 },
+  { id: 5, name: '하트비트', metric: 'heartbeat', priority: 'P4', threshold: 90, duration_s: 90, dedup_min: 10, channels: 'teams', enabled: 1 },
+], stats: { dispatched_24h: 12, suppressed_24h: 31 } }));
+
+app.get('/v1/fms/control/actions', (q, r) => r.json({ ok: true, actions: [
+  { key: 'self_test', label: '자가진단', allowed: true, destructive: false },
+  { key: 'battery_test', label: '배터리 테스트', allowed: true, destructive: false },
+  { key: 'beeper_off', label: '부저 끄기', allowed: true, destructive: false },
+  { key: 'reboot', label: '재기동', allowed: false, destructive: true },
+] }));
+
+const acked = new Map();
+app.post('/v1/fms/alerts/:id/ack', (q, r) => { acked.set(+q.params.id, { at: Date.now(), by: 'Eric Park' }); r.json({ ok: true, id: +q.params.id, acked_at: Date.now(), acked_by: 'Eric Park' }); });
+app.post('/v1/fms/alerts/:id/unack', (q, r) => { acked.delete(+q.params.id); r.json({ ok: true, id: +q.params.id, acked_at: null }); });
+app.post('/v1/fms/devices/:id/mute', (q, r) => r.json({ ok: true, id: q.params.id, muted_until: Date.now() + (q.body?.minutes || 60) * 60000 }));
+app.post('/v1/fms/devices/:id/unmute', (q, r) => r.json({ ok: true, id: q.params.id, muted_until: null }));
+app.get('/v1/incidents', (q, r) => r.json({ ok: true, incidents: [] }));
+
 // ── v3 ledger endpoints ─────────────────────────────────────────────
 // These run the REAL backend service against an in-memory SQLite seeded with the
 // KMX ledger, so the frontend is developed against the production response shape

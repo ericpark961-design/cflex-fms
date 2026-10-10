@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { store } from './data';
 import { api, tx } from './theme';
 import { t } from './i18n';
-import { buildDemoScene } from './DemoScene';
 import Twin3D from './Twin3D';
 import { buildLedgerScene } from './twin/LedgerScene';
 import { iconIdForModel, iconUrl, UPS_ICON_META } from './twin/upsIcons';
@@ -48,30 +47,19 @@ export default function TwinScreen({ q, standalone = false, tick = 0 }) {
   const [sel, setSel] = useState(null); const [detail, setDetail] = useState(null); const [lsel, setLsel] = useState(null);
   const [layers, setLayers] = useState({ labels: true, sensors: true, leak: true }); const [heat, setHeat] = useState('off');
   const ledgerRef = useRef(null); const boxRef = useRef(null);
-  const demoRef = useRef(null); const demoCanvasRef = useRef(null); const demoTipRef = useRef(null);
-  const [demoSel, setDemoSel] = useState('');
   // Follows the live ledger once it loads; falls back to the bundled KMX design.
   const data = useMemo(() => (store.topology?.rooms?.length ? store.topology : kmx), [store.topology, tick]);
-  useEffect(() => { if (q.scene) setScene(q.scene); }, [q.scene]);
+  useEffect(() => { if (q.scene) setScene(q.scene); else if (q.site || q.room) setScene('real'); }, [q.scene, q.site, q.room]);
   useEffect(() => { if (!sel) { setDetail(null); return; } api(`/v1/fms/assets/${sel}?range=24h`).then(d => d?.ok && setDetail(d.asset)); }, [sel]);
   useEffect(() => {
     if (scene !== 'kmx') return; const s = buildLedgerScene(boxRef.current, data, { onSelect: setLsel }); ledgerRef.current = s;
     s.setLayers(layers); s.setHeat(heat); s.setMode(mode); if (q.focus) setTimeout(() => s.focus(q.focus), 300);
     return () => { s.dispose(); ledgerRef.current = null; };
   }, [scene, data]);
-  // The hand-built KMX demo scene stays reachable (#/twin?scene=demo).
-  useEffect(() => {
-    if (scene !== 'demo') return;
-    const d = buildDemoScene(demoCanvasRef.current, { tip: demoTipRef.current, onSelect: setDemoSel });
-    demoRef.current = d;
-    return () => { d.dispose(); demoRef.current = null; };
-  }, [scene]);
-  useEffect(() => { demoRef.current?.setMode(mode); }, [mode, scene]);
-  useEffect(() => { demoRef.current?.preset(view); }, [view, scene]);
   useEffect(() => { ledgerRef.current?.setMode(mode); }, [mode]); useEffect(() => { ledgerRef.current?.preset(view); }, [view]);
   useEffect(() => { ledgerRef.current?.setLayers(layers); }, [layers]); useEffect(() => { ledgerRef.current?.setHeat(heat); }, [heat]);
   const btn = (on) => ({ fontFamily: 'inherit', fontSize: 12, padding: '6px 11px', cursor: 'pointer', border: `1px solid ${on ? '#4589ff' : '#525252'}`, background: on ? '#1c2a44' : 'transparent', color: '#f4f4f4' });
-  const nav = [['#/dashboard', '대시보드'], ['#/powerchain', '전력체인 트윈'], ['#/device', '장치'], ['#/alarms', '알람 센터'], ['#/twin', '3D 트윈', true], ['#/powerchain?panel=copilot', 'AI 코파일럿'], ['#/wall', '관제 상황판'], ['/fms', 'FMS 1.x (관리)']];
+  const nav = [['#/dashboard', '대시보드'], ['#/powerchain', '전력체인 트윈'], ['#/device', '장치'], ['#/alarms', '알람 센터'], ['#/map', '알람 지도'], ['#/twin', '3D 트윈', true], ['#/powerchain?panel=copilot', 'AI 코파일럿'], ['#/wall', '관제 상황판'], ['/fms', 'FMS 1.x (관리)']];
   const a = detail; const room = data.rooms[0]; const nRack = room.objects.filter(o => o.kind === 'rack').length;
   const alarms = data.alarms || [];
   return (
@@ -90,7 +78,7 @@ export default function TwinScreen({ q, standalone = false, tick = 0 }) {
       <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, padding: '10px 20px', background: '#0b0b0b', borderBottom: '1px solid #262626' }}>
           <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>3D 디지털트윈</h1>
-          <div style={{ display: 'flex', gap: 6, marginLeft: 12 }}>{!standalone && <button style={btn(scene === 'real')} onClick={() => setScene('real')}>{tx('실데이터', 'Live')} · {store.me?.tenantName || 'HAEA'} {store.assets.length}{tx('대', ' UPS')}</button>}<button style={btn(scene === 'kmx')} onClick={() => setScene('kmx')}>KMX CCR · {t('원장')} {nRack}{tx('랙', ' racks')}</button>{!standalone && <button style={btn(scene === 'demo')} onClick={() => setScene('demo')}>{t('KMX CCR 데모 씬')}</button>}</div>
+          <div style={{ display: 'flex', gap: 6, marginLeft: 12 }}>{!standalone && <button style={btn(scene === 'real')} onClick={() => setScene('real')}>{tx('실데이터', 'Live')} · {store.me?.tenantName || 'HAEA'} {store.assets.length}{tx('대', ' UPS')}</button>}<button style={btn(scene === 'kmx')} onClick={() => setScene('kmx')}>KMX CCR · {t('원장')} {nRack}{tx('랙', ' racks')}</button></div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {[['status', '상태'], ['load', '부하 kW'], ['temp', '온도']].map(([k, l]) => <button key={k} style={btn(mode === k)} onClick={() => setMode(k)}>{l}</button>)}<span style={{ width: 10 }} />
             {[['iso', '아이소'], ['top', '탑뷰'], ['aisle', '통로'], ...(scene === 'kmx' ? [['crac', 'CRAC']] : [])].map(([k, l]) => <button key={k} style={btn(view === k)} onClick={() => { setView(k); if (k === view) ledgerRef.current?.preset(k); }}>{l}</button>)}
@@ -99,15 +87,13 @@ export default function TwinScreen({ q, standalone = false, tick = 0 }) {
         </div>
         <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 340px', gap: 12, padding: 16 }}>
           <div ref={boxRef} style={{ position: 'relative', height: 'calc(100vh - 150px)', minHeight: 480, overflow: 'hidden', background: '#070a10', border: '1px solid #262626' }}>
-            {scene === 'real' && (store.floor ? <Twin3D tree={store.floor} assets={store.assets} selectedId={sel} onSelect={setSel} mode={mode} view={view} /> : <div style={{ padding: 20, color: '#8d8d8d' }}>{t('장치 데이터 불러오는 중…')}</div>)}
-            {scene === 'demo' && <><canvas ref={demoCanvasRef} style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }} /><div ref={demoTipRef} style={{ position: 'absolute', display: 'none', pointerEvents: 'none', background: '#0b0b0b', border: '1px solid #393939', padding: '7px 10px', fontSize: 12, lineHeight: 1.5 }} /></>}
+            {scene === 'real' && (store.floor ? <Twin3D tree={store.floor} assets={store.assets} selectedId={sel} onSelect={setSel} mode={mode} view={view} focusSite={q.site || null} focusRoom={q.room || null} /> : <div style={{ padding: 20, color: '#8d8d8d' }}>{t('장치 데이터 불러오는 중…')}</div>)}
             <div style={{ position: 'absolute', left: 12, bottom: 10, fontSize: 11, color: '#8d8d8d', pointerEvents: 'none' }}>드래그 회전 · 휠 확대 · 우클릭 이동 · 클릭 상세 · 전원 체인 자동 추적</div>
           </div>
           <aside style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', maxHeight: 'calc(100vh - 150px)' }}>
             <section style={{ background: '#262626', padding: 14, fontSize: 13, lineHeight: 1.5 }}>
               <div style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em', marginBottom: 6 }}>선택 객체</div>
-              {scene === 'demo' ? (demoSel ? <div dangerouslySetInnerHTML={{ __html: demoSel }} /> : <span style={{ color: '#8d8d8d' }}>{t('랙·CRAC·UPS·센서·누수 존을 클릭하면 상세가 표시된다.')}</span>)
-                : scene === 'kmx' ? <LedgerPanel sel={lsel} data={data} onFocus={(n) => ledgerRef.current?.focus(n)} />
+              {scene === 'kmx' ? <LedgerPanel sel={lsel} data={data} onFocus={(n) => ledgerRef.current?.focus(n)} />
                 : a ? <div><div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}><div style={{ flex: '0 0 110px', padding: 6, background: '#111', border: `2px solid ${({ ok: '#24a148', warn: '#f1c21b', critical: '#da1e28' })[a.status] || '#8d8d8d'}` }}><img src={iconUrl(iconIdForModel(a.model))} alt="" style={{ display: 'block', width: '100%', opacity: ['ok', 'warn', 'critical'].includes(a.status) ? 1 : 0.45 }} /><div style={{ fontSize: 10, color: '#8d8d8d', marginTop: 4, textAlign: 'center' }}>{UPS_ICON_META[iconIdForModel(a.model)].label}</div></div><div style={{ minWidth: 0 }}><div style={{ fontSize: 15, fontWeight: 700 }}>{a.label}</div><div style={{ color: '#c6c6c6', fontSize: 12 }}>{a.vendor} {a.model} · {a.room} / {a.rack} · <span className="mono">{a.ip}</span></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>{[['배터리', a.battery_pct != null ? `${a.battery_pct}%` : '—'], ['부하', a.load_pct != null ? `${a.load_pct}%` : '—'], ['온도', a.temp_c != null ? `${a.temp_c}°C` : '—'], ['런타임', a.runtime_min != null ? `${a.runtime_min} min` : '—']].map(([l, v]) => <div key={l} style={{ background: '#1f1f1f', padding: '8px 10px' }}><div style={{ fontSize: 10, color: '#8d8d8d' }}>{l}</div><div style={{ fontSize: 18, fontWeight: 700 }}>{v}</div></div>)}</div><a href={`#/device?id=${a.id}`} style={{ display: 'inline-block', marginTop: 10, fontSize: 12, color: '#78a9ff' }}>장치 상세 →</a></div></div></div>
                 : <span style={{ color: '#8d8d8d' }}>랙을 클릭하면 장치 상세가 표시된다.</span>}
             </section>
@@ -121,7 +107,7 @@ export default function TwinScreen({ q, standalone = false, tick = 0 }) {
           </aside>
         </div>
       </main>
-      <SampleBadge on={scene === 'kmx' || scene === 'demo'} text={standalone ? 'KMX CCR · 설계 샘플 원장 · 개발 계획 공유용' : 'DEMO · KMX 설계 샘플 원장'} />
+      <SampleBadge on={scene === 'kmx'} text={standalone ? 'KMX CCR · 설계 샘플 원장 · 개발 계획 공유용' : 'DEMO · KMX 설계 샘플 원장'} />
     </div>
   );
 }

@@ -301,6 +301,13 @@ export const EN = {
   'AI 예측·RCA·추세는 Phase 2 샘플': 'AI forecast, RCA and trends are Phase 2 samples',
   '전력체인·코파일럿 · Phase 3 샘플': 'Power chain and copilot · Phase 3 sample',
   '← 대시보드': '← Dashboard',
+  '미수집 · 수집기 연결 대기': 'Not collected · waiting for a collector',
+  '알람 지도': 'Alarm map', 'API 오류 · 재시도': 'API error · retry',
+  '핀을 누르면 건물 목록이 표시된다.': 'Click a pin to list its buildings.',
+  '등록된 건물 없음': 'No buildings recorded',
+  '지도 타일 없음 — 좌표 개략도 (CDN 미사용)': 'No map tiles — schematic from coordinates (no CDN)',
+  '위험/경고/전체': 'critical / warning / total',
+  '{{chart.points}}분 · 1분 버킷': '{{chart.points}} min · 1-min buckets',
 
   // ── v3: ledger, power chain, heat layers ──
   '레이어': 'Layers', '라벨': 'Labels', '객체': 'objects', '타일': 'tile',
