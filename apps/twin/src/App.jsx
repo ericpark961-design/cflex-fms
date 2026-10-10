@@ -15,6 +15,7 @@ import { t } from './i18n';
 import { mountCbuBar } from './cbubar';
 import TwinScreen from './TwinScreen';
 import MapScreen from './MapScreen';
+import DevicesScreen from './DevicesScreen';
 import Workbench from './Workbench';
 
 // ---------- hash router
@@ -125,6 +126,7 @@ export default function App() {
   // #/incident/:id is the link a dispatched engineer opens — the workbench
   // renders full-screen over the alarm centre behind it.
   if (p === 'incident') { const d = alarmsData(null); return withModal(<Screen name="Alarms" html={alarmsTpl} data={d} onReady={wire} />); }
+  if (p === 'devices') return withModal(<DevicesScreen />);
   if (p === 'map') return withModal(<MapScreen />);
   if (p === 'twin') return withModal(<TwinScreen q={route.q} tick={tick} />);
   if (p === 'wall') return withModal(<WallScreen data={nocData()} />);

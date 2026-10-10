@@ -167,27 +167,64 @@ router.get('/floor', (req, res) => {
                                   health_score, battery_pct, load_pct, temp_c, last_polled, lat, lng
                            FROM ups_devices WHERE tenant_id=? AND decommissioned_at IS NULL` + cf.clause)
                   .all(freshSince, tid, ...cf.params);
+  // Network / UC gear belongs in the same hierarchy: a rack holds a switch and a
+  // UPS, and an inventory that shows only one of them is not the rack. status is
+  // taken as-is here — these have no collector, so it is 'nodata'.
+  let net = [];
+  try {
+    net = db.prepare(`SELECT ('fd-' || id) AS id, label, cbu, location, room, rack, kind,
+                             status, last_polled, ports_total, ports_up, u_pos
+                      FROM fms_devices WHERE tenant_id=? AND decommissioned_at IS NULL` + cf.clause)
+      .all(tid, ...cf.params);
+  } catch { /* pre-004 server: UPS only, as before */ }
+
+  const all = rows.map(r => ({ ...r, kind: 'ups' })).concat(net);
+
+  // CBU is the top level (부록 K1): a tenant runs several sites and the tree
+  // used to start at the location, so two sites with a room called "CCR"
+  // collapsed together.
   const tree = {};
-  for (const r of rows) {
+  const initNode = (extra) => ({ count: 0, critical: 0, warn: 0, ok: 0, unreachable: 0, nodata: 0, ...extra });
+  for (const r of all) {
+    const cbu = r.cbu || 'Unassigned';
     const loc = r.location || 'Unknown Location';
     const room = r.room || 'Default Room';
     const rack = r.rack || 'Default Rack';
-    const initNode = (extra) => ({ count: 0, critical: 0, warn: 0, ok: 0, unreachable: 0, nodata: 0, ...extra });
-    if (!tree[loc]) tree[loc] = initNode({ name: loc, rooms: {}, lat: r.lat, lng: r.lng });
-    if (!tree[loc].rooms[room]) tree[loc].rooms[room] = initNode({ name: room, racks: {} });
-    if (!tree[loc].rooms[room].racks[rack]) tree[loc].rooms[room].racks[rack] = initNode({ name: rack, devices: [] });
-    tree[loc].rooms[room].racks[rack].devices.push(r);
-    tree[loc].rooms[room].racks[rack].count++;
-    tree[loc].rooms[room].count++;
-    tree[loc].count++;
-    const bump = (k) => { tree[loc][k]++; tree[loc].rooms[room][k]++; tree[loc].rooms[room].racks[rack][k]++; };
-    if (r.status === 'critical') bump('critical');
-    else if (r.status === 'warn') bump('warn');
-    else if (r.status === 'unreachable') bump('unreachable');
-    else if (r.status === 'ok') bump('ok');
-    else bump('nodata');
+    if (!tree[cbu]) tree[cbu] = initNode({ name: cbu, locations: {} });
+    const C = tree[cbu];
+    if (!C.locations[loc]) C.locations[loc] = initNode({ name: loc, rooms: {}, lat: r.lat ?? null, lng: r.lng ?? null });
+    const L = C.locations[loc];
+    if (!L.rooms[room]) L.rooms[room] = initNode({ name: room, racks: {} });
+    const M = L.rooms[room];
+    if (!M.racks[rack]) M.racks[rack] = initNode({ name: rack, devices: [] });
+    const K = M.racks[rack];
+    K.devices.push(r);
+    const bucket = ['critical', 'warn', 'unreachable', 'ok'].includes(r.status) ? r.status : 'nodata';
+    for (const n of [C, L, M, K]) { n.count++; n[bucket]++; }
   }
-  res.json({ ok: true, tree });
+  for (const C of Object.values(tree)) {
+    for (const L of Object.values(C.locations)) {
+      for (const M of Object.values(L.rooms)) {
+        for (const K of Object.values(M.racks)) {
+          K.devices.sort((a, b) => (a.u_pos ?? 999) - (b.u_pos ?? 999) || String(a.label).localeCompare(String(b.label)));
+        }
+      }
+    }
+  }
+  // `tree_v2` is the CBU-rooted shape; `tree` keeps the old location-rooted one
+  // so a client built against it does not break on this deploy.
+  const legacy = {};
+  for (const C of Object.values(tree)) {
+    for (const [lname, L] of Object.entries(C.locations)) {
+      if (!legacy[lname]) legacy[lname] = L;
+      else {
+        legacy[lname].count += L.count;
+        for (const k of ['critical', 'warn', 'ok', 'unreachable', 'nodata']) legacy[lname][k] += L[k];
+        Object.assign(legacy[lname].rooms, L.rooms);
+      }
+    }
+  }
+  res.json({ ok: true, tree: legacy, tree_v2: tree });
 });
 
 // ─── GET /v1/fms/sites-map ── sites grouped by CBU for the Alarm Map view ──
@@ -418,11 +455,15 @@ router.put('/assets/:id', (req, res) => {
   const cur = db.prepare('SELECT id, tenant_id FROM ups_devices WHERE id=? AND tenant_id=?').get(id, tid);
   if (!cur) return res.status(404).json({ error: 'not found' });
 
+  // cbu / rack_id / u_pos / u_height were missing, so the inventory tree could
+  // move a device between rooms but not between sites, and could not place it
+  // in the cabinet. A field absent from this list is skipped SILENTLY, which is
+  // why the tree compares the response against what it asked for.
   const ALLOWED = [
     'label', 'ip', 'snmp_community', 'snmp_port', 'snmp_version',
     'snmp_v3_user', 'snmp_v3_auth_protocol', 'snmp_v3_auth_password',
     'snmp_v3_priv_protocol', 'snmp_v3_priv_password',
-    'location', 'room', 'rack', 'lat', 'lng',
+    'cbu', 'location', 'room', 'rack', 'rack_id', 'u_pos', 'u_height', 'lat', 'lng',
     'criticality', 'polling_enabled', 'polling_interval_sec', 'oid_profile',
     'vendor', 'model', 'serial',
   ];
@@ -433,6 +474,7 @@ router.put('/assets/:id', (req, res) => {
     let v = req.body[k];
     if (k === 'polling_enabled') v = v ? 1 : 0;
     if (k === 'snmp_port' || k === 'polling_interval_sec') v = parseInt(v, 10) || null;
+    if (k === 'rack_id' || k === 'u_pos' || k === 'u_height') v = (v === '' || v == null) ? null : (parseInt(v, 10) || null);
     if (k === 'lat' || k === 'lng') v = v === '' || v == null ? null : parseFloat(v);
     vals.push(v);
   }
@@ -440,10 +482,51 @@ router.put('/assets/:id', (req, res) => {
   sets.push('updated_at=?'); vals.push(Date.now());
   vals.push(id, tid);
   db.prepare(`UPDATE ups_devices SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`).run(...vals);
-  const updated = db.prepare(`SELECT id, label, ip, snmp_community, snmp_port, snmp_version, location, room, rack, lat, lng,
+  const updated = db.prepare(`SELECT id, label, ip, snmp_community, snmp_port, snmp_version,
+                                     cbu, location, room, rack, rack_id, u_pos, u_height, lat, lng,
                                      criticality, polling_enabled, polling_interval_sec, vendor, model, serial, oid_profile
                               FROM ups_devices WHERE id=?`).get(id);
   res.json({ ok: true, asset: updated });
+});
+
+// ─── PATCH /v1/fms/devices/:id ── place network / UC gear ─────────
+// fms_devices was read-only, so the inventory tree could show a switch but not
+// move it. Placement and identity only: status stays whatever a collector
+// reports, and there is no collector for these yet.
+router.patch('/devices/:id', (req, res) => {
+  const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
+  const id = parseInt(String(req.params.id).replace(/^fd-/i, ''), 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'bad device id' });
+  const cur = db.prepare('SELECT id FROM fms_devices WHERE id=? AND tenant_id=?').get(id, tid);
+  if (!cur) return res.status(404).json({ error: 'not found' });
+
+  const ALLOWED = ['label', 'kind', 'cbu', 'location', 'room', 'rack', 'rack_id',
+                   'u_pos', 'u_height', 'vendor', 'model', 'serial', 'ip',
+                   'ports_total', 'ports_up'];
+  const INTS = new Set(['rack_id', 'u_pos', 'u_height', 'ports_total', 'ports_up']);
+  const sets = [], vals = [];
+  for (const k of ALLOWED) {
+    if (req.body[k] === undefined) continue;
+    let v = req.body[k];
+    if (INTS.has(k)) v = (v === '' || v == null) ? null : (parseInt(v, 10) || null);
+    sets.push(`${k}=?`); vals.push(v);
+  }
+  if (!sets.length) return res.status(400).json({ error: 'no fields to update' });
+
+  // A rack_id must belong to this tenant, or the device would be placed into
+  // another customer's room.
+  if (req.body.rack_id) {
+    const own = db.prepare('SELECT id FROM fms_racks WHERE id=? AND tenant_id=?').get(parseInt(req.body.rack_id, 10), tid);
+    if (!own) return res.status(400).json({ error: 'rack_id does not belong to this tenant' });
+  }
+
+  sets.push('updated_at=?'); vals.push(Date.now());
+  vals.push(id, tid);
+  db.prepare(`UPDATE fms_devices SET ${sets.join(', ')} WHERE id=? AND tenant_id=?`).run(...vals);
+  const device = db.prepare(`SELECT id, cbu, kind, label, vendor, model, serial, ip, rack_id, u_pos, u_height,
+                                    location, room, rack, status, ports_total, ports_up
+                             FROM fms_devices WHERE id=?`).get(id);
+  res.json({ ok: true, device });
 });
 
 // ─── POST /v1/fms/assets/bulk-import ── upsert by label ──────────

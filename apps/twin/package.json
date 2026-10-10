@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "node src/i18n.test.mjs && node src/cbubar.test.mjs && node src/workbench.test.mjs",
+    "test": "node src/i18n.test.mjs && node src/cbubar.test.mjs && node src/workbench.test.mjs && node src/tree.test.mjs",
     "build:demo": "vite build -c vite.demo.config.js"
   },
   "dependencies": {
