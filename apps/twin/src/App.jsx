@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import './screens/screens.css';
 import mainTpl from './screens/Main.tpl.html?raw';
 import deviceTpl from './screens/Device.tpl.html?raw';
@@ -94,6 +94,10 @@ function TwinScreen({ q }) {
   const btn = (on) => ({ fontFamily: 'inherit', fontSize: 12, padding: '6px 11px', cursor: 'pointer', border: `1px solid ${on ? '#4589ff' : '#525252'}`, background: on ? '#1c2a44' : 'transparent', color: '#f4f4f4' });
   const nav = [['#/dashboard', t('대시보드')], ['#/powerchain', t('전력체인 트윈')], ['#/device', t('장치')], ['#/alarms', t('알람 센터')], ['#/twin', t('3D 트윈'), true], ['#/powerchain?panel=copilot', t('AI 코파일럿')], ['#/wall', t('관제 상황판')], ['/fms', t('FMS 1.x (관리)')]];
 
+  // Stable identity: Twin3D rebuilds the whole scene when `layers` changes, and a
+  // fresh object every render meant rebuilding on every poll tick.
+  const twinLayers = useMemo(() => ({ ...layers, heatRooms }), [layers, heatRooms]);
+
   const a = detail;
   const ledger = store.topology;
   const objCount = (ledger?.rooms || []).reduce((n, r) => n + r.objects.length, 0);
@@ -141,7 +145,7 @@ function TwinScreen({ q }) {
                   onSelect={(id) => setSel(devId(id))} onSelectObject={(id) => setSelObj(id)}
                   mode={mode} view={view} focusId={focusId}
                   chain={chain?.chain?.length ? chain.chain : null}
-                  layers={{ ...layers, heatRooms }} />
+                  layers={twinLayers} />
                 : <div style={{ padding: 20, color: '#8d8d8d' }}>{t('장치 데이터 불러오는 중…')}</div>)
               : <><canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }} /><div ref={tipRef} style={{ position: 'absolute', display: 'none', pointerEvents: 'none', background: '#0b0b0b', border: '1px solid #393939', padding: '7px 10px', fontSize: 12, lineHeight: 1.5 }} /></>}
             <div style={{ position: 'absolute', left: 12, bottom: 10, fontSize: 11, color: '#8d8d8d' }}>{t('드래그 회전 · 휠 확대 · 우클릭 이동 · 클릭 상세')}{chain?.chain?.length ? ` · ESC ${t('추적 해제')}` : ''}</div>

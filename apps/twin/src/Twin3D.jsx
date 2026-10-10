@@ -5,6 +5,23 @@ import { STATUS, tx } from './theme';
 import { layoutFloor } from './layout';
 import { devId } from './ids';
 import { TWIN, statusColor, labelSprite, buildObject, disposeTree, heatTexture, HEAT_SCALES } from './twin/meshes';
+import { makeRackSlot } from './twin/upsModels';
+
+// A rack is drawn as an open frame with real equipment in it. The status/mode
+// colour becomes a translucent hit box around that frame: it carries the tint,
+// and it is what picking, hover and the critical pulse act on — the equipment
+// itself must keep its own colours to stay recognisable.
+function rackGroup(devs, { w, d, h = 2.0, color }) {
+  const g = new THREE.Group();
+  g.add(makeRackSlot(devs, { w, d, h }));
+  const hit = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ color: hex(color), transparent: true, opacity: devs.length ? 0.14 : 0.07, depthWrite: false }));
+  hit.position.y = h / 2;
+  g.add(hit);
+  g.userData.pickable = hit;
+  return g;
+}
 
 const hex = (c) => new THREE.Color(c);
 const RANK = { critical: 3, warn: 2, ok: 1 };
@@ -246,12 +263,13 @@ export default function Twin3D({
           ? obj.attrs.zone_poly.map(([c, r]) => [ox + c * tile, r * tile])
           : null;
 
-        const g = buildObject(obj.kind, {
-          w, d, color, face: obj.face,
-          alarm: obj.kind === 'rack' && worst === 'critical',
-          ledColor: worst === 'critical' ? '#ff8389' : undefined,
-          poly,
-        });
+        const g = obj.kind === 'rack'
+          ? rackGroup(devices, { w, d: Math.max(d, 0.9), h: ((obj.u_height || 42) * 0.04445) + 0.12, color })
+          : buildObject(obj.kind, {
+            w, d, color, face: obj.face,
+            ledColor: worst === 'critical' ? '#ff8389' : undefined,
+            poly,
+          });
         if (poly) g.position.set(0, 0.012, 0);       // polygon already in world space
         else g.position.set(cx, 0, cz);
         s.world.add(g);
@@ -333,7 +351,7 @@ export default function Twin3D({
             const tC = Math.max(...devs.map(d => d.temp_c || 22));
             color = new THREE.Color().setHSL(0.6 - 0.6 * Math.min(1, Math.max(0, (tC - 20) / 15)), 0.8, 0.45).getStyle();
           }
-          const g = buildObject('rack', { w: L.RACK_W, d: L.RACK_D, color, face: r.face > 0 ? 'S' : 'N', alarm: worst === 'critical' });
+          const g = rackGroup(devs, { w: L.RACK_W, d: Math.max(L.RACK_D, 0.9), h: 2.0, color });
           g.position.set(ox + r.x, 0, r.z);
           s.world.add(g);
           const body = g.userData.pickable;

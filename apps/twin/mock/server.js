@@ -57,7 +57,7 @@ const ledgerDb = (() => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, label TEXT, cbu TEXT,
     location TEXT, room TEXT, rack TEXT, status TEXT, last_polled INTEGER,
     health_score INTEGER, battery_pct INTEGER, load_pct INTEGER, temp_c REAL,
-    decommissioned_at INTEGER, rack_id INTEGER, u_pos INTEGER, u_height INTEGER)`);
+    vendor TEXT, model TEXT, decommissioned_at INTEGER, rack_id INTEGER, u_pos INTEGER, u_height INTEGER)`);
   const sql = require('fs').readFileSync(require('path').join(__dirname, '../../../backend/migrations/004_fms_topology.sql'), 'utf8');
   for (const st of sql.split('\n').filter(l => !/^\s*--/.test(l)).join('\n').split(';').map(x => x.trim()).filter(Boolean)) {
     try { raw.exec(st); } catch (e) { if (!/duplicate column name/.test(e.message)) throw e; }
@@ -68,8 +68,8 @@ const ledgerDb = (() => {
   };
   // The 44 mock devices, so HMA/KUS/HAEA_HQ come back as `unplaced` and the
   // frontend has to fall back to v2 estimated placement for them.
-  const ins = db.prepare('INSERT INTO ups_devices (tenant_id,label,cbu,location,room,rack,status,last_polled,health_score,battery_pct,load_pct,temp_c) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
-  for (const a of assets) ins.run(TENANT, a.label, a.cbu, a.location, a.room, a.rack, eff(a), a.last_polled, a.health_score, a.battery_pct, a.load_pct, a.temp_c);
+  const ins = db.prepare('INSERT INTO ups_devices (tenant_id,label,cbu,location,room,rack,status,last_polled,health_score,battery_pct,load_pct,temp_c,vendor,model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  for (const a of assets) ins.run(TENANT, a.label, a.cbu, a.location, a.room, a.rack, eff(a), a.last_polled, a.health_score, a.battery_pct, a.load_pct, a.temp_c, a.vendor, a.model);
   T.importTopology(db, TENANT, require('../../../backend/seed/kmx_ccr_topology.json'), { mode: 'merge' });
   return db;
 })();

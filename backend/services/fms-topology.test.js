@@ -17,7 +17,7 @@ function makeDb() {
     id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, label TEXT, cbu TEXT,
     location TEXT, room TEXT, rack TEXT, status TEXT, last_polled INTEGER,
     health_score INTEGER, battery_pct INTEGER, load_pct INTEGER, temp_c REAL,
-    decommissioned_at INTEGER)`);
+    vendor TEXT, model TEXT, decommissioned_at INTEGER)`);
   const sql = fs.readFileSync(path.join(__dirname, '../migrations/004_fms_topology.sql'), 'utf8');
   for (const s of sql.split('\n').filter(l => !/^\s*--/.test(l)).join('\n').split(';').map(x => x.trim()).filter(Boolean)) raw.exec(s);
   return {

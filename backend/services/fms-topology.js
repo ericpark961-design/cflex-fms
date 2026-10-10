@@ -34,7 +34,7 @@ function getTopology(db, tenantId, cbu) {
   ).all(tenantId);
 
   const devices = db.prepare(
-    `SELECT id, label, location, room, rack, rack_id, u_pos, u_height,
+    `SELECT id, label, location, room, rack, rack_id, u_pos, u_height, vendor, model,
             ${EFF} AS status,
             CASE WHEN ${FRESH} THEN health_score ELSE NULL END AS health_score,
             CASE WHEN ${FRESH} THEN battery_pct  ELSE NULL END AS battery_pct,
@@ -63,6 +63,8 @@ function getTopology(db, tenantId, cbu) {
     const dev = {
       id: d.id, label: d.label, status: d.status, health_score: d.health_score,
       battery_pct: d.battery_pct, load_pct: d.load_pct, temp_c: d.temp_c,
+      // vendor/model drive which photo-traced icon the 3D unit wears.
+      vendor: d.vendor, model: d.model, kind: 'ups',
       u_pos: d.u_pos, u_height: d.u_height ?? 2,
     };
     // rack_id wins; otherwise fall back to the v2 string match.

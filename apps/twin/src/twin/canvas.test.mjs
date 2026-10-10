@@ -29,7 +29,8 @@ const browser = await puppeteer.launch({
   defaultViewport: { width: 1600, height: 950 },
 });
 const page = await browser.newPage();
-await page.goto(URL, { waitUntil: 'networkidle0', timeout: 40000 });
+await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 40000 });
+await new Promise(r => setTimeout(r, 3000));   // let the scene build
 
 const measure = () => page.evaluate(() => {
   const c = document.querySelector('canvas');
