@@ -11,6 +11,7 @@ import { store, refresh, mainData, deviceData, alarmsData, powerData, nocData, h
 import { api, lang, tx, cbu as globalCbu } from './theme';
 import { devId } from './ids';
 import { mountCopilot } from './copilot';
+import { mountDeviceFace } from './deviceFace';
 import { t } from './i18n';
 import { mountCbuBar } from './cbubar';
 import TwinScreen from './TwinScreen';
@@ -130,7 +131,7 @@ export default function App() {
   if (p === 'map') return withModal(<MapScreen />);
   if (p === 'twin') return withModal(<TwinScreen q={route.q} tick={tick} />);
   if (p === 'wall') return withModal(<WallScreen data={nocData()} />);
-  if (p === 'device') return withModal(<><Screen name="Device" html={deviceTpl} data={devData} onReady={wire} /><SampleBadge on={!!devData?.sample} /><SampleBadge on={!devData?.sample} text={t('AI 예측·RCA는 Phase 2 샘플')} /></>);
+  if (p === 'device') return withModal(<><Screen name="Device" html={deviceTpl} data={devData} onReady={(root) => { wire(root); mountDeviceFace(root, devData); }} /><SampleBadge on={!!devData?.sample} /><SampleBadge on={!devData?.sample} text={t('AI 예측·RCA는 Phase 2 샘플')} /></>);
   if (p === 'alarms') { const d = alarmsData(route.q.cbu || (globalCbu() === 'all' ? null : globalCbu())); return withModal(<><Screen name="Alarms" html={alarmsTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>); }
   if (p === 'powerchain') return withModal(<><Screen name="PowerChain" html={powerTpl} data={powerData()} onReady={wire} /><SampleBadge on text={t('전력체인·코파일럿 · Phase 3 샘플')} /></>);
   const d = mainData(); return withModal(<><Screen name="Main" html={mainTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>);

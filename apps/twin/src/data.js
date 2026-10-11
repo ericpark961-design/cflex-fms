@@ -244,6 +244,9 @@ export async function netDeviceData(rawId, range = '24h') {
   const dash = '—';
   return {
     ...base, ...meData(), cbus: cbus(), kind: 'net', isNet: true,
+    // The faceplate draws from these, so it matches the unit rather than a
+    // generic picture: 24 ports draw 24, and the ones reported up are lit.
+    portsTotal: d.ports_total ?? 0, portsUp: d.ports_up ?? 0,
     d: {
       ...base.d,
       label: d.label, stColor: SC[st] || NA, stLabel: slabel(st),

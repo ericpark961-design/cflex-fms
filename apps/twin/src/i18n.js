@@ -47,6 +47,7 @@ export const EN = {
     'This server has no copilot endpoint (/v1/fms/copilot) deployed yet.',
   '원장': 'Ledger',
   // #/devices inventory tree
+  '전면부': 'Front panel',
   '네트워크 · UC 장비 — 배터리·부하·런타임은 이 장비 종류에 없습니다. 포트·전원 체인·배치만 표시됩니다.': 'Network / UC device — battery, load and runtime do not exist for this kind. Ports, power chain and placement only.',
   '이 장비 종류는 아직 수집기가 없습니다': 'No collector exists for this device kind yet',
   '장비 인벤토리': 'Device inventory',
