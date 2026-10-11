@@ -10,6 +10,8 @@
 import { iconUrl, UPS_ICON_META } from './twin/upsIcons';
 import { deviceFace } from './twin/deviceFaces';
 import { catalogModel, catalogSpecLine, catalogNote } from './twin/catalog';
+import { photoFor, orderViews, VIEW_LABEL } from './twin/equipmentPhoto';
+import { apcImg, apcViews, apcMeta } from './twin/equipmentLibrary';
 import { t } from './i18n';
 
 // The six models that have a photo-traced SVG (shared with 1.x). Everything
@@ -51,7 +53,7 @@ function buildFace(data, d, view = 'front', onView = null) {
   head.style.cssText = 'display:flex;align-items:center;gap:8px';
   const title = document.createElement('span');
   title.style.cssText = 'font-size:11px;color:#8d8d8d;font-weight:600;letter-spacing:.04em;text-transform:uppercase';
-  title.textContent = view === 'rear' ? t('후면부') : t('전면부');
+  title.textContent = t(VIEW_LABEL[view] ? `${VIEW_LABEL[view]}부` : '전면부');
   head.appendChild(title);
   box.appendChild(head);
 
@@ -59,6 +61,30 @@ function buildFace(data, d, view = 'front', onView = null) {
   art.style.cssText = 'background:#141414;padding:10px;display:grid;place-items:center;min-height:70px';
 
   let caption; let note = null; let hasRear = false; let rearNote = null;
+  let views = [];
+
+  // A photograph of this exact model, cropped from the same sheets the
+  // catalogue was transcribed from, beats both the traced SVGs and the
+  // generated faceplate. Only when there is none do we fall through.
+  const { entry: pEntry, photoId } = photoFor(d.model === '—' ? '' : d.model);
+  const available = photoId ? orderViews(apcViews(photoId)) : [];
+  if (photoId && available.length) {
+    views = available;
+    const want = available.includes(view) ? view : available[0];
+    const img = document.createElement('img');
+    img.alt = `${d.label} ${pEntry?.label || ''} ${VIEW_LABEL[want] || want}`.trim();
+    img.src = apcImg(photoId, want);
+    img.loading = 'lazy';
+    img.style.cssText = 'width:100%;max-width:100%;height:auto;display:block';
+    art.appendChild(img);
+    const e = pEntry;
+    caption = [e?.label, catalogSpecLine(e)].filter(Boolean).join(' · ');
+    note = catalogNote(e);
+    const mm = apcMeta(photoId)?.mm;
+    if (mm) caption += `  ·  ${mm[0]} × ${mm[1]} × ${mm[2]} mm`;
+    box.appendChild(art);
+    return finish(box, caption, note, views, view, onView, data, d);
+  }
   if (data.isNet) {
     const f = deviceFace({
       kind: d.kindLabel, label: d.label, model: d.model === '—' ? '' : d.model,
@@ -98,16 +124,24 @@ function buildFace(data, d, view = 'front', onView = null) {
     }
   }
   box.appendChild(art);
+  return finish(box, caption, note, hasRear ? ['front', 'rear'] : [], view, onView, data, d, rearNote);
+}
 
-  // The sheets give a rear view for most units; without a way to reach it the
-  // drawing was computed and never seen.
-  if (hasRear && onView) {
+/**
+ * The footer every variant shares: the view picker, the caption, the
+ * sheet-discrepancy note, and where the unit is.
+ */
+function finish(box, caption, note, views, view, onView, data, d, rearNote = null) {
+  const head = box.firstChild;
+
+  // Without a picker the extra views are fetched and never seen.
+  if (views.length > 1 && onView && head) {
     const tabs = document.createElement('div');
     tabs.style.cssText = 'display:flex;border:1px solid #393939;width:max-content';
-    for (const [key, label] of [['front', t('전면')], ['rear', t('후면')]]) {
+    for (const key of views) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = label;
+      b.textContent = VIEW_LABEL[key] || key;
       b.setAttribute('aria-pressed', String(view === key));
       b.style.cssText = `border:0;border-left:1px solid #393939;padding:4px 12px;font-size:11px;font-family:inherit;cursor:pointer;background:${view === key ? '#393939' : 'transparent'};color:#f4f4f4`;
       b.addEventListener('click', () => onView(key));
@@ -115,7 +149,7 @@ function buildFace(data, d, view = 'front', onView = null) {
     }
     head.appendChild(tabs);
   }
-  if (view === 'rear' && rearNote) {
+  if (rearNote && view === 'rear') {
     const rn = document.createElement('div');
     rn.style.cssText = 'font-size:10px;color:#8d8d8d';
     rn.textContent = rearNote;
@@ -127,8 +161,8 @@ function buildFace(data, d, view = 'front', onView = null) {
   cap.textContent = caption;
   box.appendChild(cap);
 
-  // Where the equipment sheets disagree with each other, say so rather than
-  // presenting one of the two figures as settled.
+  // Where the sheets disagree with each other, say so rather than presenting
+  // one of the two figures as settled.
   if (note) {
     const n = document.createElement('div');
     n.style.cssText = 'font-size:10px;color:#f1c21b';
@@ -165,10 +199,10 @@ function buildFace(data, d, view = 'front', onView = null) {
     });
     box.appendChild(row);
     if (data.upstreamCapacityA != null) {
-      const cap = document.createElement('div');
-      cap.style.cssText = 'font-size:11px;color:#6f6f6f';
-      cap.textContent = `${t('상류 최소 정격')} ${data.upstreamCapacityA} A`;
-      box.appendChild(cap);
+      const capA = document.createElement('div');
+      capA.style.cssText = 'font-size:11px;color:#6f6f6f';
+      capA.textContent = `${t('상류 최소 정격')} ${data.upstreamCapacityA} A`;
+      box.appendChild(capA);
     }
   }
 
