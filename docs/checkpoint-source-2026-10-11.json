@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-11",
+  "scope": "local source references; no production snapshot or deployment",
+  "repositories": [
+    {
+      "repository": "cflex-fms",
+      "path": "/Users/macstudio/work/cflex-fms",
+      "branch": "feat/twin-rack-elevation",
+      "head": "3206eec0bd1573c2d18a55a18caf71b8af88b175",
+      "status": "",
+      "remote": "git@github.com:ericpark961-design/cflex-fms.git"
+    },
+    {
+      "repository": "cflex-probe",
+      "path": "/Users/macstudio/work/cflex-probe",
+      "branch": "main",
+      "head": "f0567bfd99f9c33c494aa7e241a3731274304c00",
+      "status": "",
+      "remote": "git@github.com:ericpark961-design/cflex-probe.git"
+    },
+    {
+      "repository": "cflex-v2",
+      "path": "/Users/macstudio/work/cflex-v2",
+      "branch": "main",
+      "head": "05ad9356578bbd26c227e59f52641740927c599b",
+      "status": "",
+      "remote": "git@github.com:ericpark961-design/cflex-v2-prod-2026-05-.git"
+    }
+  ]
+}
