@@ -33,10 +33,97 @@ export const TYPICAL_W = {
   other: 100,
 };
 
+/**
+ * Planning figures per catalogue id: typical draw, nameplate peak, and weight.
+ *
+ * `TYPICAL_W` above answers "what does a switch draw" by kind. This answers it
+ * by model, which is what a survey actually has in hand, and adds the two
+ * things an expansion needs that a load figure cannot give: the peak a breaker
+ * has to survive, and the weight a floor has to carry.
+ *
+ * These are planning numbers, not measurements, and every caller that uses one
+ * is told so — `source: 'library'`. A model that is not here falls through to
+ * the by-kind typical, and a device with neither is counted unknown. Nothing
+ * here invents a figure for a machine nobody recognised.
+ */
+export const PLANNING = {
+  // Cisco — access / aggregation. PoE is added separately from poe_budget_w,
+  // so these are the switch's own draw with no powered endpoints.
+  cat9200: { typ: 60, max: 150, kg: 5.5 },
+  cat9300: { typ: 150, max: 435, kg: 7.9 },
+  cat9300_48p: { typ: 150, max: 435, kg: 7.9 },
+  cat9500: { typ: 320, max: 650, kg: 9.5 },
+  cat9500_48y4c: { typ: 320, max: 650, kg: 9.5 },
+  cat9600: { typ: 1500, max: 3200, kg: 90 },
+  // Cisco — data centre
+  nexus93180: { typ: 300, max: 650, kg: 9 },
+  nexus9300: { typ: 350, max: 750, kg: 10 },
+  nexus9500: { typ: 1800, max: 4000, kg: 110 },
+  nexus7700: { typ: 2500, max: 5500, kg: 130 },
+  mds9700: { typ: 1200, max: 2600, kg: 70 },
+  // Cisco — routing / voice / compute
+  isr4331: { typ: 60, max: 125, kg: 7 },
+  isr4451: { typ: 200, max: 450, kg: 13 },
+  meraki_mx105: { typ: 40, max: 60, kg: 3 },
+  ucs_c220: { typ: 400, max: 770, kg: 18 },
+  ucs_c240: { typ: 600, max: 1050, kg: 28 },
+  // Passive and power distribution: they carry weight and take U, and draw
+  // nothing. A metered or switched PDU draws for its own electronics only.
+  patch24: { typ: 0, max: 0, kg: 1.5 },
+  patch48: { typ: 0, max: 0, kg: 3 },
+  pdu_basic: { typ: 0, max: 0, kg: 5 },
+  pdu_metered: { typ: 5, max: 8, kg: 5 },
+  pdu_switched: { typ: 8, max: 12, kg: 6 },
+  rack_ats: { typ: 10, max: 15, kg: 4 },
+  netbotz750: { typ: 15, max: 25, kg: 3.6 },
+};
+
+/** Peak draw by kind, for a model the planning table does not carry. */
+export const PEAK_W = {
+  switch: 400, router: 450, sbc: 450, server: 800, storage: 1500,
+  patch: 0, pdu: 0, other: 250,
+};
+
 /** PoE changes a switch's draw more than anything else, so it is explicit. */
 export const POE_BUDGET_W = { none: 0, poe: 370, poe_plus: 740 };
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/**
+ * A UPS's rating in watts, and where the figure came from.
+ *
+ * The catalogue settles it for a fixed model — an SRT 5000 is 4,500 W. It
+ * cannot settle it for a modular family: Symmetra PX is "20–500 kW", and which
+ * one is standing in the room is a fact about the installation, not about the
+ * product. So the record is allowed to say, in descending order of how
+ * specific it is, and the basis travels with the number:
+ *
+ *   1. capacity_kw on the record or its attrs — what the ledger surveyed.
+ *   2. a kW/kVA figure in the model string — "Symmetra PX 40kW".
+ *   3. the catalogue's rating for a fixed model.
+ *
+ * A family with no figure anywhere returns null. It does not pick the middle
+ * of the range.
+ */
+export function upsRating(d = {}) {
+  const kw = num(d.capacity_kw) ?? num(d.attrs?.capacity_kw) ?? num(d.rated_kw);
+  if (kw != null) return { watts: Math.round(kw * 1000), basis: `원장 ${kw} kW` };
+
+  const e = catalogModel(d.model);
+  const m = /(\d+(?:\.\d+)?)\s*k(w|va)\b/i.exec(String(d.model || ''));
+  if (m) {
+    const n = parseFloat(m[1]);
+    // kVA is apparent power; a modern UPS runs at unity, but the older units in
+    // this fleet are rated 0.9, so a kVA figure is derated rather than read as
+    // watts. The basis says which was done.
+    const pf = /va$/i.test(m[2]) ? 0.9 : 1;
+    const watts = Math.round(n * 1000 * pf);
+    return { watts, basis: pf === 1 ? `모델명 ${n} kW` : `모델명 ${n} kVA × ${pf}` };
+  }
+  const ratedW = e?.w ?? (e?.kw ? e.kw * 1000 : null);
+  if (ratedW != null) return { watts: ratedW, basis: `카탈로그 ${e.label}` };
+  return null;
+}
 
 /**
  * What one device draws.
@@ -48,35 +135,68 @@ export function deviceLoad(d = {}) {
 
   // Measured: a metered device reports its own draw.
   const measuredW = num(d.watts) ?? num(d.power_w);
-  if (measuredW != null) return { watts: measuredW, source: 'measured' };
+  if (measuredW != null) {
+    // A measurement is of right now, not of the worst minute this unit will
+    // ever have. The breaker still has to survive the nameplate, so the peak
+    // comes from the catalogue even when the draw is metered.
+    const e0 = catalogModel(d.model);
+    const lib0 = e0 ? PLANNING[e0.id] : null;
+    return {
+      watts: measuredW, source: 'measured',
+      peakW: lib0 ? lib0.max : (PEAK_W[kind] ?? null),
+      kg: num(d.weight_kg) ?? lib0?.kg ?? null,
+    };
+  }
 
-  // A UPS's load_pct against its catalogue rating is a real measurement of
-  // everything plugged into it.
+  // A UPS's load_pct against its rating is a real measurement of everything
+  // plugged into it.
   if (kind === 'ups') {
-    const e = catalogModel(d.model);
-    const ratedW = e?.w ?? (e?.kw ? e.kw * 1000 : null);
+    const r = upsRating(d);
     const pct = num(d.load_pct);
-    if (ratedW != null && pct != null) {
-      return { watts: Math.round(ratedW * pct / 100), source: 'measured', note: `${pct}% of ${ratedW} W` };
+    if (r && pct != null) {
+      return {
+        watts: Math.round(r.watts * pct / 100), source: 'measured',
+        peakW: r.watts, kg: num(d.weight_kg) ?? null,
+        note: `${pct}% of ${r.watts} W · ${r.basis}`,
+      };
     }
-    return { watts: null, source: null, note: ratedW == null ? '정격 미상' : '부하율 미수집' };
+    return {
+      watts: null, source: null, peakW: r ? r.watts : null, kg: num(d.weight_kg) ?? null,
+      note: !r ? '정격 미상' : '부하율 미수집',
+    };
   }
 
   // Declared nameplate on the record.
   const plate = num(d.nameplate_w) ?? num(d.attrs?.nameplate_w);
-  if (plate != null) return { watts: plate, source: 'nameplate' };
-
-  // Typical for the kind, plus PoE. The catalogue carries the model's real PoE
-  // budget where the sheet gives one — a Catalyst 9300-48P is 740 W, which is
-  // the largest single line in an access rack and not something to guess at.
-  if (kind in TYPICAL_W) {
-    const e = catalogModel(d.model);
-    const poe = e?.poe_budget_w
-      ?? (POE_BUDGET_W[String(d.poe || d.attrs?.poe || 'none').toLowerCase()] ?? 0);
-    const note = e?.poe_budget_w ? `PoE +${e.poe_budget_w} W (카탈로그)` : poe ? `PoE +${poe} W` : undefined;
-    return { watts: TYPICAL_W[kind] + poe, source: 'typical', note };
+  if (plate != null) {
+    return { watts: plate, source: 'nameplate', peakW: plate, kg: num(d.weight_kg) };
   }
-  return { watts: null, source: null, note: '전력 정보 없음' };
+
+  // The model's own planning figure, then the typical for its kind. The
+  // catalogue carries the real PoE budget where the sheet gives one — a
+  // Catalyst 9300-48P is 740 W, which is the largest single line in an access
+  // rack and not something to guess at.
+  const e = catalogModel(d.model);
+  const poe = e?.poe_budget_w
+    ?? (POE_BUDGET_W[String(d.poe || d.attrs?.poe || 'none').toLowerCase()] ?? 0);
+  const poeNote = e?.poe_budget_w ? `PoE +${e.poe_budget_w} W (카탈로그)` : poe ? `PoE +${poe} W` : null;
+  const lib = e ? PLANNING[e.id] : null;
+  if (lib) {
+    return {
+      watts: lib.typ + poe, source: 'library', peakW: lib.max + poe,
+      kg: num(d.weight_kg) ?? lib.kg,
+      note: [`${e.label} 계획값`, poeNote].filter(Boolean).join(' · '),
+    };
+  }
+  if (kind in TYPICAL_W) {
+    return {
+      watts: TYPICAL_W[kind] + poe, source: 'typical',
+      peakW: (PEAK_W[kind] ?? TYPICAL_W[kind]) + poe,
+      kg: num(d.weight_kg),
+      note: poeNote || undefined,
+    };
+  }
+  return { watts: null, source: null, peakW: null, kg: num(d.weight_kg), note: '전력 정보 없음' };
 }
 
 /**

@@ -19,10 +19,16 @@ const found = new Set();
 
 // t('...') calls in the JSX screens (the 3D twin is React, not a template).
 // Every source that calls t() — listing them by hand let cbubar.jsx ship
-// untested, so the list is now derived from the directory.
-const sources = readdirSync(here).filter(f => /\.(jsx|js)$/.test(f) && !/\.test\.|^i18n\.js$/.test(f));
-for (const f of sources) {
-  const s = readFileSync(path.join(here, f), 'utf8');
+// untested, so the list is derived from the tree. It walks SUBDIRECTORIES too:
+// reading only the top level let every string in src/twin/ — the whole 3D and
+// capacity surface — ship with no English at all while this gate said zero.
+const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+  const full = path.join(dir, e.name);
+  if (e.isDirectory()) return e.name === 'assets' || e.name === 'demo' ? [] : walk(full);
+  return /\.(jsx|js)$/.test(e.name) && !/\.test\.|^i18n\.js$/.test(e.name) ? [full] : [];
+});
+for (const f of walk(here)) {
+  const s = readFileSync(f, 'utf8');
   for (const [, k] of s.matchAll(/\bt\('((?:[^'\\]|\\.)*)'\)/g)) if (KO.test(k)) found.add(k.replace(/\\'/g, "'"));
 }
 

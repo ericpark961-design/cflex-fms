@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import RackElevation from './twin/RackElevation';
+import CapacityPanel, { RoomCapacitySummary } from './twin/CapacityPanel';
 import { store, hhmm } from './data';
 import { devId } from './ids';
 import { api, tx } from './theme';
@@ -36,6 +37,7 @@ function LedgerPanel({ sel, data, onFocus, onRackView }) {
       <div style={{ background: '#111', padding: 6, border: '1px solid #393939' }}>
         <RackElevation devices={sel.devices} picked={picked} onPick={(d) => { setPicked(d.label); onFocus?.(d.label); }} />
       </div></div>}
+    {sel.kind === 'rack' && <CapacityPanel room={data.rooms[0]} rackName={sel.name} onFocus={onFocus} />}
     {alarms.length > 0 && <div style={{ marginTop: 12 }}>
       <div style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em', marginBottom: 4 }}>알람</div>
       {alarms.map(a => <div key={a.id} style={{ background: '#1f1f1f', padding: '7px 9px', marginBottom: 4, borderLeft: `3px solid ${PRI[a.priority]}` }}><div style={{ fontSize: 11 }}><b style={{ color: PRI[a.priority] }}>{a.priority}</b> · {a.received_at} · {a.id}</div><div>{a.message}</div>{a.ai && <div style={{ marginTop: 5, padding: '6px 8px', background: '#0f2340', borderLeft: '2px solid #4589ff', fontSize: 12 }}><b style={{ color: '#78a9ff' }}>AI 코파일럿</b> · {a.ai}</div>}</div>)}
@@ -69,6 +71,13 @@ export default function TwinScreen({ q, standalone = false, tick = 0 }) {
   const btn = (on) => ({ fontFamily: 'inherit', fontSize: 12, padding: '6px 11px', cursor: 'pointer', border: `1px solid ${on ? '#4589ff' : '#525252'}`, background: on ? '#1c2a44' : 'transparent', color: '#f4f4f4' });
   const nav = [['#/dashboard', '대시보드'], ['#/powerchain', '전력체인 트윈'], ['#/devices', '장비 인벤토리'], ['#/alarms', '알람 센터'], ['#/map', '알람 지도'], ['#/twin', '3D 트윈', true], ['#/powerchain?panel=copilot', 'AI 코파일럿'], ['#/wall', '관제 상황판'], ['/fms', 'FMS 1.x (관리)']];
   const a = detail; const room = data.rooms[0]; const nRack = room.objects.filter(o => o.kind === 'rack').length;
+  // Read off the ledger rather than typed in: the cabinets were re-rated when
+  // the distribution was made self-consistent and the hard-coded "40 kW ×2"
+  // silently became false.
+  const upsCabs = room.objects.filter(o => o.kind === 'ups_cabinet');
+  const upsLine = upsCabs.length
+    ? [...new Set(upsCabs.map(o => `${o.attrs?.capacity_kw ?? '—'} kW`))].join(' + ') + (upsCabs.length > 1 ? ` ×${upsCabs.length}` : '')
+    : '—';
   const alarms = data.alarms || [];
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#161616', color: '#f4f4f4', fontFamily: '"IBM Plex Sans KR","IBM Plex Sans",sans-serif' }}>
@@ -102,7 +111,8 @@ export default function TwinScreen({ q, standalone = false, tick = 0 }) {
           <div style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em', marginBottom: 8 }}>알람 {alarms.length} · 클릭하면 3D 이동</div>
           {alarms.map(al => <div key={al.id} onClick={() => ledgerRef.current?.focus(al.object)} style={{ cursor: 'pointer', padding: '7px 9px', marginBottom: 6, background: '#1f1f1f', borderLeft: `3px solid ${PRI[al.priority]}`, fontSize: 12, lineHeight: 1.4 }}><div><b style={{ color: PRI[al.priority] }}>{al.priority}</b> <span style={{ color: '#8d8d8d' }}>{al.received_at}</span> · <b>{al.object}</b></div><div style={{ color: '#c6c6c6' }}>{al.message}</div></div>)}
           <div style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em', margin: '12px 0 6px' }}>시설 요약</div>
-          <div style={{ fontSize: 12, color: '#c6c6c6', lineHeight: 1.6 }}>{room.location} · {room.name}<br />{room.cols}×{room.rows} 타일 ({(room.cols * room.tile_mm / 1000).toFixed(1)}×{(room.rows * room.tile_mm / 1000).toFixed(1)} m)<br />랙 {nRack} · UPS 40 kW ×2 · CRAC {room.objects.filter(o => o.kind === 'crac').length} · 센서 {room.objects.filter(o => o.kind === 'sensor').length} · 누수 존 {room.objects.filter(o => o.kind === 'leak_zone').length}<br />장비 {room.devices.length} (UPS {room.devices.filter(d => d.kind === 'ups').length} · 네트워크/UC {room.devices.filter(d => d.kind !== 'ups').length}) · 전원 링크 {room.power_links.length}</div>
+          <div style={{ fontSize: 12, color: '#c6c6c6', lineHeight: 1.6 }}>{room.location} · {room.name}<br />{room.cols}×{room.rows} 타일 ({(room.cols * room.tile_mm / 1000).toFixed(1)}×{(room.rows * room.tile_mm / 1000).toFixed(1)} m)<br />랙 {nRack} · UPS {upsLine} · CRAC {room.objects.filter(o => o.kind === 'crac').length} · 센서 {room.objects.filter(o => o.kind === 'sensor').length} · 누수 존 {room.objects.filter(o => o.kind === 'leak_zone').length}<br />장비 {room.devices.length} (UPS {room.devices.filter(d => d.kind === 'ups').length} · 네트워크/UC {room.devices.filter(d => d.kind !== 'ups').length}) · 전원 링크 {room.power_links.length}</div>
+          <RoomCapacitySummary room={room} onFocus={(n) => ledgerRef.current?.focus(n)} />
         </div>}
         <div style={{ marginTop: 'auto', padding: '14px 16px', borderTop: '1px solid #262626', fontSize: 12, color: '#c6c6c6' }}>{standalone ? 'Eric Park · RingOn Service Corp.' : (store.me?.displayName || '')}<br /><span style={{ color: '#8d8d8d' }}>{standalone ? 'ericpark@ringonservice.com' : (store.me?.email || '')}</span></div>
       </nav>

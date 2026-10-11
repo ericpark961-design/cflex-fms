@@ -4,7 +4,7 @@
 // next quarter" becomes answerable before the order is placed. The tests are
 // mostly about what it must refuse to claim.
 import assert from 'node:assert';
-import { deviceLoad, rollupLoad, rackCapacity, canFit, upsSupply, TYPICAL_W } from './capacity.js';
+import { deviceLoad, rollupLoad, rackCapacity, canFit, upsSupply, TYPICAL_W, PLANNING } from './capacity.js';
 
 let fail = 0;
 const t = (name, fn) => {
@@ -13,9 +13,23 @@ const t = (name, fn) => {
 };
 
 t('a measured reading wins over every estimate', () => {
-  assert.deepEqual(deviceLoad({ kind: 'server', watts: 312 }), { watts: 312, source: 'measured' });
+  const meas = deviceLoad({ kind: 'server', watts: 312 });
+  assert.equal(meas.watts, 312);
+  assert.equal(meas.source, 'measured');
+  // A measurement is of right now; the breaker still has to survive the
+  // nameplate, so a peak comes back even for a metered unit.
+  assert.ok(meas.peakW >= meas.watts, 'the peak is not below the reading');
+
   const plate = deviceLoad({ kind: 'server', nameplate_w: 500 });
   assert.equal(plate.source, 'nameplate');
+
+  // A model the planning table knows answers with that model's figure; one it
+  // does not falls back to the typical for its kind. Both say which they are.
+  const lib = deviceLoad({ kind: 'server', model: 'UCS C240 M6' });
+  assert.equal(lib.source, 'library');
+  assert.equal(lib.watts, PLANNING.ucs_c240.typ);
+  assert.equal(lib.kg, PLANNING.ucs_c240.kg, 'weight comes with it');
+
   const typ = deviceLoad({ kind: 'server' });
   assert.equal(typ.source, 'typical');
   assert.equal(typ.watts, TYPICAL_W.server);
@@ -32,10 +46,16 @@ t("a UPS's load_pct against its rating is a real measurement", () => {
 
 t('a PoE budget comes from the model, not a guess', () => {
   const poe = deviceLoad({ kind: 'switch', model: 'Catalyst 9300-48P' });
-  assert.equal(poe.watts, TYPICAL_W.switch + 740, 'the sheet gives 740 W');
+  assert.equal(poe.watts, PLANNING.cat9300_48p.typ + 740, 'the sheet gives 740 W');
   assert.match(poe.note, /카탈로그/);
+  // A core switch powers no endpoints, so nothing is added — and its own draw
+  // comes from its own figure, not from the by-kind typical an access switch
+  // would get (a 9500 is 320 W, a 9200 is 60 W; they are not the same machine).
   const noPoe = deviceLoad({ kind: 'switch', model: 'Catalyst 9500-48Y4C' });
-  assert.equal(noPoe.watts, TYPICAL_W.switch, 'a core switch has no PoE budget');
+  assert.equal(noPoe.watts, PLANNING.cat9500_48y4c.typ, 'no PoE budget is added');
+  assert.ok(!/PoE/.test(noPoe.note || ''));
+  assert.notEqual(noPoe.watts, deviceLoad({ kind: 'switch', model: 'Catalyst 9200' }).watts,
+    'two different switches do not report the same draw');
 });
 
 t('a device with nothing to go on is counted as unknown, not estimated', () => {
@@ -58,7 +78,7 @@ t('a UPS in the rack is not added on top of what it feeds', () => {
   ];
   const r = rollupLoad(devices);
   assert.equal(r.upsMeasured, 1107);
-  assert.equal(r.downstream, TYPICAL_W.switch + 740 + TYPICAL_W.server);
+  assert.equal(r.downstream, PLANNING.cat9300_48p.typ + 740 + PLANNING.ucs_c220.typ);
   assert.ok(r.doubleCountAvoided);
   assert.equal(r.total, Math.max(r.upsMeasured, r.downstream), 'the larger of the two, never the sum');
   assert.ok(r.total < r.upsMeasured + r.downstream);
