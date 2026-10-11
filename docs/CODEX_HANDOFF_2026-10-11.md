@@ -143,3 +143,17 @@ Node 주기는 기본 폴링 60초, heartbeat 30초, 설정 새로고침 5분, d
 코드 근거: 저장소 `README.md`, `apps/twin/README.md`, `apps/twin/vite.config.js`, `backend/routes/probe.routes.js`, `backend/migrations/`, `probe/docs/PHASES.md`, `nginx/`, `deploy/deploy-fms-backend.sh`; 별도 Probe의 `src/index.js`, `src/forwarder.js`, `src/services/ups-metrics.js`.
 
 기존 운영 기록 근거: `/Users/macstudio/.claude/projects/-Users-macstudio/memory/`의 `cflex_fms_haea_project.md`, `shared_vm_disk_dependency.md`, `apc_onboarding_deferred.md`, `cflex_incident_layer_phase1.md`. 기록은 시점이 다르고 민감 설정을 포함할 수 있으므로 원문을 Git에 복사하지 않았다. 실제 현대 내부 구성과 운영 최신 상태를 확정하려면 담당자 확인 또는 별도로 승인된 읽기 전용 점검이 필요하다.
+
+
+## 추가 전달 자료
+
+사용자가 전달한 2026년 10월 11일 문서 원본을 다음 파일로 보존했다.
+
+- [제품 기준선과 경쟁사 비교](COMPETITIVE_BASELINE_KO.md): F01–F28, S01–S10 요구 및 완료 증거, 비교 범위, AI 자동 처리와 인간 인계 기준.
+- [장비 연동 실행 가이드](DEVICE_INTEGRATIONS.md): 별도 읽기 전용 collector, 프로토콜·단위·수집 품질, 패키지 검증과 기존 Probe 통합 조건.
+
+이 자료의 `services/probe`와 `/v1/events`는 별도 개발 런타임 설명이다. 현재 FMS 저장소에 해당 소스가 포함되거나 기존 `/v1/probe/event`에 통합됐음을 뜻하지 않는다. 실행에 앞서 해당 저장소 위치와 커밋을 확인한다. 경쟁사 기능 설명과 실험실 시험 결과는 전달 자료의 주장으로 보존했으며 이번 인계에서 독립 검증하지 않았다.
+
+**전압 처리 정정:** 위 수집 노하우에 적은 비 APC 전압 `/10`은 기존 코드 동작의 기술이며 올바른 변환의 권고가 아니다. 전달 가이드는 RFC1628 입력·출력 전압은 V 그대로, 배터리 전압은 0.1V라고 명시한다. 기존 `ups-metrics.js`의 입력·출력 전압 변환을 공식 MIB 및 실장비 값과 대조하고 수정하는 작업을 우선 검토한다. 결측 상태에서 health score를 100으로 계산하는 경로도 함께 검토한다. 이번에는 코드를 수정하지 않았다.
+
+지원 완료는 모델·관리 카드·펌웨어·프로파일 버전별 실장비와 현장 증거로 판정한다. 새 collector의 complete/partial/unavailable은 수집 품질이며 장비 건강도와 구분한다. 중앙 전송은 별도 adapter·SQLite 버퍼·영속화 ACK·중복 제거·고객 범위 검증이 필요하다. 서명 패키지 staging은 설치·활성화가 아니며 실제 장비 변경과 펌웨어 실행은 별도 승인 및 복구 검증 범위다.
