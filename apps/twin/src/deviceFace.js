@@ -7,9 +7,16 @@
 //
 // Injected into a placeholder the template owns, the same way the CBU bar is —
 // the template language has no way to emit raw SVG.
-import { iconIdForModel, iconUrl, UPS_ICON_META } from './twin/upsIcons';
+import { iconUrl, UPS_ICON_META } from './twin/upsIcons';
 import { deviceFace } from './twin/deviceFaces';
+import { apcModel, specLine } from './twin/apcCatalog';
 import { t } from './i18n';
+
+// The six models that have a photo-traced SVG (shared with 1.x). Everything
+// else is drawn from its catalogue entry — which is the point: a Modular Ultra
+// 15 kW, a Symmetra PX and a Smart-UPS X used to be shown as an SRT 5000
+// because iconIdForModel() defaulted there for anything it did not know.
+const TRACED = new Set(Object.keys(UPS_ICON_META));
 
 /**
  * @param root  the rendered screen
@@ -48,7 +55,7 @@ function buildFace(data, d) {
   const art = document.createElement('div');
   art.style.cssText = 'background:#141414;padding:10px;display:grid;place-items:center;min-height:70px';
 
-  let caption;
+  let caption; let note = null;
   if (data.isNet) {
     const f = deviceFace({
       kind: d.kindLabel, label: d.label, model: d.model === '—' ? '' : d.model,
@@ -61,16 +68,26 @@ function buildFace(data, d) {
     if (svg) svg.style.cssText = 'width:100%;height:auto;display:block';
     caption = f.caption;
   } else {
-    // APC: the traced SVG, with the LCD tinted by the device's own status so the
-    // picture agrees with the badge next to it.
-    const id = iconIdForModel(d.model);
-    const meta = UPS_ICON_META[id];
-    const img = document.createElement('img');
-    img.alt = `${d.label} ${d.model || ''} ${t('전면부')}`.trim();
-    img.src = iconUrl(id);
-    img.style.cssText = `width:100%;max-width:${meta && meta.aspect < 1 ? 160 : 100}%;height:auto;display:block`;
-    art.appendChild(img);
-    caption = `${meta?.label || id}${meta?.u ? ` · ${meta.u}U` : ''}`;
+    const entry = apcModel(d.model);
+    if (entry && TRACED.has(entry.id)) {
+      // A traced photo beats a drawing when one exists for this exact model.
+      const meta = UPS_ICON_META[entry.id];
+      const img = document.createElement('img');
+      img.alt = `${d.label} ${entry.label} ${t('전면부')}`.trim();
+      img.src = iconUrl(entry.id);
+      img.style.cssText = `width:100%;max-width:${meta && meta.aspect < 1 ? 160 : 100}%;height:auto;display:block`;
+      art.appendChild(img);
+      caption = [entry.label, specLine(entry)].filter(Boolean).join(' · ');
+      note = entry.u_note || null;
+    } else {
+      // Drawn from the catalogue: rack height, display, module bays, outlets.
+      const f = deviceFace({ kind: 'ups', label: d.label, model: d.model === '—' ? '' : d.model, status: data.statusKey });
+      art.innerHTML = f.svg;
+      const svg = art.querySelector('svg');
+      if (svg) svg.style.cssText = 'width:100%;height:auto;display:block';
+      caption = f.caption;
+      note = f.note || null;
+    }
   }
   box.appendChild(art);
 
@@ -78,6 +95,15 @@ function buildFace(data, d) {
   cap.style.cssText = 'font-size:11px;color:#6f6f6f';
   cap.textContent = caption;
   box.appendChild(cap);
+
+  // Where the equipment sheets disagree with each other, say so rather than
+  // presenting one of the two figures as settled.
+  if (note) {
+    const n = document.createElement('div');
+    n.style.cssText = 'font-size:10px;color:#f1c21b';
+    n.textContent = `※ ${note}`;
+    box.appendChild(n);
+  }
 
   // The power chain was being collected and then dropped. For a switch it is
   // most of what the detail screen can say, so it is shown here.

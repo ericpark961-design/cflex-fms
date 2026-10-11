@@ -31,6 +31,28 @@ const C = {
   driveLed: '#4589ff',
 };
 
+import { apcModel, specLine } from './apcCatalog.js';
+
+const APC = {
+  bezel: '#0d1117',       // perforated front bezel
+  bezelEdge: '#2a3038',
+  vent: '#161b22',
+  lcd: '#0d2a1d',         // the status LCD is green on these units
+  lcdInk: '#7ad7a0',
+  lcdOff: '#1a1f26',
+  key: '#20262e',
+  keyInk: '#8d96a3',
+  mark: '#d8dee6',
+  module: '#e8eaed',      // Modular Ultra power modules are light grey
+  moduleEdge: '#b9bec5',
+  moduleLed: '#2bd07a',
+  outlet: '#101418',
+  outletC19: '#141a20',
+};
+
+/** 1U is 44.45 mm; the drawing keeps the real proportion so 7U looks like 7U. */
+const U_PX = 17;
+
 const esc = (s) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 
 /** Rack-ear screws and the faceplate itself, shared by every 19" unit. */
@@ -78,6 +100,134 @@ function portBlock(x, y, total, up, { pw = 11, ph = 9, gap = 2.5 } = {}) {
     }
   }
   return out;
+}
+
+/** The perforated vent that covers most of an SRT front panel. */
+function ventPanel(x, y, w, h) {
+  const cols = Math.max(6, Math.floor(w / 9));
+  const rows = Math.max(2, Math.floor(h / 9));
+  const dx = w / cols, dy = h / rows;
+  let dots = '';
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const ox = x + dx * (c + 0.5) + (r % 2 ? dx / 2 : 0);
+      if (ox > x + w - 2) continue;
+      dots += `<circle cx="${ox.toFixed(1)}" cy="${(y + dy * (r + 0.5)).toFixed(1)}" r="${Math.min(2.2, dx / 3.2).toFixed(1)}" fill="${APC.vent}"/>`;
+    }
+  }
+  return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>${dots}`;
+}
+
+/** The status LCD with the ESC / ▲ / OK / ▼ keypad, as every SRT carries. */
+function lcdPanel(x, y, w, h, lines) {
+  const kw = 22, kh = (h - 10) / 2;
+  const sw = w - kw - 10;
+  return `
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="${APC.key}" stroke="${APC.bezelEdge}" stroke-width="1"/>
+    <rect x="${x + 4}" y="${y + 4}" width="${sw}" height="${h - 8}" rx="1" fill="${APC.lcd}"/>
+    ${lines.map((ln, i) => `<text x="${x + 8}" y="${y + 15 + i * 11}" font-family="ui-monospace,monospace" font-size="8" fill="${APC.lcdInk}">${esc(ln)}</text>`).join('')}
+    ${['ESC', 'OK'].map((k, i) => `
+      <rect x="${x + sw + 7}" y="${y + 4 + i * (kh + 2)}" width="${kw}" height="${kh}" rx="1" fill="${APC.key}" stroke="${APC.bezelEdge}" stroke-width=".6"/>
+      <text x="${x + sw + 7 + kw / 2}" y="${y + 4 + i * (kh + 2) + kh / 2 + 3}" text-anchor="middle" font-family="system-ui,sans-serif" font-size="6" fill="${APC.keyInk}">${k}</text>`).join('')}`;
+}
+
+/** Rack ears with mounting holes, both sides. */
+function rackEars(w, h) {
+  const n = Math.max(2, Math.round(h / 18));
+  let out = '';
+  for (const ex of [0, w - 14]) {
+    out += `<rect x="${ex}" y="0" width="14" height="${h}" rx="2" fill="${C.face}" stroke="${C.faceEdge}" stroke-width="1"/>`;
+    for (let i = 0; i < n; i++) {
+      out += `<circle cx="${ex + 7}" cy="${(h / (n + 1)) * (i + 1)}" r="2.4" fill="${APC.vent}" stroke="${APC.bezelEdge}" stroke-width=".6"/>`;
+    }
+  }
+  return out;
+}
+
+/**
+ * An APC unit drawn from its catalogue entry. Height follows the rack units, so
+ * a 7U Modular Ultra is drawn three and a half times the height of a 2U SRT
+ * rather than every UPS being one generic box.
+ */
+function apcFace({ entry, status }) {
+  const e = entry;
+  const w = 470;
+  const u = e.u || 2;
+  const h = Math.max(44, u * U_PX + 10);
+  const inner = { x: 16, y: 5, w: w - 32, h: h - 10 };
+  const st = ['ok', 'warn', 'critical'].includes(status) ? status : 'nodata';
+  const live = st !== 'nodata';
+  const lcdLines = live
+    ? [`Output ${e.volts || '208.0 v'}`, '~ Online']
+    : ['— — —', 'no data'];
+
+  let body;
+  if (e.family === 'modular') {
+    // Power modules in bays, each with its own status LEDs, plus the colour
+    // display these carry instead of the SRT's monochrome LCD.
+    const bays = Math.max(2, e.modules || 3);
+    const bayH = (inner.h - 22) / bays;
+    body = `
+      <rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="${inner.h}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>
+      <rect x="${inner.x + 6}" y="${inner.y + 5}" width="${inner.w - 130}" height="12" rx="1" fill="${APC.vent}"/>
+      <text x="${inner.x + 10}" y="${inner.y + 14}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      ${lcdPanel(inner.x + inner.w - 118, inner.y + 4, 112, 26, lcdLines)}
+      ${Array.from({ length: bays }, (_, i) => {
+        const by = inner.y + 22 + i * bayH;
+        return `<rect x="${inner.x + 6}" y="${by}" width="${inner.w - 12}" height="${bayH - 3}" rx="1.5" fill="${APC.module}" stroke="${APC.moduleEdge}" stroke-width=".8"/>`
+          + [0, 1, 2].map(j => `<circle cx="${inner.x + 14 + j * 7}" cy="${by + (bayH - 3) / 2}" r="1.8" fill="${j === 0 && live ? APC.moduleLed : '#aeb4bb'}"/>`).join('');
+      }).join('')}
+      <text x="${inner.x + 8}" y="${h - 8}" font-family="system-ui,sans-serif" font-size="7" fill="${C.inkDim}">${e.module_kw ? `${e.modules} × ${e.module_kw} kW · N+1` : 'MODULAR'}</text>`;
+  } else if (e.family === 'xbp') {
+    // A battery pack is the same bezel with no display.
+    body = `${ventPanel(inner.x, inner.y, inner.w, inner.h)}
+      <text x="${inner.x + 10}" y="${inner.y + 16}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      <text x="${inner.x + 10}" y="${inner.y + 27}" font-family="system-ui,sans-serif" font-size="7" fill="${C.inkDim}">Smart-UPS XBP${e.vdc ? ` · ${e.vdc} VDC` : ''}</text>`;
+  } else if (e.family === 'pdu') {
+    // 0U vertical strip, drawn lying down so it fits the panel.
+    const n = (e.outlets_c13 || 0) + (e.outlets_c19 || 0);
+    const ow = (inner.w - 90) / Math.max(1, n);
+    body = `
+      <rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="${inner.h}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>
+      <text x="${inner.x + 8}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      ${e.metered ? lcdPanel(inner.x + 34, inner.y + 4, 46, inner.h - 8, ['230 V', '11.2 A']) : ''}
+      ${Array.from({ length: n }, (_, i) => {
+        const ox = inner.x + (e.metered ? 86 : 40) + i * ow;
+        const isC19 = i >= (e.outlets_c13 || 0);
+        return `<rect x="${ox}" y="${inner.y + inner.h / 2 - 7}" width="${Math.max(3, ow - 1.5)}" height="14" rx="1.5"
+                      fill="${isC19 ? APC.outletC19 : APC.outlet}" stroke="${APC.bezelEdge}" stroke-width=".6"/>`
+          + (e.switched ? `<rect x="${ox + 0.5}" y="${inner.y + inner.h / 2 + 8}" width="${Math.max(2, ow - 2.5)}" height="2" rx="1" fill="${live ? APC.moduleLed : '#3a4049'}"/>` : '');
+      }).join('')}`;
+  } else if (e.family === 'ats') {
+    body = `
+      <rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="${inner.h}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>
+      <text x="${inner.x + 8}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      ${lcdPanel(inner.x + 36, inner.y + 3, 120, inner.h - 6, ['Source A  230 V', 'Source B  231 V'])}
+      ${Array.from({ length: e.outlets_c13 || 8 }, (_, i) =>
+        `<rect x="${inner.x + 168 + i * 17}" y="${inner.y + inner.h / 2 - 7}" width="13" height="14" rx="1.5" fill="${APC.outlet}" stroke="${APC.bezelEdge}" stroke-width=".6"/>`).join('')}`;
+  } else if (e.family === 'netbotz') {
+    body = `${ventPanel(inner.x, inner.y, inner.w - 130, inner.h)}
+      <text x="${inner.x + 10}" y="${inner.y + 16}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      ${lcdPanel(inner.x + inner.w - 124, inner.y + 3, 118, inner.h - 6, ['NetBotz 750', '✓ Normal'])}`;
+  } else if (e.family === 'nmc' || e.family === 'sensor') {
+    body = `
+      <rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="${inner.h}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>
+      <text x="${inner.x + 10}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      <text x="${inner.x + 44}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" fill="${C.inkDim}">${esc(e.label)}</text>
+      ${Object.keys(e.ports || {}).map((_, i) =>
+        `<rect x="${inner.x + inner.w - 30 - i * 18}" y="${inner.y + inner.h / 2 - 6}" width="14" height="12" rx="1" fill="${C.port}" stroke="${C.portRim}" stroke-width=".7"/>`).join('')}`;
+  } else {
+    // SRT and the other rack UPS: vent bezel with the LCD on the right.
+    body = `${ventPanel(inner.x, inner.y, inner.w - 130, inner.h)}
+      <text x="${inner.x + 12}" y="${inner.y + inner.h - 10}" font-family="system-ui,sans-serif" font-size="9" font-weight="700" fill="${APC.mark}">APC</text>
+      <text x="${inner.x + 12}" y="${inner.y + inner.h - 2}" font-family="system-ui,sans-serif" font-size="6" fill="${C.inkDim}">${esc(e.family === 'smx' ? 'Smart-UPS X' : 'Smart-UPS')}</text>
+      ${lcdPanel(inner.x + inner.w - 124, inner.y + Math.max(2, (inner.h - 30) / 2), 118, Math.min(30, inner.h - 4), lcdLines)}`;
+  }
+
+  return { w, h, svg: `
+    <rect x="0" y="0" width="${w}" height="${h}" rx="3" fill="${C.face}" stroke="${C.faceEdge}" stroke-width="2"/>
+    ${rackEars(w, h)}
+    ${body}` };
 }
 
 function switchFace({ label, model, ports = 0, up = 0, kind = 'switch' }) {
@@ -174,12 +324,29 @@ function genericFace({ label, model, kind }) {
  * Build a faceplate for one device.
  * @returns {{svg:string, w:number, h:number, caption:string}}
  */
-export function deviceFace({ kind, label, model, ports_total, ports_up } = {}) {
+export function deviceFace({ kind, label, model, ports_total, ports_up, status } = {}) {
   const k = String(kind || 'other').toLowerCase();
   const name = label || '—';
   const mdl = model || '';
   const total = Number(ports_total) || 0;
   const up = Math.max(0, Math.min(total, Number(ports_up) || 0));
+
+  // An APC model is drawn from its catalogue entry — rack height, display,
+  // module bays, outlet counts. A model that matches nothing is NOT drawn as
+  // some other APC unit; it falls through to the generic panel and says the
+  // model is unrecognised.
+  const entry = apcModel(mdl);
+  if (entry) {
+    const f = apcFace({ entry, status });
+    return {
+      ...f,
+      svg: `<svg viewBox="0 0 ${f.w} ${f.h}" width="100%" preserveAspectRatio="xMidYMid meet"
+              role="img" aria-label="${esc(name)} ${esc(entry.label)} 전면부">${f.svg}</svg>`,
+      entry,
+      caption: [entry.label, specLine(entry)].filter(Boolean).join(' · '),
+      note: entry.u_note || null,
+    };
+  }
 
   let face;
   if (k === 'switch' || k === 'router') face = switchFace({ label: name, model: mdl, ports: total, up, kind: k });
@@ -188,6 +355,7 @@ export function deviceFace({ kind, label, model, ports_total, ports_up } = {}) {
   else if (k === 'patch') face = patchFace({ label: name, model: mdl, ports: total || 24 });
   else if (k === 'pdu') face = pduFace({ label: name, model: mdl, outlets: total || 24 });
   else face = genericFace({ label: name, model: mdl, kind: k });
+  const unknownApc = k === 'ups' && mdl && !entry;
 
   return {
     ...face,
@@ -196,7 +364,8 @@ export function deviceFace({ kind, label, model, ports_total, ports_up } = {}) {
     // The device reports how many ports are up, not which, so the drawing lights
     // a count from the left and the caption refuses to imply more than that.
     // A patch panel is passive, so link state would be meaningless on it.
-    caption: !total ? '전면부 도식 — 포트 수 미수집'
+    caption: unknownApc ? `카탈로그에 없는 모델 — 일반 도식 (${mdl})`
+      : !total ? '전면부 도식 — 포트 수 미수집'
       : (k === 'patch' || k === 'pdu') ? `${total}포트 전면부 도식`
       : `${total}포트 · 링크 업 ${up} (표시 위치는 실제 포트 번호가 아님)`,
   };

@@ -363,6 +363,8 @@ export async function deviceData(id, _fellBack = false, range = '24h') {
     : null;
 
   return {
+    // The faceplate tints its LCD from this, so the picture agrees with the badge.
+    statusKey: a ? (a.status || 'nodata') : 'nodata',
     ...base, ...meData(), cbus: cbus(), d, hist, trend, ranges, actions,
     hasActions: !!actions.length,
     rca, rcaEmpty: !rca,
