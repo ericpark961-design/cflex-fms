@@ -29,7 +29,7 @@ export function inventory({ assets = [], devices = [], devId = (x) => String(x) 
       status: d.status || 'nodata', ip: d.ip || null, vendor: d.vendor || null, model: d.model || null,
       polling_enabled: null, last_polled: d.last_polled ?? null,
       ports: d.ports_total ? `${d.ports_up ?? '—'}/${d.ports_total}p` : null,
-      editable: false,          // fms_devices gained PATCH; flipped on once deployed
+      editable: true,           // PATCH /v1/fms/devices/:id is live
     });
   }
   return rows;

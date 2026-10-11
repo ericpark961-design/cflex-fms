@@ -320,7 +320,8 @@ router.get('/assets', (req, res) => {
                                   CASE WHEN ${FRESH_PRED} THEN output_v     ELSE NULL     END AS output_v,
                                   CASE WHEN ${FRESH_PRED} THEN input_v      ELSE NULL     END AS input_v,
                                   output_status, battery_status,
-                                  last_polled, polling_enabled, consecutive_fails, poll_error, criticality, muted_until, cbu
+                                  last_polled, polling_enabled, consecutive_fails, poll_error, criticality, muted_until, cbu,
+                                  rack_id, u_pos, u_height
                            FROM ups_devices WHERE tenant_id=? AND decommissioned_at IS NULL` + cf.clause + `
                            ORDER BY label`).all(
     freshSince, freshSince, freshSince, freshSince, freshSince, freshSince, freshSince, freshSince,

@@ -129,14 +129,19 @@ export default function DevicesScreen() {
     if (form.cbu.trim() !== (r.cbu || '')) body.cbu = form.cbu.trim() || null;
     if (String(form.u_pos) !== String(r.u_pos ?? '')) body.u_pos = form.u_pos === '' ? null : Number(form.u_pos);
 
-    const res = await req(`/v1/fms/assets/${r.id}`, { method: 'PUT', body: JSON.stringify(body) });
+    // The two feeds are two tables with two endpoints. A network device sent to
+    // /assets used to come back 404 and read as "저장 실패" — the row was never
+    // editable in the first place, so nobody hit it until PATCH shipped.
+    const res = r.src === 'ups'
+      ? await req(`/v1/fms/assets/${r.id}`, { method: 'PUT', body: JSON.stringify(body) })
+      : await req(`/v1/fms/devices/${r.id}`, { method: 'PATCH', body: JSON.stringify(body) });
     setBusy(null);
     if (!res?.ok) { setErr(res?.error || `저장 실패 (HTTP ${res?.status || '?'})`); return; }
 
     // The endpoint silently skips fields it does not allow. Compare what came
     // back against what was asked for, and say so rather than showing a move
     // that did not happen.
-    const a = res.asset || {};
+    const a = res.asset || res.device || {};
     const ignored = [];
     if (body.cbu !== undefined && !('cbu' in a)) { ignored.push('CBU'); setCbuWritable(false); }
     else if (body.cbu !== undefined) setCbuWritable(true);
@@ -151,6 +156,7 @@ export default function DevicesScreen() {
   };
 
   const setPolling = async (r, on) => {
+    if (r.src !== 'ups') return;          // only the UPS poller has a switch
     setBusy(`poll:${r.id}`); setErr(null); setMsg(null);
     const res = await req(`/v1/fms/assets/${r.id}`, { method: 'PUT', body: JSON.stringify({ polling_enabled: on ? 1 : 0 }) });
     setBusy(null);

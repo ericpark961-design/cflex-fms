@@ -160,5 +160,19 @@ t('device detail is reachable but is not a menu destination', () => {
   }
 });
 
+t('each feed is written through its own endpoint', () => {
+  const src = readFileSync(new URL('./DevicesScreen.jsx', import.meta.url), 'utf8');
+  // ups_devices is PUT /assets/:id; fms_devices is PATCH /devices/:id. One
+  // call for both sent every network device to the wrong table.
+  assert.match(src, /r\.src === 'ups'\s*\n?\s*\? await req\(`\/v1\/fms\/assets\//,
+    'a UPS row goes to /assets');
+  assert.match(src, /await req\(`\/v1\/fms\/devices\/\$\{r\.id\}`, \{ method: 'PATCH'/,
+    'a network row goes to /devices with PATCH');
+  assert.match(src, /res\.asset \|\| res\.device/,
+    'the two endpoints name their row differently; both are read');
+  assert.match(src, /if \(r\.src !== 'ups'\) return;/,
+    'polling is a UPS-poller switch and is not offered for anything else');
+});
+
 console.log(fail ? `\nFAIL: ${fail} check(s)` : '\nok - the inventory tree nests, rolls up, and every row opens its detail');
 process.exit(fail ? 1 : 0);
