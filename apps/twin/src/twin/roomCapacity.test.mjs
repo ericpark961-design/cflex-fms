@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { roomCapacity, chainReport, simulateAdd, roomVoltage, nodeSupply, kwToBtu, rtToKw } from './roomCapacity.js';
+import { deviceU } from './capacity.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const kmx = JSON.parse(readFileSync(path.join(here, '..', 'demo', 'kmx_ccr_topology.json'), 'utf8'));
@@ -137,6 +138,19 @@ t('a reading its own breaker could not survive is data, not an overload', () => 
   const n2 = roomCapacity(r2).nodes.R1;
   assert.equal(n2.status, 'critical', 'a breaker at 110 % is real and is reported');
   assert.equal(n2.inconsistent, false);
+
+  // And the rule applies to MEASUREMENTS only. A plan can exceed a breaker by
+  // any multiple — that is the answer "no, not on this circuit", and calling it
+  // a data error would bury the verdict the user asked for.
+  const r3 = mk();
+  r3.objects[0].attrs = { kw: 1.9 };            // 36 % of 5.28 kW, measured
+  const sim = simulateAdd(r3, 'R1', [{ kind: 'server', model: 'UCS C240 M6', qty: 8, u_height: 2 }]);
+  const after = sim.rack.after;
+  assert.ok(after.pct > 100, `the plan is over the circuit (${after.pct} %)`);
+  assert.equal(after.status, 'critical', 'an over-capacity PLAN is a verdict, not a data error');
+  assert.equal(after.inconsistent, false);
+  assert.ok(sim.issues.some(i => i.level === 'critical' && /용량 초과/.test(i.msg)));
+  assert.equal(sim.ok, false);
 });
 
 t('a device with no power information is counted, not guessed at', () => {
@@ -237,9 +251,16 @@ t('the KMX ledger agrees with itself', () => {
   assert.equal(cap.room.confidence, 'measured');
   for (const n of Object.values(cap.nodes)) {
     if (n.gap_kw == null) continue;
-    const tol = Math.max(0.5, n.load_kw * 0.1);
-    assert.ok(Math.abs(n.gap_kw) <= tol,
-      `${n.name} gap ${n.gap_kw} kW exceeds ${tol.toFixed(2)} kW (meter ${n.measured_kw} vs below ${n.downstream_kw})`);
+    assert.ok(n.gap_kw > -Math.max(0.5, n.load_kw * 0.1),
+      `${n.name} meters BELOW what it feeds by ${-n.gap_kw} kW — impossible (meter ${n.measured_kw} vs below ${n.downstream_kw})`);
+  }
+  // The upward gaps are informational, and the demo should not have absurd
+  // ones: anything the rack inventory does not account for stays a minority of
+  // the reading.
+  for (const n of Object.values(cap.nodes)) {
+    if (n.gap_kw == null || n.gap_kw <= 0) continue;
+    assert.ok(n.gap_kw < n.load_kw * 0.25,
+      `${n.name} has ${n.gap_kw} kW (${Math.round(n.gap_kw / n.load_kw * 100)} %) of load that nothing in the inventory explains`);
   }
 });
 
@@ -278,6 +299,35 @@ t('the panel shows every number with its basis, and is reachable', () => {
   // 100 kW. Nothing on that card may be a literal again.
   assert.ok(!/UPS 40 kW/.test(twin), 'the UPS rating is read off the ledger');
   assert.match(twin, /upsCabs\.map\(o => `\$\{o\.attrs\?\.capacity_kw/);
+});
+
+t('one rule decides how tall a device is', () => {
+  // Three surfaces draw or count rack height: the elevation (unitU), the 3D box
+  // (makeNetUnit) and the space arithmetic here. They used three rules, so the
+  // same ISR 4451 was 2U in the elevation and 1U everywhere else, and a rack's
+  // reported U differed depending on which panel you were looking at.
+  assert.equal(deviceU({ kind: 'sbc', model: 'ISR 4451 CUBE' }), 2, 'the catalogue knows it is 2U');
+  assert.equal(deviceU({ kind: 'switch', model: 'Nexus 9500' }), 7, 'and that a chassis is 7U');
+  assert.equal(deviceU({ kind: 'switch', model: 'Catalyst 9300-48P' }), 1);
+  // The record wins: a chassis bought in its 13U configuration says so.
+  assert.equal(deviceU({ kind: 'switch', model: 'Nexus 9500', u_height: 13 }), 13);
+  // An uncatalogued model still gets its kind's height, not a flat 1U.
+  assert.equal(deviceU({ kind: 'server', model: 'PowerEdge R650' }), 2);
+  assert.equal(deviceU({ kind: 'nothing', model: '' }), 1);
+
+  const ups = readFileSync(path.join(here, 'upsModels.js'), 'utf8');
+  assert.match(ups, /from '\.\/capacity\.js'/, 'the 3D model imports the shared rule');
+  assert.ok(!/const KIND_U = \{/.test(ups), 'and no longer keeps its own copy');
+  assert.match(ups, /const uh = unitU\(d\);/, 'the 3D box height goes through it');
+  const vis = readFileSync(path.join(here, 'deviceVisual.js'), 'utf8');
+  assert.match(vis, /export const visualU = deviceU;/, 'and so does the elevation');
+
+  // The KMX ledger states u_height for 3 of its 24 devices; the rest come from
+  // the catalogue, and the room's U used must reflect that rather than
+  // counting 21 devices as 1U each.
+  const cap = roomCapacity(room);
+  const naive = (room.devices || []).length;
+  assert.ok(cap.room.u_used > naive, `${cap.room.u_used}U used is more than ${naive} devices × 1U`);
 });
 
 console.log(fail ? `\nFAIL: ${fail} check(s)` : '\nok - the expansion answer rests on measurements and says where it does not');

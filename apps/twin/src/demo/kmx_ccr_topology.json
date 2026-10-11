@@ -3,14 +3,14 @@
   "rooms": [
     {
       "location": "KMX Pesquería",
-      "voltage_1ph": 127,
-      "voltage_3ph": 220,
-      "voltage_note": "Mexico — 127/220 V",
       "name": "CCR",
       "cols": 24,
       "rows": 22,
       "tile_mm": 600,
       "height_mm": 3000,
+      "voltage_1ph": 127,
+      "voltage_3ph": 220,
+      "frequency_hz": 60,
       "objects": [
         {
           "name": "A01",
@@ -22,7 +22,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.8,
+            "kw": 0.57,
             "temp_c": 23.8,
             "status": "ok",
             "pdu": "PDU-A",
@@ -39,7 +39,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 0.9,
+            "kw": 0.33,
             "temp_c": 23.2,
             "status": "ok",
             "pdu": "PDU-A",
@@ -56,7 +56,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.7,
+            "kw": 0.54,
             "temp_c": 23.7,
             "status": "ok",
             "pdu": "PDU-A",
@@ -73,7 +73,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 4.8,
+            "kw": 1.4,
             "temp_c": 25.4,
             "status": "hot",
             "pdu": "PDU-A",
@@ -90,7 +90,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 0.8,
+            "kw": 0.3,
             "temp_c": 24.4,
             "status": "ok",
             "pdu": "PDU-A",
@@ -107,7 +107,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 2,
+            "kw": 0.63,
             "temp_c": 23.5,
             "status": "ok",
             "pdu": "PDU-A",
@@ -124,7 +124,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.3,
+            "kw": 0.43,
             "temp_c": 24.2,
             "status": "ok",
             "pdu": "PDU-A",
@@ -141,7 +141,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 2.2,
+            "kw": 0.68,
             "temp_c": 22.9,
             "status": "ok",
             "pdu": "PDU-A",
@@ -192,7 +192,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.8,
+            "kw": 0.57,
             "temp_c": 23.2,
             "status": "ok",
             "pdu": "PDU-A",
@@ -209,7 +209,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 2.2,
+            "kw": 0.69,
             "temp_c": 23.1,
             "status": "ok",
             "pdu": "PDU-A",
@@ -226,7 +226,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 4.3,
+            "kw": 1.3,
             "temp_c": 25.1,
             "status": "hot",
             "pdu": "PDU-A",
@@ -243,7 +243,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 1.9,
+            "kw": 0.61,
             "temp_c": 23.7,
             "status": "ok",
             "pdu": "PDU-A",
@@ -260,7 +260,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 1,
+            "kw": 0.36,
             "temp_c": 22.9,
             "status": "ok",
             "pdu": "PDU-A",
@@ -277,7 +277,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 2.9,
+            "kw": 0.86,
             "temp_c": 24.5,
             "status": "ok",
             "pdu": "PDU-A",
@@ -294,7 +294,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 0.9,
+            "kw": 0.33,
             "temp_c": 23.6,
             "status": "ok",
             "pdu": "PDU-A",
@@ -311,7 +311,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 6.4,
+            "kw": 1.9,
             "temp_c": 27.9,
             "status": "critical",
             "pdu": "PDU-A",
@@ -328,7 +328,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 2.9,
+            "kw": 0.87,
             "temp_c": 23.1,
             "status": "ok",
             "pdu": "PDU-A",
@@ -345,7 +345,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 1.6,
+            "kw": 0.52,
             "temp_c": 23.8,
             "status": "ok",
             "pdu": "PDU-A",
@@ -362,7 +362,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 2.2,
+            "kw": 0.69,
             "temp_c": 23.3,
             "status": "ok",
             "pdu": "PDU-A",
@@ -379,7 +379,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 1,
+            "kw": 0.36,
             "temp_c": 24.6,
             "status": "ok",
             "pdu": "PDU-A",
@@ -396,7 +396,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 3.9,
+            "kw": 1.2,
             "temp_c": 26.3,
             "status": "warn",
             "pdu": "PDU-A",
@@ -413,7 +413,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.7,
+            "kw": 0.54,
             "temp_c": 23.2,
             "status": "ok",
             "pdu": "PDU-A",
@@ -430,7 +430,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 3.6,
+            "kw": 1.1,
             "temp_c": 26.1,
             "status": "warn",
             "pdu": "PDU-A",
@@ -447,7 +447,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.9,
+            "kw": 0.61,
             "temp_c": 23.4,
             "status": "ok",
             "pdu": "PDU-A",
@@ -464,7 +464,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1,
+            "kw": 0.35,
             "temp_c": 24.2,
             "status": "ok",
             "pdu": "PDU-A",
@@ -481,7 +481,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.4,
+            "kw": 0.48,
             "temp_c": 23.4,
             "status": "ok",
             "pdu": "PDU-A",
@@ -498,7 +498,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 0.8,
+            "kw": 0.3,
             "temp_c": 24.5,
             "status": "ok",
             "pdu": "PDU-A",
@@ -515,7 +515,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.2,
+            "kw": 0.41,
             "temp_c": 24.4,
             "status": "ok",
             "pdu": "PDU-A",
@@ -532,7 +532,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.7,
+            "kw": 0.56,
             "temp_c": 23.2,
             "status": "ok",
             "pdu": "PDU-A",
@@ -566,7 +566,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 2,
+            "kw": 0.64,
             "temp_c": 23.5,
             "status": "ok",
             "pdu": "PDU-B",
@@ -583,7 +583,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 2.4,
+            "kw": 0.74,
             "temp_c": 24,
             "status": "ok",
             "pdu": "PDU-B",
@@ -600,7 +600,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 0.9,
+            "kw": 0.34,
             "temp_c": 23.2,
             "status": "ok",
             "pdu": "PDU-B",
@@ -617,7 +617,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 1.7,
+            "kw": 0.54,
             "temp_c": 23,
             "status": "ok",
             "pdu": "PDU-B",
@@ -634,7 +634,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 4.6,
+            "kw": 1.3,
             "temp_c": 24.9,
             "status": "hot",
             "pdu": "PDU-B",
@@ -651,7 +651,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 4.1,
+            "kw": 1.2,
             "temp_c": 24.7,
             "status": "hot",
             "pdu": "PDU-B",
@@ -668,7 +668,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 0.7,
+            "kw": 0.28,
             "temp_c": 23.5,
             "status": "ok",
             "pdu": "PDU-B",
@@ -685,7 +685,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 2.2,
+            "kw": 0.69,
             "temp_c": 24,
             "status": "ok",
             "pdu": "PDU-B",
@@ -702,7 +702,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 2.9,
+            "kw": 0.87,
             "temp_c": 23.4,
             "status": "ok",
             "pdu": "PDU-B",
@@ -719,7 +719,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 1.7,
+            "kw": 0.53,
             "temp_c": 23.7,
             "status": "ok",
             "pdu": "PDU-B",
@@ -736,7 +736,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.7,
+            "kw": 0.54,
             "temp_c": 24.3,
             "status": "ok",
             "pdu": "PDU-B",
@@ -753,7 +753,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.7,
+            "kw": 0.54,
             "temp_c": 23.6,
             "status": "ok",
             "pdu": "PDU-B",
@@ -770,7 +770,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.2,
+            "kw": 0.42,
             "temp_c": 23.2,
             "status": "ok",
             "pdu": "PDU-B",
@@ -787,7 +787,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 2.4,
+            "kw": 0.73,
             "temp_c": 23,
             "status": "ok",
             "pdu": "PDU-B",
@@ -804,7 +804,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 1.2,
+            "kw": 0.43,
             "temp_c": 24.2,
             "status": "ok",
             "pdu": "PDU-B",
@@ -821,7 +821,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 2.7,
+            "kw": 0.81,
             "temp_c": 24.5,
             "status": "ok",
             "pdu": "PDU-B",
@@ -838,7 +838,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 2.8,
+            "kw": 0.85,
             "temp_c": 24.3,
             "status": "ok",
             "pdu": "PDU-B",
@@ -855,7 +855,7 @@
           "face": "S",
           "u_height": 42,
           "attrs": {
-            "kw": 2.4,
+            "kw": 0.74,
             "temp_c": 24,
             "status": "ok",
             "pdu": "PDU-B",
@@ -906,7 +906,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 1.9,
+            "kw": 0.61,
             "temp_c": 22.8,
             "status": "ok",
             "pdu": "PDU-B",
@@ -923,7 +923,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 1.4,
+            "kw": 0.46,
             "temp_c": 23.4,
             "status": "ok",
             "pdu": "PDU-B",
@@ -940,7 +940,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 4.2,
+            "kw": 1.25,
             "temp_c": 24.4,
             "status": "hot",
             "pdu": "PDU-B",
@@ -957,7 +957,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 1.1,
+            "kw": 0.39,
             "temp_c": 23.5,
             "status": "ok",
             "pdu": "PDU-B",
@@ -974,7 +974,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 2.2,
+            "kw": 0.7,
             "temp_c": 24.1,
             "status": "ok",
             "pdu": "PDU-B",
@@ -991,7 +991,7 @@
           "face": "N",
           "u_height": 42,
           "attrs": {
-            "kw": 1.2,
+            "kw": 0.42,
             "temp_c": 24.5,
             "status": "ok",
             "pdu": "PDU-B",
@@ -1077,7 +1077,9 @@
             "rt": 30,
             "fan_pct": 72,
             "status": "ok",
-            "supply_c": 18.3
+            "supply_c": 18.3,
+            "model": "Liebert PDX 100 kW",
+            "vendor": "Vertiv"
           }
         },
         {
@@ -1092,7 +1094,9 @@
             "fan_pct": 68,
             "status": "warn",
             "supply_c": 20.5,
-            "note": "팬 감속 · 필터 경보"
+            "note": "팬 감속 · 필터 경보",
+            "model": "Liebert PDX 100 kW",
+            "vendor": "Vertiv"
           }
         },
         {
@@ -1106,7 +1110,9 @@
             "rt": 20,
             "fan_pct": 70,
             "status": "ok",
-            "supply_c": 18.3
+            "supply_c": 18.3,
+            "model": "Liebert PCW 70 kW",
+            "vendor": "Vertiv"
           }
         },
         {
@@ -1117,8 +1123,8 @@
           "w": 1.5,
           "d": 1.5,
           "attrs": {
-            "capacity_kw": 100,
-            "load_pct": 65,
+            "capacity_kw": 40,
+            "load_pct": 61,
             "status": "ok"
           }
         },
@@ -1130,8 +1136,8 @@
           "w": 1.5,
           "d": 1.5,
           "attrs": {
-            "capacity_kw": 80,
-            "load_pct": 68,
+            "capacity_kw": 40,
+            "load_pct": 54,
             "status": "ok"
           }
         },
@@ -1143,10 +1149,9 @@
           "w": 1,
           "d": 1.5,
           "attrs": {
-            "rated_a": 225,
-            "load_a": 162,
-            "status": "ok",
-            "phase": "3P"
+            "rated_a": 125,
+            "load_a": 61,
+            "status": "ok"
           }
         },
         {
@@ -1157,10 +1162,9 @@
           "w": 1,
           "d": 1.5,
           "attrs": {
-            "rated_a": 175,
-            "load_a": 135,
-            "status": "ok",
-            "phase": "3P"
+            "rated_a": 125,
+            "load_a": 54,
+            "status": "ok"
           }
         },
         {
@@ -1171,9 +1175,8 @@
           "w": 1,
           "d": 0.4,
           "attrs": {
-            "rated_a": 350,
-            "label": "LP-1",
-            "phase": "3P"
+            "rated_a": 200,
+            "label": "LP-1"
           }
         },
         {
@@ -1184,9 +1187,8 @@
           "w": 1,
           "d": 0.4,
           "attrs": {
-            "rated_a": 400,
-            "label": "LP-2",
-            "phase": "3P"
+            "rated_a": 200,
+            "label": "LP-2"
           }
         },
         {
@@ -1197,10 +1199,9 @@
           "w": 1.5,
           "d": 0.4,
           "attrs": {
-            "rated_a": 800,
+            "rated_a": 400,
             "utility": true,
-            "label": "CFE 인입 / 발전기 ATS",
-            "phase": "3P"
+            "label": "CFE 인입 / 발전기 ATS"
           }
         },
         {
@@ -1423,7 +1424,7 @@
           "vendor": "APC",
           "u_height": 10,
           "battery_pct": 100,
-          "load_pct": 48,
+          "load_pct": 61,
           "temp_c": 24.1,
           "runtime_min": 31,
           "ip": "10.60.1.11"
@@ -1438,7 +1439,7 @@
           "vendor": "APC",
           "u_height": 10,
           "battery_pct": 100,
-          "load_pct": 44,
+          "load_pct": 54,
           "temp_c": 23.8,
           "runtime_min": 34,
           "ip": "10.60.1.12"
@@ -1584,6 +1585,50 @@
           "status": "ok"
         },
         {
+          "label": "NB-A02",
+          "kind": "netbotz",
+          "model": "NetBotz 750 (NBES7550)",
+          "rack": "A02",
+          "u_pos": 39,
+          "status": "ok",
+          "vendor": "APC",
+          "ip": "10.60.1.61",
+          "note": "온습도 6 · 누수 4 · 도어 2 센서 허브"
+        },
+        {
+          "label": "PDU-A02-L",
+          "kind": "pdu",
+          "model": "Switched Rack PDU AP8959",
+          "rack": "A02",
+          "u_pos": 0,
+          "status": "ok",
+          "vendor": "APC",
+          "ip": "10.60.1.71",
+          "load_a": 6.8
+        },
+        {
+          "label": "PDU-B07-L",
+          "kind": "pdu",
+          "model": "Metered Rack PDU AP8858",
+          "rack": "B07",
+          "u_pos": 0,
+          "status": "warn",
+          "vendor": "APC",
+          "ip": "10.60.1.72",
+          "load_a": 14.2
+        },
+        {
+          "label": "ATS-B01",
+          "kind": "ats",
+          "model": "Rack ATS AP4423A",
+          "rack": "B01",
+          "u_pos": 18,
+          "status": "ok",
+          "vendor": "APC",
+          "ip": "10.60.1.81",
+          "note": "Genesys 단일전원 장비 이중화"
+        },
+        {
           "label": "ACC-A",
           "kind": "switch",
           "model": "Catalyst 9300-48P",
@@ -1663,9 +1708,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-1",
-          "rated_a": 20,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "A02",
@@ -1673,9 +1717,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-2",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "A03",
@@ -1683,9 +1726,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-3",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "A04",
@@ -1693,9 +1735,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-4",
-          "rated_a": 30,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "A05",
@@ -1703,9 +1744,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-5",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "A06",
@@ -1713,9 +1753,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-6",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "A07",
@@ -1723,9 +1762,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-7",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "A08",
@@ -1733,9 +1771,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-8",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "A11",
@@ -1743,9 +1780,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-11",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "B01",
@@ -1753,9 +1789,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-1",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "B02",
@@ -1763,9 +1798,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-2",
-          "rated_a": 30,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "B03",
@@ -1773,9 +1807,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-3",
-          "rated_a": 20,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "B04",
@@ -1783,9 +1816,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-4",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "B05",
@@ -1793,9 +1825,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-5",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "B06",
@@ -1803,9 +1834,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-6",
-          "rated_a": 20,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "B07",
@@ -1813,9 +1843,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-7",
-          "rated_a": 40,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 20,
+          "phase": "L2"
         },
         {
           "src": "B08",
@@ -1823,9 +1852,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-8",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "B09",
@@ -1833,9 +1861,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-9",
-          "rated_a": 20,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "B10",
@@ -1843,9 +1870,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-10",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "B11",
@@ -1853,9 +1879,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-11",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "C01",
@@ -1863,9 +1888,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-1",
-          "rated_a": 30,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "C02",
@@ -1873,9 +1897,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-2",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "C03",
@@ -1883,9 +1906,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-3",
-          "rated_a": 30,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "C04",
@@ -1893,9 +1915,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-4",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "C05",
@@ -1903,9 +1924,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-5",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "C06",
@@ -1913,9 +1933,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-6",
-          "rated_a": 20,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "C07",
@@ -1923,9 +1942,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-7",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "C08",
@@ -1933,9 +1951,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-8",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "C09",
@@ -1943,9 +1960,8 @@
           "dst": "PDU-A",
           "dst_type": "object",
           "dst_port": "CB-9",
-          "rated_a": 20,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "D01",
@@ -1953,9 +1969,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-1",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "D02",
@@ -1963,9 +1978,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-2",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "D03",
@@ -1973,9 +1987,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-3",
-          "rated_a": 20,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "D04",
@@ -1983,9 +1996,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-4",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "D05",
@@ -1993,9 +2005,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-5",
-          "rated_a": 30,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "D06",
@@ -2003,9 +2014,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-6",
-          "rated_a": 30,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "D07",
@@ -2013,9 +2023,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-7",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "D08",
@@ -2023,9 +2032,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-8",
-          "rated_a": 20,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "D09",
@@ -2033,9 +2041,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-9",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "D10",
@@ -2043,9 +2050,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-10",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "E01",
@@ -2053,9 +2059,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-1",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "E02",
@@ -2063,9 +2068,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-2",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "E03",
@@ -2073,9 +2077,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-3",
-          "rated_a": 20,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "E04",
@@ -2083,9 +2086,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-4",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "E05",
@@ -2093,9 +2095,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-5",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "E06",
@@ -2103,9 +2104,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-6",
-          "rated_a": 20,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "E07",
@@ -2113,9 +2113,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-7",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "E08",
@@ -2123,9 +2122,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-8",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "F01",
@@ -2133,9 +2131,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-1",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "F02",
@@ -2143,9 +2140,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-2",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "F03",
@@ -2153,9 +2149,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-3",
-          "rated_a": 30,
-          "phase": "L1",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L1"
         },
         {
           "src": "F04",
@@ -2163,9 +2158,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-4",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "F05",
@@ -2173,9 +2167,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-5",
-          "rated_a": 20,
-          "phase": "L3",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L3"
         },
         {
           "src": "F06",
@@ -2183,9 +2176,8 @@
           "dst": "PDU-B",
           "dst_type": "object",
           "dst_port": "CB-6",
-          "rated_a": 20,
-          "phase": "L2",
-          "volts": 220
+          "rated_a": 16,
+          "phase": "L2"
         },
         {
           "src": "PDU-A",
@@ -2348,6 +2340,42 @@
           "src_type": "device",
           "src_port": "PSU1",
           "dst": "A02",
+          "dst_type": "object",
+          "dst_port": "PDU-L",
+          "rated_a": 10
+        },
+        {
+          "src": "NB-A02",
+          "src_type": "device",
+          "src_port": "PSU1",
+          "dst": "A02",
+          "dst_type": "object",
+          "dst_port": "PDU-L",
+          "rated_a": 10
+        },
+        {
+          "src": "PDU-A02-L",
+          "src_type": "device",
+          "src_port": "PSU1",
+          "dst": "A02",
+          "dst_type": "object",
+          "dst_port": "PDU-L",
+          "rated_a": 10
+        },
+        {
+          "src": "PDU-B07-L",
+          "src_type": "device",
+          "src_port": "PSU1",
+          "dst": "B07",
+          "dst_type": "object",
+          "dst_port": "PDU-L",
+          "rated_a": 10
+        },
+        {
+          "src": "ATS-B01",
+          "src_type": "device",
+          "src_port": "PSU1",
+          "dst": "B01",
           "dst_type": "object",
           "dst_port": "PDU-L",
           "rated_a": 10

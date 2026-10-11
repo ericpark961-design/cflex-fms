@@ -11,7 +11,8 @@
 //
 // The 2D panel, the rack elevation and the 3D box all come through here, so a
 // device cannot look like one thing in the twin and another in the inventory.
-import { catalogModel, catalogSpecLine } from './catalog.js';
+import { catalogSpecLine } from './catalog.js';
+import { deviceU } from './capacity.js';
 import { photoFor, orderViews, VIEW_LABEL } from './equipmentPhoto.js';
 import { apcImg, apcViews, apcMeta } from './equipmentLibrary.js';
 import { deviceFace } from './deviceFaces.js';
@@ -76,9 +77,6 @@ export const visualKey = (d, view = 'front') =>
   [d.model || d.label, view, d.status, d.ports_up, d.load_pct, d.battery_pct].join('|');
 
 /** Rack height for a device, used by the elevation and the 3D stack. */
-export function visualU(d = {}) {
-  if (d.u_height) return d.u_height;
-  return catalogModel(d.model)?.u ?? null;
-}
+export const visualU = deviceU;
 
 export { VIEW_LABEL };

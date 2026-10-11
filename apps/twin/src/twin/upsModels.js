@@ -6,6 +6,9 @@ import * as THREE from 'three';
 import { catalogModel } from './catalog.js';
 import { rasterUrl } from './upsIcons';
 import { iconIdForModel, UPS_ICON_META, upsTexture } from './upsIcons';
+// Shared with the capacity arithmetic so the drawing and the space maths
+// cannot disagree about how tall a device is.
+import { deviceU } from './capacity.js';
 
 export const U = 0.04445;            // 1U in metres
 const STATUS_HEX = { ok: 0x2f7bff, warn: 0xf1c21b, critical: 0xfa4d56, nodata: 0x5a5f6a, unreachable: 0x5a5f6a, unknown: 0x5a5f6a };
@@ -141,7 +144,6 @@ export function makeRackSlot(devs, { w = 0.6, d = 1.0, h = 2.0, frame = true } =
 
 // ───────────────────────── network / UC / server equipment ─────────────────────────
 // dev.kind: 'ups' (default) | 'switch' | 'router' | 'sbc' | 'server' | 'pdu' | 'patch'
-const KIND_U = { switch: 1, router: 1, sbc: 1, server: 2, pdu: 1, patch: 1 };
 export function kindOf(d) { return d.kind || (d.model && /catalyst|nexus|switch|SG\d|C9[0-9]{3}|EX\d|QFX/i.test(d.model) ? 'switch' : /ISR|ASR|router|SBC|CUBE|session border/i.test(d.model || '') ? 'router' : /UCS|server|PowerEdge|ProLiant/i.test(d.model || '') ? 'server' : 'ups'); }
 
 function portPanelTexture(d, ports = 48, cols = 24) {
@@ -205,7 +207,7 @@ export function setDeviceVisual(fn) { _deviceVisual = fn; }
 
 export function makeNetUnit(d) {
   const kind = kindOf(d); const on = live(d.status);
-  const uh = d.u_height || KIND_U[kind] || 1; const w = 0.44, h = uh * U, dep = kind === 'server' ? 0.7 : kind === 'patch' ? 0.12 : 0.42;
+  const uh = unitU(d); const w = 0.44, h = uh * U, dep = kind === 'server' ? 0.7 : kind === 'patch' ? 0.12 : 0.42;
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, dep), on ? MAT.body : MAT.bodyDim); body.position.set(0, h / 2, 0); body.castShadow = true; g.add(body);
   let map;
@@ -233,10 +235,11 @@ export function makeUnit(d) { return kindOf(d) === 'ups' ? makeUps(d) : makeNetU
  * "switch", which is not enough to draw a rack that matches the room.
  */
 export function unitU(d) {
-  if (d.u_height) return d.u_height;
-  const cat = catalogModel(d.model);
-  if (cat?.u) return cat.u;
-  if (kindOf(d) !== 'ups') return KIND_U[kindOf(d)] || 1;
+  // One rule, shared with capacity.js: record → catalogue → by-kind.
+  const u = deviceU({ ...d, kind: d.kind || kindOf(d) });
+  if (d.u_height || catalogModel(d.model)?.u || kindOf(d) !== 'ups') return u;
+  // A UPS the catalogue does not know still has a traced icon with a real
+  // aspect ratio, which is a better height than the by-kind default.
   const m = UPS_ICON_META[iconIdForModel(d.model)];
   return m.u || Math.ceil((0.44 / m.aspect) / U);
 }

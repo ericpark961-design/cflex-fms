@@ -22,7 +22,7 @@
 //     `partial`: its headroom is a number with a hole in it, and it says so.
 //     A node with no known supply reports null capacity, never a comfortable
 //     percentage.
-import { deviceLoad, upsRating, PLANNING } from './capacity.js';
+import { deviceLoad, upsRating, deviceU, PLANNING } from './capacity.js';
 import { CISCO_CATALOG } from './ciscoCatalog.js';
 import { APC_CATALOG } from './apcCatalog.js';
 
@@ -184,7 +184,7 @@ export function roomCapacity(room = {}, { addDevices = [] } = {}) {
       const items = [];
       for (const d of ds) {
         const l = deviceLoad(d);
-        const u = num(d.u_height) || 1;
+        const u = deviceU(d);
         uUsed += u;
         if (l.kg != null) kg += l.kg;
         items.push({ label: d.label, model: d.model, kind: d.kind, u, isNew: !!d._new, ...l });
@@ -320,7 +320,8 @@ export function roomCapacity(room = {}, { addDevices = [] } = {}) {
     const o2 = own[o.name] || {};
     // Two different ways the ledger can contradict itself, both of which make
     // any headroom figure through this node unusable until a survey settles it.
-    const impossible = pct != null && pct >= IMPLAUSIBLE_PCT && L.measuredKw != null;
+    const impossible = pct != null && pct >= IMPLAUSIBLE_PCT
+      && L.measuredKw != null && L.addedKw === 0;
     const conflict = L.inconsistent || impossible;
     const conflictReason = L.inconsistent
       ? `자체 계측 ${L.measuredKw} kW vs 하위 계측 합 ${L.downstreamKw} kW`
@@ -484,7 +485,7 @@ export function simulateAdd(room, rackName, items = [], { limitPct = DERATE * 10
   }
 
   const added = r2(addDevices.reduce((s, d) => s + (deviceLoad(d).watts || 0), 0) / 1000);
-  const uAdded = addDevices.reduce((s, d) => s + (num(d.u_height) || 1), 0);
+  const uAdded = addDevices.reduce((s, d) => s + deviceU(d), 0);
   return {
     rackName, addDevices, before, after, chain,
     rack: { before: rackB, after: rackA },

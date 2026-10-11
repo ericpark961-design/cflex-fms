@@ -78,6 +78,13 @@ export const PLANNING = {
   netbotz750: { typ: 15, max: 25, kg: 3.6 },
 };
 
+/**
+ * Rack height by kind, for a model no catalogue knows. Coarse on purpose — it
+ * exists so an uncatalogued server is not counted as 1U next to a catalogued
+ * one, not to replace knowing what the unit is.
+ */
+export const KIND_U = { switch: 1, router: 1, sbc: 1, server: 2, pdu: 1, patch: 1, ups: 2 };
+
 /** Peak draw by kind, for a model the planning table does not carry. */
 export const PEAK_W = {
   switch: 400, router: 450, sbc: 450, server: 800, storage: 1500,
@@ -319,6 +326,24 @@ export function canFit(capacity, add = {}, limitPct = 80) {
         ? '현재 부하에 추정값이 섞여 있습니다'
         : null,
   };
+}
+
+/**
+ * How many U a device occupies.
+ *
+ * One rule, because two surfaces were using two: the rack elevation asked the
+ * catalogue (so an ISR 4451 drew 2U and a Nexus 9500 chassis 7U) while the
+ * capacity arithmetic counted `u_height || 1` and made both of them 1U. The
+ * same rack then reported different space used depending on which panel you
+ * were looking at.
+ *
+ * The record wins — a survey that measured the unit beats a catalogue default,
+ * and a chassis bought in its 13U configuration says so on the record. The
+ * catalogue fills in for everything the ledger did not bother to state, which
+ * is most of it.
+ */
+export function deviceU(d = {}) {
+  return num(d.u_height) ?? catalogModel(d.model)?.u ?? KIND_U[String(d.kind || '').toLowerCase()] ?? 1;
 }
 
 /** The supply a UPS can deliver, from its catalogue rating. */
