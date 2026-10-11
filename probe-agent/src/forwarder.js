@@ -72,6 +72,26 @@ async function heartbeat(extra = {}) {
   }
 }
 
+/**
+ * The non-UPS inventory: PDUs, NetBotz, CRACs, switches.
+ *
+ * A separate call because they live in a separate table with separate
+ * collectors. A server that does not have this endpoint yet answers 404, and
+ * the agent carries on with the UPS feed alone rather than treating the whole
+ * load as failed.
+ */
+async function fetchObjectConfig() {
+  if (!cfg.cflexToken) return [];
+  try {
+    const r = await http.get(`/v1/probe/objects?tenant=${cfg.tenantId}`);
+    return r.data?.devices || [];
+  } catch (e) {
+    if (e.response?.status === 404) return [];           // server predates this feed
+    console.error('[forwarder] fetchObjectConfig failed:', e.message);
+    return [];
+  }
+}
+
 async function fetchDeviceConfig() {
   if (!cfg.cflexToken) return [];
   try {
@@ -83,4 +103,4 @@ async function fetchDeviceConfig() {
   }
 }
 
-module.exports = { sendEvent, drain, heartbeat, fetchDeviceConfig, lastReachable: () => lastReachable };
+module.exports = { sendEvent, drain, heartbeat, fetchDeviceConfig, fetchObjectConfig, lastReachable: () => lastReachable };
