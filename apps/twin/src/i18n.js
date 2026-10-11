@@ -47,6 +47,10 @@ export const EN = {
     'This server has no copilot endpoint (/v1/fms/copilot) deployed yet.',
   '원장': 'Ledger',
   // #/devices inventory tree
+  '장치 정보를 불러오지 못했습니다': 'Could not load the device',
+  '이 화면을 그리는 중 오류가 발생했습니다': 'Something went wrong while drawing this screen',
+  '다시 시도': 'Retry',
+  '전면부 도식을 그릴 수 없습니다': 'Could not draw the front panel',
   '전면부': 'Front panel',
   '네트워크 · UC 장비 — 배터리·부하·런타임은 이 장비 종류에 없습니다. 포트·전원 체인·배치만 표시됩니다.': 'Network / UC device — battery, load and runtime do not exist for this kind. Ports, power chain and placement only.',
   '이 장비 종류는 아직 수집기가 없습니다': 'No collector exists for this device kind yet',

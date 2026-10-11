@@ -113,5 +113,26 @@ t('the detail screen mounts it, and the template owns the placeholder', () => {
   assert.match(face, /deviceFace\(\{/, 'everything else is drawn from its own record');
 });
 
-console.log(fail ? `\nFAIL: ${fail} check(s)` : '\nok - faceplates match the unit they depict');
+t('the detail screen has no hard-coded illustration left', () => {
+  const tpl = read('..', 'screens', 'Device.tpl.html');
+  // A CSS-drawn panel used to sit in the spec column saying "SRT 5000 /
+  // ON BATTERY / RT 18 MIN" for every device — including a Cisco switch.
+  for (const lie of ['SRT 5000', 'ON BATTERY', 'RT 18 MIN']) {
+    assert.ok(!tpl.includes(lie), `no hard-coded "${lie}" under an arbitrary device`);
+  }
+  assert.ok(tpl.includes('id="device-face"'), 'the real faceplate takes its place');
+});
+
+t('a screen with no data yet is visible, not a black page', () => {
+  const app = read('..', 'App.jsx');
+  // `if (!data) return` left an empty full-height div, which on a dark page is
+  // indistinguishable from a dead session or a failed fetch.
+  assert.match(app, /if \(!data\) \{/, 'Screen renders a loading state');
+  assert.match(app, /t\('불러오는 중…'\)/);
+  assert.match(app, /class ScreenBoundary/, 'and an effect that throws shows why');
+  assert.match(app, /getDerivedStateFromError/);
+  assert.match(app, /setDevErr\(e\)/, 'a rejected device fetch is surfaced, not swallowed');
+});
+
+console.log(fail ? `\nFAIL: ${fail} check(s)` : '\nok - faceplates match the unit they depict, and failures are visible');
 process.exit(fail ? 1 : 0);
