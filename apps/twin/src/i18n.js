@@ -47,6 +47,8 @@ export const EN = {
     'This server has no copilot endpoint (/v1/fms/copilot) deployed yet.',
   '원장': 'Ledger',
   // #/devices inventory tree
+  '전원 체인': 'Power chain',
+  '상류 최소 정격': 'Weakest upstream rating',
   '장치 정보를 불러오지 못했습니다': 'Could not load the device',
   '이 화면을 그리는 중 오류가 발생했습니다': 'Something went wrong while drawing this screen',
   '다시 시도': 'Retry',

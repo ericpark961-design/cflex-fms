@@ -233,6 +233,13 @@ export const DEVICE_RANGES = [
  * does have (ports, power chain, placement) is shown. Without this, a switch in
  * the inventory tree was the one row you could not open.
  */
+/**
+ * A power chain arrives in two shapes: a bare array, or traceChain()'s envelope
+ * { chain, upstream_capacity_a }. Taking either is cheaper than remembering
+ * which endpoint returns which.
+ */
+export const chainOf = (v) => (Array.isArray(v) ? v : Array.isArray(v?.chain) ? v.chain : []);
+
 export async function netDeviceData(rawId, range = '24h') {
   const base = evalLogic(Device.source, Device.props);
   const r = await api(`/v1/fms/devices/${encodeURIComponent(rawId)}`);
@@ -264,7 +271,12 @@ export async function netDeviceData(rawId, range = '24h') {
     trend: { batt: '', load: '', temp: '', loadArea: '', empty: true },
     ranges: DEVICE_RANGES.map(x => ({ ...x, on: x.key === range })),
     actions: [],
-    chain: (d.chain || []).map(c => ({ name: c.name, kind: c.kind })),
+    // getDevice() returns traceChain()'s envelope — { chain, upstream_capacity_a }
+    // — not a bare array, which is what `(d.chain || []).map` tripped over.
+    // /v1/fms/power-chain/* puts the array at the top level instead, so both
+    // shapes are accepted rather than depending on which endpoint answered.
+    chain: chainOf(d.chain).map(c => ({ name: c.name, kind: c.kind })),
+    upstreamCapacityA: d.chain && !Array.isArray(d.chain) ? (d.chain.upstream_capacity_a ?? null) : null,
     rca: null,
     sample: false,
   };

@@ -79,6 +79,42 @@ function buildFace(data, d) {
   cap.textContent = caption;
   box.appendChild(cap);
 
+  // The power chain was being collected and then dropped. For a switch it is
+  // most of what the detail screen can say, so it is shown here.
+  const hops = Array.isArray(data.chain) ? data.chain : [];
+  if (hops.length) {
+    const h = document.createElement('div');
+    h.style.cssText = 'font-size:11px;color:#8d8d8d;font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-top:4px';
+    h.textContent = `${t('전원 체인')} (${t('부하 → 공급')})`;
+    box.appendChild(h);
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px';
+    hops.forEach((c, i) => {
+      if (i) {
+        const arrow = document.createElement('span');
+        arrow.style.color = '#6f6f6f'; arrow.textContent = '→';
+        row.appendChild(arrow);
+      }
+      const chip = document.createElement('span');
+      chip.style.cssText = 'background:#262626;padding:2px 7px';
+      chip.textContent = c.name;
+      if (c.kind) {
+        const k = document.createElement('span');
+        k.style.cssText = 'color:#8d8d8d;font-size:10px;margin-left:4px';
+        k.textContent = c.kind;
+        chip.appendChild(k);
+      }
+      row.appendChild(chip);
+    });
+    box.appendChild(row);
+    if (data.upstreamCapacityA != null) {
+      const cap = document.createElement('div');
+      cap.style.cssText = 'font-size:11px;color:#6f6f6f';
+      cap.textContent = `${t('상류 최소 정격')} ${data.upstreamCapacityA} A`;
+      box.appendChild(cap);
+    }
+  }
+
   // Where it is, which is the other half of recognising it in a rack.
   const place = [d.location, d.room, d.rack, d.u].filter(v => v && v !== '—').join(' · ');
   if (place) {

@@ -113,6 +113,22 @@ t('the detail screen mounts it, and the template owns the placeholder', () => {
   assert.match(face, /deviceFace\(\{/, 'everything else is drawn from its own record');
 });
 
+t('a power chain is accepted in either shape it arrives in', async () => {
+  // getDevice() returns traceChain()'s envelope { chain, upstream_capacity_a };
+  // /v1/fms/power-chain/* puts the array at the top level. Assuming the array
+  // shape is what threw "(i.chain || []).map is not a function" on every
+  // network device.
+  const src = read('..', 'data.js');
+  assert.match(src, /export const chainOf = /, 'one helper takes either shape');
+  assert.match(src, /chainOf\(d\.chain\)\.map/, 'netDeviceData uses it');
+  assert.ok(!/\(d\.chain \|\| \[\]\)\.map/.test(src), 'the array assumption is gone');
+
+  const chainOf = (v) => (Array.isArray(v) ? v : Array.isArray(v?.chain) ? v.chain : []);
+  assert.equal(chainOf({ chain: [1, 2], upstream_capacity_a: 16 }).length, 2);
+  assert.equal(chainOf([1]).length, 1);
+  for (const junk of [undefined, null, 42, {}, { chain: 'x' }]) assert.equal(chainOf(junk).length, 0);
+});
+
 t('the detail screen has no hard-coded illustration left', () => {
   const tpl = read('..', 'screens', 'Device.tpl.html');
   // A CSS-drawn panel used to sit in the spec column saying "SRT 5000 /
