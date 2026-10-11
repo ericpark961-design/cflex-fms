@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
+import RackElevation from './twin/RackElevation';
 import { store, hhmm } from './data';
 import { devId } from './ids';
 import { api, tx } from './theme';
@@ -14,7 +15,8 @@ const PRI = { P1: '#fa4d56', P2: '#f1c21b', P3: '#8d8d8d' };
 const KIND_KO = { ups: 'UPS', switch: '스위치', router: '라우터', sbc: 'SBC', server: '서버', patch: '패치패널', pdu: '랙 PDU', storage: '스토리지' };
 
 // ---------- right-hand panel for the ledger scene
-function LedgerPanel({ sel, data, onFocus }) {
+function LedgerPanel({ sel, data, onFocus, onRackView }) {
+  const [picked, setPicked] = useState(null);
   if (!sel) return <span style={{ color: '#8d8d8d' }}>랙·UPS·CRAC·센서·누수 존을 클릭하면 상세와 전원 체인이 표시된다.</span>;
   const alarms = (data.alarms || []).filter(a => a.object === sel.name || sel.devices?.some(d => d.label === a.device));
   const ups = sel.devices?.find(d => d.kind === 'ups') || (sel.kind === 'device' && sel.device.kind === 'ups' ? sel.device : null);
@@ -26,9 +28,13 @@ function LedgerPanel({ sel, data, onFocus }) {
     </div>
     {ups && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 10 }}>{[['배터리', `${ups.battery_pct ?? '—'}%`], ['부하', `${ups.load_pct ?? '—'}%`], ['온도', `${ups.temp_c ?? '—'}°C`], ['런타임', `${ups.runtime_min ?? '—'} min`]].map(([l, v]) => <div key={l} style={{ background: '#1f1f1f', padding: '6px 9px' }}><div style={{ fontSize: 10, color: '#8d8d8d' }}>{l}</div><div style={{ fontSize: 16, fontWeight: 700 }}>{v}</div></div>)}</div>}
     {sel.kind === 'rack' && sel.devices?.length > 0 && <div style={{ marginTop: 12 }}>
-      <div style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em', marginBottom: 4 }}>랙 실장 (42U)</div>
-      <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 2, background: '#111', padding: 6, border: '1px solid #393939' }}>
-        {[...sel.devices].sort((a, b) => (a.u_pos || 0) - (b.u_pos || 0)).map(d => <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, padding: '3px 6px', background: d.kind === 'ups' ? '#1c2a44' : '#262626', borderLeft: `3px solid ${{ ok: '#24a148', warn: '#f1c21b', critical: '#da1e28' }[d.status] || '#8d8d8d'}` }}><span style={{ color: '#8d8d8d', width: 34 }}>U{d.u_pos ?? '—'}</span><b>{d.label}</b><span style={{ color: '#c6c6c6' }}>{KIND_KO[d.kind] || d.kind} · {d.model}</span>{d.ports_total && <span style={{ marginLeft: 'auto', color: '#8d8d8d' }}>{d.ports_up}/{d.ports_total}p</span>}</div>)}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em' }}>{t('랙 실장')} (42U)</div>
+        {onRackView && <button type="button" onClick={() => onRackView(sel.name)}
+          style={{ fontFamily: 'inherit', fontSize: 11, padding: '3px 9px', cursor: 'pointer', border: '1px solid #525252', background: 'transparent', color: '#f4f4f4' }}>{t('랙 전면 보기')}</button>}
+      </div>
+      <div style={{ background: '#111', padding: 6, border: '1px solid #393939' }}>
+        <RackElevation devices={sel.devices} picked={picked} onPick={(d) => { setPicked(d.label); onFocus?.(d.label); }} />
       </div></div>}
     {alarms.length > 0 && <div style={{ marginTop: 12 }}>
       <div style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em', marginBottom: 4 }}>알람</div>
@@ -119,7 +125,7 @@ export default function TwinScreen({ q, standalone = false, tick = 0 }) {
           <aside style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', maxHeight: 'calc(100vh - 150px)' }}>
             <section style={{ background: '#262626', padding: 14, fontSize: 13, lineHeight: 1.5 }}>
               <div style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em', marginBottom: 6 }}>선택 객체</div>
-              {scene === 'kmx' ? <LedgerPanel sel={lsel} data={data} onFocus={(n) => ledgerRef.current?.focus(n)} />
+              {scene === 'kmx' ? <LedgerPanel sel={lsel} data={data} onFocus={(n) => ledgerRef.current?.focus(n)} onRackView={(n) => ledgerRef.current?.rackView(n)} />
                 : a ? <div><div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}><div style={{ flex: '0 0 110px', padding: 6, background: '#111', border: `2px solid ${({ ok: '#24a148', warn: '#f1c21b', critical: '#da1e28' })[a.status] || '#8d8d8d'}` }}><img src={iconUrl(iconIdForModel(a.model))} alt="" style={{ display: 'block', width: '100%', opacity: ['ok', 'warn', 'critical'].includes(a.status) ? 1 : 0.45 }} /><div style={{ fontSize: 10, color: '#8d8d8d', marginTop: 4, textAlign: 'center' }}>{UPS_ICON_META[iconIdForModel(a.model)].label}</div></div><div style={{ minWidth: 0 }}><div style={{ fontSize: 15, fontWeight: 700 }}>{a.label}</div><div style={{ color: '#c6c6c6', fontSize: 12 }}>{a.vendor} {a.model} · {a.room} / {a.rack} · <span className="mono">{a.ip}</span></div><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>{[['배터리', a.battery_pct != null ? `${a.battery_pct}%` : '—'], ['부하', a.load_pct != null ? `${a.load_pct}%` : '—'], ['온도', a.temp_c != null ? `${a.temp_c}°C` : '—'], ['런타임', a.runtime_min != null ? `${a.runtime_min} min` : '—']].map(([l, v]) => <div key={l} style={{ background: '#1f1f1f', padding: '8px 10px' }}><div style={{ fontSize: 10, color: '#8d8d8d' }}>{l}</div><div style={{ fontSize: 18, fontWeight: 700 }}>{v}</div></div>)}</div><a href={`#/device?id=${a.id}`} style={{ display: 'inline-block', marginTop: 10, fontSize: 12, color: '#78a9ff' }}>장치 상세 →</a></div></div></div>
                 : <span style={{ color: '#8d8d8d' }}>랙을 클릭하면 장치 상세가 표시된다.</span>}
             </section>

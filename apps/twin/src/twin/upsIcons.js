@@ -43,3 +43,31 @@ export async function upsTexture(model, status = 'unknown') {
   })();
   texCache.set(key, p); return p;
 }
+
+/**
+ * Rasterise an SVG string to a texture, so a generated faceplate can be applied
+ * to a 3D unit the same way a photograph is. Width drives the resolution; the
+ * height follows the viewBox so nothing is stretched.
+ */
+export async function rasterSvg(svg, W = 1024) {
+  const vb = svg.match(/viewBox=['"]([\d.\s-]+)['"]/);
+  const [, , vw, vh] = vb ? vb[1].trim().split(/\s+/).map(Number) : [0, 0, 1000, 92];
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const H = Math.max(8, Math.round(W * vh / vw));
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    cv.getContext('2d').drawImage(img, 0, 0, W, H);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return t;
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/** Load an image URL (a photograph) as a texture. */
+export async function rasterUrl(src) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => res(i); i.onerror = rej; i.src = src; });
+  const cv = document.createElement('canvas'); cv.width = img.naturalWidth || 1024; cv.height = img.naturalHeight || 256;
+  cv.getContext('2d').drawImage(img, 0, 0);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}

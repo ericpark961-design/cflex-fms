@@ -4,6 +4,7 @@
 // a status LED strip, and vent slots. Status 'nodata'/'unreachable' renders dim with "NO LINK".
 import * as THREE from 'three';
 import { catalogModel } from './catalog.js';
+import { rasterUrl } from './upsIcons';
 import { iconIdForModel, UPS_ICON_META, upsTexture } from './upsIcons';
 
 export const U = 0.04445;            // 1U in metres
@@ -169,6 +170,39 @@ function serverFaceTexture(d, bays = 8) {
   const t = new THREE.CanvasTexture(cv); t.minFilter = THREE.LinearFilter; t.colorSpace = THREE.SRGBColorSpace; texCache.set(key, t); return t;
 }
 
+// ── real-equipment front faces ───────────────────────────────────────
+// A unit's 3D front is the photograph of that model when one exists. The
+// photo has to decode before it can become a texture, so the face is built
+// with the procedural panel and swapped in place once it is ready — the rack
+// never renders empty waiting for an image.
+const photoTexCache = new Map();
+
+function applyPhotoFace(faceMesh, dev) {
+  let visual;
+  try {
+    visual = deviceVisualOf(dev);
+  } catch { return; }
+  if (!visual || visual.source !== 'photo' || !visual.url) return;
+  const key = visual.url;
+  const got = photoTexCache.get(key)
+    || photoTexCache.set(key, rasterUrl(visual.url).catch(() => null)).get(key);
+  got.then((tex) => {
+    if (!tex || !faceMesh.material) return;
+    faceMesh.material.map = tex;
+    faceMesh.material.needsUpdate = true;
+  });
+}
+
+// Resolved lazily: deviceVisual imports from here (kindOf), so a static import
+// would be a cycle.
+let _deviceVisual = null;
+function deviceVisualOf(dev) {
+  if (!_deviceVisual) return null;
+  return _deviceVisual(dev, 'front');
+}
+/** Wired once at startup by the scene, to break the import cycle. */
+export function setDeviceVisual(fn) { _deviceVisual = fn; }
+
 export function makeNetUnit(d) {
   const kind = kindOf(d); const on = live(d.status);
   const uh = d.u_height || KIND_U[kind] || 1; const w = 0.44, h = uh * U, dep = kind === 'server' ? 0.7 : kind === 'patch' ? 0.12 : 0.42;
@@ -180,7 +214,8 @@ export function makeNetUnit(d) {
   else if (kind === 'patch') map = portPanelTexture(d, 24, 24);
   else if (kind === 'server') map = serverFaceTexture(d);
   else map = portPanelTexture(d, 16, 16);
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.01, h - 0.004), new THREE.MeshBasicMaterial({ map, toneMapped: false })); face.position.set(0, h / 2, dep / 2 + 0.002); g.add(face);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.01, h - 0.004), new THREE.MeshBasicMaterial({ map, toneMapped: false })); face.position.set(0, h / 2, dep / 2 + 0.002);
+  applyPhotoFace(face, d); g.add(face);
   const led = new THREE.Mesh(new THREE.BoxGeometry(0.008, h * 0.5, 0.004), new THREE.MeshBasicMaterial({ color: STATUS_HEX[d.status] || STATUS_HEX.unknown })); led.position.set(-w / 2 + 0.012, h / 2, dep / 2 + 0.004); g.add(led);
   for (const sx of [-1, 1]) { const ear = new THREE.Mesh(new THREE.BoxGeometry(0.02, h, 0.004), MAT.rail); ear.position.set(sx * (w / 2 + 0.01), h / 2, dep / 2 + 0.002); g.add(ear); }
   g.userData = { size: { w, h, d: dep }, family: 'rack', kind, led };

@@ -12,6 +12,7 @@ import { api, lang, tx, cbu as globalCbu } from './theme';
 import { devId } from './ids';
 import { mountCopilot } from './copilot';
 import { mountDeviceFace } from './deviceFace';
+import { mountRackElevation } from './rackElevation';
 import { t } from './i18n';
 import { mountCbuBar } from './cbubar';
 import TwinScreen from './TwinScreen';
@@ -183,7 +184,7 @@ export default function App() {
         <a href="#/devices" style={{ display: 'inline-block', marginTop: 14, background: '#262626', border: '1px solid #525252', color: '#f4f4f4', padding: '7px 12px', fontSize: 12, textDecoration: 'none' }}>{t('← 장비 인벤토리')}</a>
       </div>);
     }
-    return withModal(<><Screen name="Device" html={deviceTpl} data={devData} onReady={(root) => { wire(root); mountDeviceFace(root, devData); }} /><SampleBadge on={!!devData?.sample} /><SampleBadge on={!devData?.sample} text={t('AI 예측·RCA는 Phase 2 샘플')} /></>);
+    return withModal(<><Screen name="Device" html={deviceTpl} data={devData} onReady={(root) => { wire(root); mountDeviceFace(root, devData); mountRackElevation(root, devData); }} /><SampleBadge on={!!devData?.sample} /><SampleBadge on={!devData?.sample} text={t('AI 예측·RCA는 Phase 2 샘플')} /></>);
   }
   if (p === 'alarms') { const d = alarmsData(route.q.cbu || (globalCbu() === 'all' ? null : globalCbu())); return withModal(<><Screen name="Alarms" html={alarmsTpl} data={d} onReady={wire} /><SampleBadge on={d.sample} /></>); }
   if (p === 'powerchain') return withModal(<><Screen name="PowerChain" html={powerTpl} data={powerData()} onReady={wire} /><SampleBadge on text={t('전력체인·코파일럿 · Phase 3 샘플')} /></>);

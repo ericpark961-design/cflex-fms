@@ -2,7 +2,12 @@
 // Same engine for the KMX CCR sample and for surveyed real rooms. No external assets.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { makeRackSlot, makeUps, makeUnit } from './upsModels';
+import { makeRackSlot, makeUps, makeUnit, setDeviceVisual } from './upsModels';
+import { deviceVisual } from './deviceVisual';
+
+// deviceVisual reaches back into upsModels for kindOf, so the dependency is
+// injected here rather than imported there.
+setDeviceVisual(deviceVisual);
 
 const COL = { ok: 0x1c4f8a, hot: 0x08bdba, warn: 0xf1c21b, critical: 0xfa4d56, empty: 0x2b2b2b, nodata: 0x6f6f6f, crac: 0x42be65, ups: 0x4589ff, chain: 0xff832b };
 const CSS = { ok: '#4c8dff', hot: '#08bdba', warn: '#f1c21b', critical: '#fa4d56', empty: '#8d8d8d', nodata: '#8d8d8d' };
@@ -182,6 +187,18 @@ export function buildLedgerScene(el, data, opts = {}) {
   let camAnim = null;
   function flyTo(pos, target, ms = 800) { camAnim = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos, t1: target, start: performance.now(), ms }; }
   function preset(n) { const cx = S.width / 2, cz = S.depth / 2, span = Math.max(S.width, S.depth); const P = { iso: [[cx + span * 0.85, span * 0.8, cz + span * 1.15], [cx, 0.4, cz]], top: [[cx, span * 1.35, cz + 0.01], [cx, 0, cz]], aisle: [[cx - 1.5, 1.7, cz + 4.5], [cx + 1, 1.0, cz - 4]], crac: [[cx, 4.5, -6], [cx, 1.0, 2]] }; const p = P[n] || P.iso; flyTo(new THREE.Vector3(...p[0]), new THREE.Vector3(...p[1])); }
+  // Stand in front of a rack at eye height, the way dcTrack's rack view does.
+  // focus() frames a rack from the side at 5.2 m, which is the wrong distance
+  // to read a faceplate.
+  function rackView(name) {
+    const u = S.byName[name]; if (!u) return;
+    const c = u.center;
+    const face = (u.attrs && u.attrs.face) || u.face || 'S';
+    const dir = { S: [0, 1], N: [0, -1], E: [1, 0], W: [-1, 0] }[face] || [0, 1];
+    flyTo(new THREE.Vector3(c.x + dir[0] * 1.85, 1.55, c.z + dir[1] * 1.85),
+          new THREE.Vector3(c.x, 1.15, c.z), 900);
+    select(name);
+  }
   function focus(name) { const u = S.byName[name]; if (!u) return; const c = u.center; const face = (u.attrs && u.attrs.face) || u.face || 'S'; const dir = { S: [0.6, 1], N: [0.6, -1], E: [1, 0.6], W: [-1, 0.6] }[face] || [0.6, 1]; const dist = u.kind === 'rack' || u.kind === 'device' ? 5.2 : 6.5; flyTo(new THREE.Vector3(c.x + dir[0] * dist, 3.6, c.z + dir[1] * dist), new THREE.Vector3(c.x, 0.9, c.z)); select(name); }
 
   // ── loop ──
@@ -197,5 +214,5 @@ export function buildLedgerScene(el, data, opts = {}) {
     renderer.render(scene, camera); raf = requestAnimationFrame(tick); }
   tick(); preset('iso'); applyMode('status');
 
-  return { preset, focus, select, setMode: applyMode, setHeat: applyHeat, setLayers: applyLayers, chainFor, byName: S.byName, objects: () => Object.values(S.byName), dispose: () => { running = false; cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); el.innerHTML = ''; } };
+  return { preset, focus, select, setMode: applyMode, setHeat: applyHeat, setLayers: applyLayers, chainFor, byName: S.byName, objects: () => Object.values(S.byName), dispose: () => { running = false; cancelAnimationFrame(raf); ro.disconnect(); renderer.dispose(); el.innerHTML = ''; }, rackView };
 }

@@ -114,5 +114,26 @@ t('the photo set covers the catalogue broadly', () => {
   assert.ok(covered / all.length > 0.9, `${covered}/${all.length} catalogued models are photographed`);
 });
 
+t('one decision point feeds the panel, the elevation and the 3D box', () => {
+  const vis = readFileSync(path.join(here, 'deviceVisual.js'), 'utf8');
+  // photo → generated faceplate → generic, in that order and nowhere else.
+  const photoAt = vis.indexOf('photoFor(');
+  const faceAt = vis.indexOf('deviceFace({');
+  assert.ok(photoAt > 0 && photoAt < faceAt, 'a photograph is preferred over a drawing');
+  assert.match(vis, /source: 'photo'/);
+  assert.match(vis, /source: entry \? 'faceplate' : 'generic'/);
+
+  // and the 3D units go through it rather than resolving models themselves
+  const models = readFileSync(path.join(here, 'upsModels.js'), 'utf8');
+  assert.match(models, /applyPhotoFace\(face, d\)/, 'the 3D front is textured from it');
+  assert.match(models, /export function setDeviceVisual/, 'injected, because deviceVisual needs kindOf from here');
+  assert.ok(!/from '\.\/deviceVisual'/.test(models), 'and not imported directly, which would be a cycle');
+
+  const scene = readFileSync(path.join(here, 'LedgerScene.js'), 'utf8');
+  assert.match(scene, /setDeviceVisual\(deviceVisual\)/, 'the scene wires the two together');
+  assert.match(scene, /function rackView/, 'and can stand in front of a rack');
+  assert.match(scene, /rackView\s*\}/, 'exposing it on the scene handle');
+});
+
 console.log(fail ? `\nFAIL: ${fail} check(s)` : '\nok - every photograph is of the model it is attached to');
 process.exit(fail ? 1 : 0);

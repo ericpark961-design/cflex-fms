@@ -47,6 +47,10 @@ export const EN = {
     'This server has no copilot endpoint (/v1/fms/copilot) deployed yet.',
   '원장': 'Ledger',
   // #/devices inventory tree
+  '랙 실장': 'Rack layout',
+  '랙 전면 보기': 'Front view',
+  '랙 실장도': 'Rack elevation',
+  'U 위치 미지정': 'No U position',
   '후면부': 'Rear panel',
   '전면': 'Front',
   '후면': 'Rear',

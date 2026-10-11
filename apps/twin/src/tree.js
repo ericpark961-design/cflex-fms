@@ -118,3 +118,17 @@ export function totals(rows) {
   }
   return t;
 }
+
+/**
+ * Everything placed in the same rack as `d`.
+ *
+ * All four levels have to match, not just the rack name: "Rack A-04" is a name
+ * people reuse in every room they build, and matching on it alone put a Seoul
+ * switch in an Irvine elevation.
+ */
+export function rackMates(rows = [], d = {}) {
+  if (!d.rack || d.rack === '—') return [];
+  const same = (a, b) => (a || '') === (b || '');
+  return rows.filter(r => same(r.rack, d.rack) && same(r.room, d.room)
+    && same(r.location, d.location) && same(r.cbu, d.cbu));
+}
