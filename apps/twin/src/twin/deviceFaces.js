@@ -31,7 +31,7 @@ const C = {
   driveLed: '#4589ff',
 };
 
-import { apcModel, specLine } from './apcCatalog.js';
+import { catalogModel, catalogSpecLine, catalogNote } from './catalog.js';
 
 const APC = {
   bezel: '#0d1117',       // perforated front bezel
@@ -151,8 +151,13 @@ function rackEars(w, h) {
  */
 function apcFace({ entry, status }) {
   const e = entry;
+  // Never a hard-coded wordmark: a Cisco switch routed through here was drawn
+  // with "APC" on its faceplate.
+  const brand = (e.vendor || 'APC').toUpperCase();
   const w = 470;
-  const u = e.u || 2;
+  // A floor-standing cabinet, a CRAC and a chiller are not 2U. Falling back to
+  // the rack default drew a 2,000 mm EXM2 the same height as an SRT 3000.
+  const u = e.u || (e.form === 'cabinet' ? 8 : e.form === 'crac' ? 6 : e.form === 'chiller' || e.form === 'outdoor' ? 5 : e.form === 'tower' ? 4 : 2);
   const h = Math.max(44, u * U_PX + 10);
   const inner = { x: 16, y: 5, w: w - 32, h: h - 10 };
   const st = ['ok', 'warn', 'critical'].includes(status) ? status : 'nodata';
@@ -170,7 +175,7 @@ function apcFace({ entry, status }) {
     body = `
       <rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="${inner.h}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>
       <rect x="${inner.x + 6}" y="${inner.y + 5}" width="${inner.w - 130}" height="12" rx="1" fill="${APC.vent}"/>
-      <text x="${inner.x + 10}" y="${inner.y + 14}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      <text x="${inner.x + 10}" y="${inner.y + 14}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">${esc(brand)}</text>
       ${lcdPanel(inner.x + inner.w - 118, inner.y + 4, 112, 26, lcdLines)}
       ${Array.from({ length: bays }, (_, i) => {
         const by = inner.y + 22 + i * bayH;
@@ -181,7 +186,7 @@ function apcFace({ entry, status }) {
   } else if (e.family === 'xbp') {
     // A battery pack is the same bezel with no display.
     body = `${ventPanel(inner.x, inner.y, inner.w, inner.h)}
-      <text x="${inner.x + 10}" y="${inner.y + 16}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      <text x="${inner.x + 10}" y="${inner.y + 16}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">${esc(brand)}</text>
       <text x="${inner.x + 10}" y="${inner.y + 27}" font-family="system-ui,sans-serif" font-size="7" fill="${C.inkDim}">Smart-UPS XBP${e.vdc ? ` · ${e.vdc} VDC` : ''}</text>`;
   } else if (e.family === 'pdu') {
     // 0U vertical strip, drawn lying down so it fits the panel.
@@ -189,7 +194,7 @@ function apcFace({ entry, status }) {
     const ow = (inner.w - 90) / Math.max(1, n);
     body = `
       <rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="${inner.h}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>
-      <text x="${inner.x + 8}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      <text x="${inner.x + 8}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">${esc(brand)}</text>
       ${e.metered ? lcdPanel(inner.x + 34, inner.y + 4, 46, inner.h - 8, ['230 V', '11.2 A']) : ''}
       ${Array.from({ length: n }, (_, i) => {
         const ox = inner.x + (e.metered ? 86 : 40) + i * ow;
@@ -201,27 +206,182 @@ function apcFace({ entry, status }) {
   } else if (e.family === 'ats') {
     body = `
       <rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="${inner.h}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>
-      <text x="${inner.x + 8}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      <text x="${inner.x + 8}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">${esc(brand)}</text>
       ${lcdPanel(inner.x + 36, inner.y + 3, 120, inner.h - 6, ['Source A  230 V', 'Source B  231 V'])}
       ${Array.from({ length: e.outlets_c13 || 8 }, (_, i) =>
         `<rect x="${inner.x + 168 + i * 17}" y="${inner.y + inner.h / 2 - 7}" width="13" height="14" rx="1.5" fill="${APC.outlet}" stroke="${APC.bezelEdge}" stroke-width=".6"/>`).join('')}`;
   } else if (e.family === 'netbotz') {
     body = `${ventPanel(inner.x, inner.y, inner.w - 130, inner.h)}
-      <text x="${inner.x + 10}" y="${inner.y + 16}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      <text x="${inner.x + 10}" y="${inner.y + 16}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">${esc(brand)}</text>
       ${lcdPanel(inner.x + inner.w - 124, inner.y + 3, 118, inner.h - 6, ['NetBotz 750', '✓ Normal'])}`;
   } else if (e.family === 'nmc' || e.family === 'sensor') {
     body = `
       <rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="${inner.h}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>
-      <text x="${inner.x + 10}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">APC</text>
+      <text x="${inner.x + 10}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="${APC.mark}">${esc(brand)}</text>
       <text x="${inner.x + 44}" y="${inner.y + inner.h / 2 + 3}" font-family="system-ui,sans-serif" font-size="8" fill="${C.inkDim}">${esc(e.label)}</text>
       ${Object.keys(e.ports || {}).map((_, i) =>
         `<rect x="${inner.x + inner.w - 30 - i * 18}" y="${inner.y + inner.h / 2 - 6}" width="14" height="12" rx="1" fill="${C.port}" stroke="${C.portRim}" stroke-width=".7"/>`).join('')}`;
+  } else if (e.class === 'cooling' || e.class === 'heat_rejection') {
+    // A CRAC is a tall cabinet with a control display and a filter face; a
+    // chiller or dry cooler is a frame with a fan bank on top. Drawing either
+    // as a rack UPS was the reason all three CRACs in the ledger looked alike.
+    const isOutdoor = e.form === 'chiller' || e.form === 'outdoor';
+    body = `
+      <rect x="${inner.x}" y="${inner.y}" width="${inner.w}" height="${inner.h}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>
+      ${isOutdoor
+        ? fanBank(inner.x + 10, inner.y + 6, Math.min(26, inner.h / 2 - 4), Math.min(6, Math.floor((inner.w - 20) / 30)))
+          + `<rect x="${inner.x + 10}" y="${inner.y + inner.h / 2 + 4}" width="${inner.w - 20}" height="${inner.h / 2 - 10}" rx="2" fill="${APC.vent}" stroke="${APC.bezelEdge}" stroke-width=".8"/>`
+        : ventPanel(inner.x + 6, inner.y + 24, inner.w - 12, inner.h - 30)
+          + lcdPanel(inner.x + 8, inner.y + 4, 92, 18, [e.label.replace(/^Liebert\s*/, '')])
+          + `<text x="${inner.x + 108}" y="${inner.y + 16}" font-family="system-ui,sans-serif" font-size="7" fill="${C.inkDim}">${esc(e.airflow || '')}</text>`}
+      <text x="${inner.x + 8}" y="${h - 7}" font-family="system-ui,sans-serif" font-size="7" fill="${C.inkDim}">${esc(e.cooling || '')}${e.capacity ? ` · ${esc(e.capacity)}` : ''}</text>`;
   } else {
     // SRT and the other rack UPS: vent bezel with the LCD on the right.
     body = `${ventPanel(inner.x, inner.y, inner.w - 130, inner.h)}
-      <text x="${inner.x + 12}" y="${inner.y + inner.h - 10}" font-family="system-ui,sans-serif" font-size="9" font-weight="700" fill="${APC.mark}">APC</text>
+      <text x="${inner.x + 12}" y="${inner.y + inner.h - 10}" font-family="system-ui,sans-serif" font-size="9" font-weight="700" fill="${APC.mark}">${esc(brand)}</text>
       <text x="${inner.x + 12}" y="${inner.y + inner.h - 2}" font-family="system-ui,sans-serif" font-size="6" fill="${C.inkDim}">${esc(e.family === 'smx' ? 'Smart-UPS X' : 'Smart-UPS')}</text>
       ${lcdPanel(inner.x + inner.w - 124, inner.y + Math.max(2, (inner.h - 30) / 2), 118, Math.min(30, inner.h - 4), lcdLines)}`;
+  }
+
+  return { w, h, svg: `
+    <rect x="0" y="0" width="${w}" height="${h}" rx="3" fill="${C.face}" stroke="${C.faceEdge}" stroke-width="2"/>
+    ${rackEars(w, h)}
+    ${body}` };
+}
+
+// ── rear views ───────────────────────────────────────────────────────
+// What the sheets show on the back: the inlet, the outlet groups, the fans,
+// the management ports, the battery connector, the bypass switch. Drawn from
+// the same catalogue fields, so the rear of an 8-outlet unit has 8 outlets.
+
+const IEC = { c13: { w: 13, h: 11, label: 'C13' }, c19: { w: 17, h: 13, label: 'C19' } };
+
+function outletGroup(x, y, kind, n, groups) {
+  const g = IEC[kind];
+  const perGroup = groups > 1 ? Math.ceil(n / groups) : n;
+  let out = '';
+  let i = 0;
+  for (let gi = 0; gi < Math.max(1, groups); gi++) {
+    const gx = x + gi * (perGroup * (g.w + 3) + 14);
+    for (let k = 0; k < perGroup && i < n; k++, i++) {
+      const ox = gx + k * (g.w + 3);
+      out += `<rect x="${ox}" y="${y}" width="${g.w}" height="${g.h}" rx="1.5" fill="${APC.outlet}" stroke="${APC.bezelEdge}" stroke-width=".7"/>`
+        + `<rect x="${ox + 3}" y="${y + 2.5}" width="${g.w - 6}" height="${g.h - 5}" rx="1" fill="#000" opacity=".55"/>`;
+    }
+    if (groups > 1 && i <= n) {
+      out += `<text x="${gx}" y="${y - 3}" font-family="system-ui,sans-serif" font-size="5.5" fill="${C.inkDim}">GROUP ${gi + 1}</text>`;
+    }
+  }
+  return { svg: out, width: groups > 1 ? groups * (perGroup * (g.w + 3) + 14) : n * (g.w + 3) };
+}
+
+function fanBank(x, y, size, n) {
+  return Array.from({ length: n }, (_, i) => {
+    const cx = x + size / 2 + i * (size + 4);
+    const cy = y + size / 2;
+    const r = size / 2 - 1;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${APC.vent}" stroke="${APC.bezelEdge}" stroke-width=".8"/>`
+      + Array.from({ length: 5 }, (_, b) => {
+        const a = (b / 5) * Math.PI * 2;
+        return `<line x1="${cx}" y1="${cy}" x2="${(cx + Math.cos(a) * r * 0.85).toFixed(1)}" y2="${(cy + Math.sin(a) * r * 0.85).toFixed(1)}" stroke="${APC.bezelEdge}" stroke-width=".9"/>`;
+      }).join('')
+      + `<circle cx="${cx}" cy="${cy}" r="${(r * 0.22).toFixed(1)}" fill="${APC.bezelEdge}"/>`;
+  }).join('');
+}
+
+const PORT_LABEL = { network: 'NETWORK', serial: 'SERIAL', epo: 'EPO', usb: 'USB', console: 'CONSOLE',
+  sensor: 'SENSOR', alink: 'A-LINK', dry: 'DRY', intellislot: 'INTELLISLOT' };
+
+function portStrip(x, y, ports) {
+  let out = '';
+  let cx = x;
+  for (const [k, n] of Object.entries(ports || {})) {
+    for (let i = 0; i < n; i++) {
+      const round = k === 'usb';
+      out += round
+        ? `<rect x="${cx}" y="${y + 2}" width="11" height="7" rx="1" fill="${C.port}" stroke="${C.portRim}" stroke-width=".7"/>`
+        : `<rect x="${cx}" y="${y}" width="12" height="11" rx="1" fill="${C.port}" stroke="${C.portRim}" stroke-width=".7"/>`;
+      cx += 15;
+    }
+    out += `<text x="${cx - (n * 15) + 1}" y="${y - 3}" font-family="system-ui,sans-serif" font-size="5" fill="${C.inkDim}">${PORT_LABEL[k] || k.toUpperCase()}</text>`;
+    cx += 6;
+  }
+  return { svg: out, width: cx - x };
+}
+
+/** The back of a unit, from its catalogue entry's `rear` block. */
+function rearFace({ entry }) {
+  const r = entry.rear || {};
+  const w = 470;
+  const u = entry.u || (entry.form === 'cabinet' ? 8 : 2);
+  const h = Math.max(48, u * U_PX + 10);
+  const ix = 16, iy = 5, iw = w - 32, ih = h - 10;
+  let body = `<rect x="${ix}" y="${iy}" width="${iw}" height="${ih}" rx="2" fill="${APC.bezel}" stroke="${APC.bezelEdge}" stroke-width="1"/>`;
+  let cx = ix + 8;
+  const midY = iy + ih / 2;
+
+  if (r.fans) {
+    const size = Math.min(ih - 10, 30);
+    body += fanBank(cx, midY - size / 2, size, Math.min(r.fans, Math.floor((iw - 160) / (size + 4))));
+    cx += Math.min(r.fans, Math.floor((iw - 160) / (size + 4))) * (size + 4) + 8;
+  }
+  if (r.inlet) {
+    body += `<rect x="${cx}" y="${midY - 8}" width="20" height="16" rx="2" fill="${APC.outlet}" stroke="${APC.bezelEdge}" stroke-width=".8"/>`
+      + `<text x="${cx}" y="${midY - 11}" font-family="system-ui,sans-serif" font-size="5" fill="${C.inkDim}">INPUT</text>`
+      + `<text x="${cx}" y="${midY + 19}" font-family="system-ui,sans-serif" font-size="5" fill="${C.inkDim}">${esc(r.inlet)}</text>`;
+    cx += 30;
+  }
+  if (r.sources) {
+    for (let i = 0; i < r.sources; i++) {
+      body += `<rect x="${cx}" y="${midY - 8}" width="18" height="16" rx="2" fill="${APC.outlet}" stroke="${APC.bezelEdge}" stroke-width=".8"/>`
+        + `<text x="${cx}" y="${midY - 11}" font-family="system-ui,sans-serif" font-size="5" fill="${C.inkDim}">SRC ${String.fromCharCode(65 + i)}</text>`;
+      cx += 24;
+    }
+    cx += 4;
+  }
+  if (r.bypass) {
+    body += `<circle cx="${cx + 11}" cy="${midY}" r="11" fill="#2b2f36" stroke="${APC.bezelEdge}" stroke-width="1"/>`
+      + `<circle cx="${cx + 11}" cy="${midY}" r="7" fill="#b02a2a"/>`
+      + `<rect x="${cx + 10}" y="${midY - 6}" width="2" height="8" rx="1" fill="#f2f2f2"/>`
+      + `<text x="${cx}" y="${midY + 20}" font-family="system-ui,sans-serif" font-size="5" fill="${C.inkDim}">BYPASS</text>`;
+    cx += 30;
+  }
+  for (const term of r.terminals || []) {
+    body += `<rect x="${cx}" y="${midY - 10}" width="34" height="20" rx="2" fill="#1a1f26" stroke="${APC.bezelEdge}" stroke-width=".8"/>`
+      + [0, 1, 2, 3].map(i => `<circle cx="${cx + 6 + i * 7}" cy="${midY}" r="2.4" fill="${APC.outlet}" stroke="${APC.bezelEdge}" stroke-width=".5"/>`).join('')
+      + `<text x="${cx}" y="${midY - 13}" font-family="system-ui,sans-serif" font-size="4.6" fill="${C.inkDim}">${esc(term)}</text>`;
+    cx += 40;
+  }
+  if (r.outlets) {
+    for (const kind of ['c13', 'c19']) {
+      const n = r.outlets[kind];
+      if (!n) continue;
+      const g = outletGroup(cx, midY - IEC[kind].h / 2, kind, n, kind === 'c13' ? (r.groups || 1) : 1);
+      body += g.svg;
+      cx += g.width + 10;
+    }
+  }
+  if (r.ports) {
+    const p = portStrip(cx, midY - 5, r.ports);
+    body += p.svg;
+    cx += p.width + 6;
+  }
+  if (r.battery) {
+    body += `<rect x="${cx}" y="${midY - 9}" width="26" height="18" rx="2" fill="#1a1f26" stroke="#b02a2a" stroke-width="1"/>`
+      + `<circle cx="${cx + 8}" cy="${midY}" r="4" fill="#b02a2a"/><circle cx="${cx + 18}" cy="${midY}" r="4" fill="#2b2f36"/>`
+      + `<text x="${cx}" y="${midY + 20}" font-family="system-ui,sans-serif" font-size="5" fill="${C.inkDim}">BATTERY</text>`;
+    cx += 34;
+  }
+  if (r.piping) {
+    for (const pipe of r.piping) {
+      body += `<circle cx="${cx + 9}" cy="${midY}" r="9" fill="none" stroke="#b8860b" stroke-width="3"/>`
+        + `<text x="${cx - 2}" y="${midY + 22}" font-family="system-ui,sans-serif" font-size="4.6" fill="${C.inkDim}">${esc(pipe)}</text>`;
+      cx += 26;
+    }
+  }
+  if (r.mounting) {
+    body += Array.from({ length: 8 }, (_, i) =>
+      `<circle cx="${ix + 30 + i * 46}" cy="${midY}" r="3" fill="${APC.vent}" stroke="${APC.bezelEdge}" stroke-width=".7"/>`).join('');
   }
 
   return { w, h, svg: `
@@ -324,7 +484,7 @@ function genericFace({ label, model, kind }) {
  * Build a faceplate for one device.
  * @returns {{svg:string, w:number, h:number, caption:string}}
  */
-export function deviceFace({ kind, label, model, ports_total, ports_up, status } = {}) {
+export function deviceFace({ kind, label, model, ports_total, ports_up, status, view = 'front' } = {}) {
   const k = String(kind || 'other').toLowerCase();
   const name = label || '—';
   const mdl = model || '';
@@ -335,16 +495,38 @@ export function deviceFace({ kind, label, model, ports_total, ports_up, status }
   // module bays, outlet counts. A model that matches nothing is NOT drawn as
   // some other APC unit; it falls through to the generic panel and says the
   // model is unrecognised.
-  const entry = apcModel(mdl);
+  const entry = catalogModel(mdl);
   if (entry) {
-    const f = apcFace({ entry, status });
+    const hasRear = !!entry.rear;
+    // A switch is not a UPS. Power and cooling go to the bezel-and-LCD drawing;
+    // network, compute and passive gear go to the faces that have ports and
+    // drive bays, now with the catalogue's own port count and rack height.
+    const isNetwork = ['network', 'compute', 'passive'].includes(entry.class);
+    let f;
+    if (view === 'rear' && hasRear) f = rearFace({ entry });
+    else if (isNetwork) {
+      const p = entry.ports ?? total;
+      const upN = Math.max(0, Math.min(p || 0, up));
+      f = entry.kind === 'server' || entry.class === 'compute'
+        ? serverFace({ label: name, model: entry.label, bays: entry.drives?.match(/^(\d+)/)?.[1] ? Math.min(12, Number(entry.drives.match(/^(\d+)/)[1])) : 8 })
+        : entry.kind === 'patch'
+          ? patchFace({ label: name, model: entry.label, ports: p || 24 })
+          : entry.kind === 'sbc'
+            ? sbcFace({ label: name, model: entry.label, ports: p || 0, up: upN })
+            : switchFace({ label: name, model: entry.label, ports: p || 0, up: upN, kind: entry.kind === 'router' ? 'router' : 'switch' });
+      // Chassis switches are several U tall; the 1U faces are drawn taller.
+      if (entry.u > 2) f = { ...f, h: Math.max(f.h, entry.u * U_PX + 10) };
+    } else f = apcFace({ entry, status });
     return {
       ...f,
       svg: `<svg viewBox="0 0 ${f.w} ${f.h}" width="100%" preserveAspectRatio="xMidYMid meet"
-              role="img" aria-label="${esc(name)} ${esc(entry.label)} 전면부">${f.svg}</svg>`,
+              role="img" aria-label="${esc(name)} ${esc(entry.label)} ${view === 'rear' ? '후면부' : '전면부'}">${f.svg}</svg>`,
       entry,
-      caption: [entry.label, specLine(entry)].filter(Boolean).join(' · '),
-      note: entry.u_note || null,
+      hasRear,
+      view: (view === 'rear' && hasRear) ? 'rear' : 'front',
+      caption: [entry.label, catalogSpecLine(entry)].filter(Boolean).join(' · '),
+      note: catalogNote(entry),
+      rearNote: entry.rear?.note || null,
     };
   }
 

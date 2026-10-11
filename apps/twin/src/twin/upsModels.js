@@ -3,6 +3,7 @@
 // small tower (SMT/SMC/BR/Back-UPS). The front has an LCD (CanvasTexture) showing label, battery and load,
 // a status LED strip, and vent slots. Status 'nodata'/'unreachable' renders dim with "NO LINK".
 import * as THREE from 'three';
+import { catalogModel } from './catalog.js';
 import { iconIdForModel, UPS_ICON_META, upsTexture } from './upsIcons';
 
 export const U = 0.04445;            // 1U in metres
@@ -188,4 +189,19 @@ export function makeNetUnit(d) {
 
 // generic dispatcher used by makeRackSlot
 export function makeUnit(d) { return kindOf(d) === 'ups' ? makeUps(d) : makeNetUnit(d); }
-export function unitU(d) { if (kindOf(d) !== 'ups') return d.u_height || KIND_U[kindOf(d)] || 1; const m = UPS_ICON_META[iconIdForModel(d.model)]; return m.u || Math.ceil((0.44 / m.aspect) / U); }
+/**
+ * How many U a unit occupies in the 3D rack.
+ *
+ * Order of truth: the record's own u_height, then the equipment catalogue, then
+ * a per-kind default. The catalogue step is what stops a 7U Nexus 9500 chassis
+ * and a 1U Catalyst 9300 from being drawn the same height — KIND_U only knows
+ * "switch", which is not enough to draw a rack that matches the room.
+ */
+export function unitU(d) {
+  if (d.u_height) return d.u_height;
+  const cat = catalogModel(d.model);
+  if (cat?.u) return cat.u;
+  if (kindOf(d) !== 'ups') return KIND_U[kindOf(d)] || 1;
+  const m = UPS_ICON_META[iconIdForModel(d.model)];
+  return m.u || Math.ceil((0.44 / m.aspect) / U);
+}

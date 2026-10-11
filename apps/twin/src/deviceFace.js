@@ -9,7 +9,7 @@
 // the template language has no way to emit raw SVG.
 import { iconUrl, UPS_ICON_META } from './twin/upsIcons';
 import { deviceFace } from './twin/deviceFaces';
-import { apcModel, specLine } from './twin/apcCatalog';
+import { catalogModel, catalogSpecLine, catalogNote } from './twin/catalog';
 import { t } from './i18n';
 
 // The six models that have a photo-traced SVG (shared with 1.x). Everything
@@ -22,14 +22,14 @@ const TRACED = new Set(Object.keys(UPS_ICON_META));
  * @param root  the rendered screen
  * @param data  whatever deviceData()/netDeviceData() produced
  */
-export function mountDeviceFace(root, data) {
+export function mountDeviceFace(root, data, view = 'front') {
   const host = root?.querySelector('#device-face');
   if (!host) return;
   host.replaceChildren();
   const d = data?.d;
   if (!d) return;
   try {
-    host.appendChild(buildFace(data, d));
+    host.appendChild(buildFace(data, d, view, (next) => mountDeviceFace(root, data, next)));
   } catch (e) {
     // A faceplate is decoration. It must never be able to take the screen with
     // it: this used to throw out of useLayoutEffect, React unmounted the tree,
@@ -42,25 +42,30 @@ export function mountDeviceFace(root, data) {
   }
 }
 
-function buildFace(data, d) {
+function buildFace(data, d, view = 'front', onView = null) {
 
   const box = document.createElement('div');
   box.style.cssText = 'background:#1f1f1f;border:1px solid #333;padding:12px;display:flex;flex-direction:column;gap:8px';
 
   const head = document.createElement('div');
-  head.style.cssText = 'font-size:11px;color:#8d8d8d;font-weight:600;letter-spacing:.04em;text-transform:uppercase';
-  head.textContent = t('전면부');
+  head.style.cssText = 'display:flex;align-items:center;gap:8px';
+  const title = document.createElement('span');
+  title.style.cssText = 'font-size:11px;color:#8d8d8d;font-weight:600;letter-spacing:.04em;text-transform:uppercase';
+  title.textContent = view === 'rear' ? t('후면부') : t('전면부');
+  head.appendChild(title);
   box.appendChild(head);
 
   const art = document.createElement('div');
   art.style.cssText = 'background:#141414;padding:10px;display:grid;place-items:center;min-height:70px';
 
-  let caption; let note = null;
+  let caption; let note = null; let hasRear = false; let rearNote = null;
   if (data.isNet) {
     const f = deviceFace({
       kind: d.kindLabel, label: d.label, model: d.model === '—' ? '' : d.model,
-      ports_total: data.portsTotal, ports_up: data.portsUp,
+      ports_total: data.portsTotal, ports_up: data.portsUp, view,
     });
+    hasRear = !!f.hasRear;
+    rearNote = f.rearNote || null;
     art.innerHTML = f.svg;
     const svg = art.querySelector('svg');
     // The spec column is narrow (260px); the drawing scales to it rather than
@@ -68,8 +73,8 @@ function buildFace(data, d) {
     if (svg) svg.style.cssText = 'width:100%;height:auto;display:block';
     caption = f.caption;
   } else {
-    const entry = apcModel(d.model);
-    if (entry && TRACED.has(entry.id)) {
+    const entry = catalogModel(d.model);
+    if (entry && TRACED.has(entry.id) && view !== 'rear') {
       // A traced photo beats a drawing when one exists for this exact model.
       const meta = UPS_ICON_META[entry.id];
       const img = document.createElement('img');
@@ -77,11 +82,14 @@ function buildFace(data, d) {
       img.src = iconUrl(entry.id);
       img.style.cssText = `width:100%;max-width:${meta && meta.aspect < 1 ? 160 : 100}%;height:auto;display:block`;
       art.appendChild(img);
-      caption = [entry.label, specLine(entry)].filter(Boolean).join(' · ');
-      note = entry.u_note || null;
+      caption = [entry.label, catalogSpecLine(entry)].filter(Boolean).join(' · ');
+      note = catalogNote(entry);
+      hasRear = !!entry.rear;
     } else {
       // Drawn from the catalogue: rack height, display, module bays, outlets.
-      const f = deviceFace({ kind: 'ups', label: d.label, model: d.model === '—' ? '' : d.model, status: data.statusKey });
+      const f = deviceFace({ kind: 'ups', label: d.label, model: d.model === '—' ? '' : d.model, status: data.statusKey, view });
+      hasRear = !!f.hasRear;
+      rearNote = f.rearNote || null;
       art.innerHTML = f.svg;
       const svg = art.querySelector('svg');
       if (svg) svg.style.cssText = 'width:100%;height:auto;display:block';
@@ -90,6 +98,29 @@ function buildFace(data, d) {
     }
   }
   box.appendChild(art);
+
+  // The sheets give a rear view for most units; without a way to reach it the
+  // drawing was computed and never seen.
+  if (hasRear && onView) {
+    const tabs = document.createElement('div');
+    tabs.style.cssText = 'display:flex;border:1px solid #393939;width:max-content';
+    for (const [key, label] of [['front', t('전면')], ['rear', t('후면')]]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.setAttribute('aria-pressed', String(view === key));
+      b.style.cssText = `border:0;border-left:1px solid #393939;padding:4px 12px;font-size:11px;font-family:inherit;cursor:pointer;background:${view === key ? '#393939' : 'transparent'};color:#f4f4f4`;
+      b.addEventListener('click', () => onView(key));
+      tabs.appendChild(b);
+    }
+    head.appendChild(tabs);
+  }
+  if (view === 'rear' && rearNote) {
+    const rn = document.createElement('div');
+    rn.style.cssText = 'font-size:10px;color:#8d8d8d';
+    rn.textContent = rearNote;
+    box.appendChild(rn);
+  }
 
   const cap = document.createElement('div');
   cap.style.cssText = 'font-size:11px;color:#6f6f6f';

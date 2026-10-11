@@ -22,24 +22,33 @@
  */
 export const APC_CATALOG = [
   // ── Smart-UPS SRT, on-line double conversion (rack) ───────────────
-  { id: 'srt1000',  match: /SRT\s*1000/i,              label: 'Smart-UPS SRT 1000', family: 'srt', form: 'rack', u: 2, va: 1000, w: 900, topology: 'online', mgmt: 'NMC' },
-  { id: 'srt2200',  match: /SRT\s*2200/i,              label: 'Smart-UPS SRT 2200', family: 'srt', form: 'rack', u: 2, va: 2200, w: 1980, topology: 'online', mgmt: 'NMC' },
-  { id: 'srt3000',  match: /SRT\s*3000(?!XLI\s*\(T)/i, label: 'Smart-UPS SRT 3000', family: 'srt', form: 'rack', u: 2, va: 3000, w: 2700, depth_mm: 635, width_mm: 482.6, height_mm: 88.9, topology: 'online', mgmt: 'NMC' },
-  { id: 'srt5000',  match: /SRT\s*5000/i,              label: 'Smart-UPS SRT 5000', family: 'srt', form: 'rack', u: 3, u_with_xbp: 5, va: 5000, w: 4500, depth_mm: 635, topology: 'online', mgmt: 'NMC' },
-  { id: 'srt6000',  match: /SRT\s*6000/i,              label: 'Smart-UPS SRT 6000', family: 'srt', form: 'rack', u: 3, va: 6000, w: 5400, topology: 'online', mgmt: 'NMC' },
+  { id: 'srt1000',  match: /SRT\s*1000(?!0)/i,              label: 'Smart-UPS SRT 1000', family: 'srt', form: 'rack', u: 2, va: 1000, w: 900, topology: 'online', mgmt: 'NMC',
+    rear: { inlet: 'IEC C14', outlets: { c13: 6 }, groups: 2, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
+  { id: 'srt2200',  match: /SRT\s*2200/i,              label: 'Smart-UPS SRT 2200', family: 'srt', form: 'rack', u: 2, va: 2200, w: 1980, topology: 'online', mgmt: 'NMC',
+    rear: { inlet: 'IEC C20', outlets: { c13: 8 }, groups: 2, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
+  { id: 'srt3000',  match: /SRT\s*3000(?!XLI\s*\(T)/i, label: 'Smart-UPS SRT 3000', family: 'srt', form: 'rack', u: 2, va: 3000, w: 2700, depth_mm: 635, width_mm: 482.6, height_mm: 88.9, topology: 'online', mgmt: 'NMC',
+    rear: { inlet: 'IEC C20', outlets: { c13: 8, c19: 2 }, groups: 2, fans: 0, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
+  { id: 'srt5000',  match: /SRT\s*5000/i,              label: 'Smart-UPS SRT 5000', family: 'srt', form: 'rack', u: 3, u_with_xbp: 5, va: 5000, w: 4500, depth_mm: 635, topology: 'online', mgmt: 'NMC',
+    rear: { inlet: 'IEC C20', outlets: { c13: 8, c19: 4 }, groups: 2, fans: 1, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
+  { id: 'srt6000',  match: /SRT\s*6000/i,              label: 'Smart-UPS SRT 6000', family: 'srt', form: 'rack', u: 3, va: 6000, w: 5400, topology: 'online', mgmt: 'NMC',
+    rear: { inlet: 'IEC C20', outlets: { c13: 8, c19: 4 }, groups: 2, fans: 1, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
   { id: 'srt8000',  match: /SRT\s*8000/i,              label: 'Smart-UPS SRT 8000', family: 'srt', form: 'rack', u: 4, u_with_xbp: 5, va: 8000, w: 7200, depth_mm: 715, phase_in: 3, topology: 'online', mgmt: 'NMC',
-    u_note: '단품 4U(개별 SKU 시트) / 5U는 XBP 포함(라인업 시트)' },
+    u_note: '단품 4U(개별 SKU 시트) / 5U는 XBP 포함(라인업 시트)',
+    rear: { inlet: 'terminal 3φ', outlets: { c13: 8, c19: 4 }, groups: 2, fans: 3, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
   { id: 'srt10000', match: /SRT\s*10000/i,             label: 'Smart-UPS SRT 10000', family: 'srt', form: 'rack', u: 4, u_with_xbp: 6, va: 10000, w: 9000, depth_mm: 715, width_mm: 482.6, height_mm: 266.7, phase_in: 3, topology: 'online', mgmt: 'NMC',
-    u_note: '단품 4U / 6U는 확장 배터리 포함 구성' },
+    u_note: '단품 4U / 6U는 확장 배터리 포함 구성',
+    rear: { inlet: 'terminal 3φ', outlets: { c13: 8, c19: 4 }, groups: 2, fans: 3, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
 
   // External battery packs — a rack slot each, and no LCD.
-  { id: 'srt192xbp', match: /SRT192RMBP/i, label: 'Smart-UPS SRT XBP 192 VDC', family: 'xbp', form: 'rack', u: 3, vdc: 192, for: 'SRT 5/6 kVA' },
-  { id: 'srt240xbp', match: /SRT240RMBP/i, label: 'Smart-UPS SRT XBP 240 VDC', family: 'xbp', form: 'rack', u: 3, vdc: 240, for: 'SRT 8/10 kVA' },
+  { id: 'srt192xbp', match: /SRT192RMBP|XBP\s*192|192\s*VDC/i, label: 'Smart-UPS SRT XBP 192 VDC', family: 'xbp', form: 'rack', u: 3, vdc: 192, for: 'SRT 5/6 kVA',
+    rear: { battery: true, dc: '192 VDC', note: 'DC INPUT FROM UPS' } },
+  { id: 'srt240xbp', match: /SRT240RMBP|XBP\s*240|240\s*VDC/i, label: 'Smart-UPS SRT XBP 240 VDC', family: 'xbp', form: 'rack', u: 3, vdc: 240, for: 'SRT 8/10 kVA',
+    rear: { battery: true, dc: '240 VDC', note: 'DC INPUT FROM UPS' } },
   { id: 'srtxbp',    match: /\bXBP\b/i,    label: 'Smart-UPS SRT XBP',         family: 'xbp', form: 'rack', u: 2 },
 
   // ── Smart-UPS Ultra (lithium-ion) ─────────────────────────────────
-  { id: 'srtl3000', match: /SRTL\s*3000/i, label: 'Smart-UPS Ultra 3000 (Li-ion)', family: 'ultra', form: 'rack', u: 2, va: 3000, w: 3000, topology: 'online', mgmt: 'SmartSlot' },
-  { id: 'srtl5000', match: /SRTL\s*5000/i, label: 'Smart-UPS Ultra 5000 (Li-ion)', family: 'ultra', form: 'rack', u: 2, va: 5000, w: 5000, topology: 'online', mgmt: 'SmartSlot' },
+  { id: 'srtl3000', match: /SRTL\s*3000|Smart-UPS\s*Ultra\s*3000/i, label: 'Smart-UPS Ultra 3000 (Li-ion)', family: 'ultra', form: 'rack', u: 2, va: 3000, w: 3000, topology: 'online', mgmt: 'SmartSlot' },
+  { id: 'srtl5000', match: /SRTL\s*5000|Smart-UPS\s*Ultra\s*5000/i, label: 'Smart-UPS Ultra 5000 (Li-ion)', family: 'ultra', form: 'rack', u: 2, va: 5000, w: 5000, topology: 'online', mgmt: 'SmartSlot' },
 
   // ── Smart-UPS Modular Ultra, 3-phase ──────────────────────────────
   { id: 'modular5k',  match: /Modular\s*Ultra\s*5\s*kW|SRYLF5K/i,  label: 'Smart-UPS Modular Ultra 5 kW',  family: 'modular', form: 'rack', u: 2, kw: 5,  phase_in: 3, phase_out: 3 },
@@ -47,20 +56,22 @@ export const APC_CATALOG = [
   { id: 'modular12k', match: /Modular\s*Ultra\s*12\s*kW|SRYLF12K/i, label: 'Smart-UPS Modular Ultra 12 kW', family: 'modular', form: 'rack', u: 4, kw: 12, phase_in: 3, phase_out: 3 },
   { id: 'modular15k', match: /Modular\s*Ultra\s*15|SRYLF15K|SRYL15K/i, label: 'Smart-UPS Modular Ultra 15 kW', family: 'modular', form: 'rack', u: 7, kw: 15,
     width_mm: 482, height_mm: 311, depth_mm: 700, phase_in: 3, phase_out: 3, volts: '380–415 V', modules: 3, module_kw: 5, efficiency: '97%', redundancy: 'N+1',
-    u_note: '7U(치수 명시 시트) / 5U로 적힌 라인업 시트도 있음' },
+    u_note: '7U(치수 명시 시트) / 5U로 적힌 라인업 시트도 있음',
+    rear: { inlet: 'terminal 3φ', bypass: true, fans: 2, ports: { network: 1, dry: 1 }, terminals: ['AC INPUT', 'BYPASS INPUT', 'AC OUTPUT'] } },
   { id: 'modular20k', match: /Modular\s*Ultra\s*20|SRYLF20K|SRYL20K/i, label: 'Smart-UPS Modular Ultra 20 kW', family: 'modular', form: 'rack', u: 7, kw: 20,
-    width_mm: 482, height_mm: 311, depth_mm: 700, phase_in: 3, phase_out: 3, volts: '380–415 V', modules: 2, module_kw: 10, efficiency: '97%', redundancy: 'N+1' },
+    width_mm: 482, height_mm: 311, depth_mm: 700, phase_in: 3, phase_out: 3, volts: '380–415 V', modules: 2, module_kw: 10, efficiency: '97%', redundancy: 'N+1',
+    rear: { inlet: 'terminal 3φ', bypass: true, fans: 2, ports: { network: 1, dry: 1 }, terminals: ['AC INPUT', 'BYPASS INPUT', 'AC OUTPUT'] } },
 
   // ── Smart-UPS line-interactive ────────────────────────────────────
   { id: 'smx',  match: /Smart-UPS\s*X\b|\bSMX\s*\d/i,            label: 'Smart-UPS X',   family: 'smx', form: 'rack', u: 2, va_range: '750–3000 VA', topology: 'line-interactive' },
   { id: 'smtrm', match: /SMT\s*\d+\s*RM|Smart-UPS\s*SMT.*Rack/i,    label: 'Smart-UPS SMT (Rackmount)', family: 'smt', form: 'rack', u: 2, va_range: '750–3000 VA', topology: 'line-interactive' },
-  { id: 'smt',  match: /\bSMT\s*\d/i,                            label: 'Smart-UPS SMT (Tower)', family: 'smt', form: 'tower', u: null, va_range: '750–3000 VA', topology: 'line-interactive' },
+  { id: 'smt',  match: /\bSMT\s*\d|Smart-UPS\s*SMT\b/i,                            label: 'Smart-UPS SMT (Tower)', family: 'smt', form: 'tower', u: null, va_range: '750–3000 VA', topology: 'line-interactive' },
   { id: 'smc',  match: /\bSMC\s*\d|Smart-UPS\s*C\b/i,            label: 'Smart-UPS C / SMC', family: 'smc', form: 'rack', u: 1, va_range: '750–1500 VA', topology: 'line-interactive' },
 
   // ── Easy UPS ──────────────────────────────────────────────────────
   { id: 'srvrm', match: /SRVRM/i,        label: 'Easy UPS SRVRM', family: 'srv', form: 'rack', u: 2, va_range: '1–10 kVA', topology: 'online' },
-  { id: 'srv',   match: /\bSRV\s*\d/i,      label: 'Easy UPS SRV',   family: 'srv', form: 'rack', u: 2, va_range: '1–10 kVA', topology: 'online' },
-  { id: 'src',   match: /\bSRC\s*\d/i,      label: 'Smart-UPS SRC',  family: 'src', form: 'rack', u: 2, va: 3000, w: 2700, topology: 'online' },
+  { id: 'srv',   match: /\bSRV\s*\d|Easy\s*UPS\s*SRV\b/i,      label: 'Easy UPS SRV',   family: 'srv', form: 'rack', u: 2, va_range: '1–10 kVA', topology: 'online' },
+  { id: 'src',   match: /\bSRC\s*\d|Smart-UPS\s*SRC\b/i,      label: 'Smart-UPS SRC',  family: 'src', form: 'rack', u: 2, va: 3000, w: 2700, topology: 'online' },
   { id: 'smv',   match: /\bSMV\s*\d|Easy\s*UPS\s*SMV/i, label: 'Easy UPS SMV', family: 'easy', form: 'tower', u: null, va_range: '1000–3000 VA', topology: 'line-interactive' },
   { id: 'bvx',   match: /\bBVX|\bBV\s*\d|Easy\s*UPS\s*BV/i, label: 'Easy UPS BV / BVX', family: 'easy', form: 'tower', u: null, va_range: '650–1600 VA', topology: 'line-interactive' },
 
@@ -79,20 +90,26 @@ export const APC_CATALOG = [
 
   // ── Rack PDU / ATS ────────────────────────────────────────────────
   { id: 'pdu_switched', match: /AP89\d\d|Switched\s*Rack\s*PDU/i, label: 'Switched Rack PDU', family: 'pdu', form: 'zero_u', u: 0,
-    outlets_c13: 20, outlets_c19: 4, input: '200–240 V, 32 A (IEC 60309)', rating_kw: 7.4, metered: true, switched: true, network: true },
+    outlets_c13: 20, outlets_c19: 4, input: '200–240 V, 32 A (IEC 60309)', rating_kw: 7.4, metered: true, switched: true, network: true,
+    rear: { mounting: true, note: '랙 마운팅 브래킷' } },
   { id: 'pdu_metered',  match: /AP88\d\d|Metered\s*Rack\s*PDU/i,  label: 'Metered Rack PDU',  family: 'pdu', form: 'zero_u', u: 0,
-    outlets_c13: 20, outlets_c19: 4, input: '200–240 V, 32 A (IEC 60309)', rating_kw: 7.4, metered: true, network: true },
+    outlets_c13: 20, outlets_c19: 4, input: '200–240 V, 32 A (IEC 60309)', rating_kw: 7.4, metered: true, network: true,
+    rear: { mounting: true, note: '랙 마운팅 브래킷' } },
   { id: 'pdu_basic',    match: /AP75\d\d|Basic\s*Rack\s*PDU/i,    label: 'Basic Rack PDU',    family: 'pdu', form: 'zero_u', u: 0,
-    outlets_c13: 20, outlets_c19: 4, input: '200–240 V, 32 A (IEC 60309)', rating_kw: 7.4 },
+    outlets_c13: 20, outlets_c19: 4, input: '200–240 V, 32 A (IEC 60309)', rating_kw: 7.4,
+    rear: { mounting: true, note: '랙 마운팅 브래킷' } },
   { id: 'rack_ats',     match: /AP44\d\d|Rack\s*ATS/i,            label: 'Rack ATS',          family: 'ats', form: 'rack', u: 1,
-    outlets_c13: 8, input: '200–240 V, 16 A (dual input)', transfer_ms: 10, network: true },
+    outlets_c13: 8, input: '200–240 V, 16 A (dual input)', transfer_ms: 10, network: true,
+    rear: { sources: 2, outlets: { c13: 8 }, note: 'Source A / Source B → Output to Load' } },
 
   // ── Monitoring and sensors ────────────────────────────────────────
   { id: 'netbotz750', match: /NetBotz\s*750|NBES7550/i, label: 'NetBotz 750', family: 'netbotz', form: 'rack', u: 1,
     width_mm: 432, height_mm: 44, depth_mm: 236, weight_kg: 3.6, sensors_max: 78,
-    ports: { ethernet: 1, sensor: 4, alink: 2, usb: 1, console: 1 } },
+    ports: { ethernet: 1, sensor: 4, alink: 2, usb: 1, console: 1 },
+    rear: { inlet: 'IEC C14', ports: { network: 1, usb: 1, sensor: 4, alink: 2, console: 1 } } },
   { id: 'nmc3',       match: /AP964\d|Network\s*Management\s*Card|\bNMC\b/i, label: 'Network Management Card 3', family: 'nmc', form: 'card', u: null,
-    width_mm: 121, height_mm: 38, depth_mm: 114, weight_kg: 0.1, ports: { ethernet: 1 } },
+    width_mm: 121, height_mm: 38, depth_mm: 114, weight_kg: 0.1, ports: { ethernet: 1 },
+    rear: { ports: { network: 1 }, note: 'SmartSlot 삽입형' } },
   { id: 'sensor_th',  match: /AP9335T|Temperature\s*&?\s*Humidity/i, label: 'Temperature & Humidity Sensor', family: 'sensor', form: 'sensor', u: null,
     range: '-20 ~ 80 °C (±0.5), 0–100 %RH (±3)', ports: { rj12: 1 } },
   { id: 'sensor_leak', match: /AP9335W|Leak\s*(Rope|Sensor)/i, label: 'Leak Rope / Leak Sensor', family: 'sensor', form: 'sensor', u: null,
