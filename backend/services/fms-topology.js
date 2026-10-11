@@ -71,7 +71,11 @@ function getTopology(db, tenantId, cbu) {
     const dev = {
       id: `fd-${n.id}`, label: n.label, kind: n.kind, vendor: n.vendor, model: n.model,
       serial: n.serial, ip: n.ip, status: n.status || 'nodata',
-      u_pos: n.u_pos, u_height: n.u_height ?? 1,
+      // NULL is passed through, not defaulted. Substituting 1 here hid "height
+      // unknown" behind a number AND made the client's equipment-catalogue
+      // lookup unreachable, because the value was always truthy — which is why
+      // a 7U Nexus 9500 chassis drew as a 1U slab.
+      u_pos: n.u_pos, u_height: n.u_height ?? null,
       ports_total: n.ports_total, ports_up: n.ports_up, attrs: parseAttrs(n.attrs),
     };
     const target = (n.rack_id != null && objById.get(n.rack_id))
@@ -86,7 +90,7 @@ function getTopology(db, tenantId, cbu) {
       battery_pct: d.battery_pct, load_pct: d.load_pct, temp_c: d.temp_c,
       // vendor/model drive which photo-traced icon the 3D unit wears.
       vendor: d.vendor, model: d.model, kind: 'ups',
-      u_pos: d.u_pos, u_height: d.u_height ?? 2,
+      u_pos: d.u_pos, u_height: d.u_height ?? null,
     };
     // rack_id wins; otherwise fall back to the v2 string match.
     const target = (d.rack_id != null && objById.get(d.rack_id))

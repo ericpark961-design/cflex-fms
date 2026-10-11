@@ -322,6 +322,30 @@ console.log('ups registration (부록 K1)');
   });
 }
 
+console.log('u_height passthrough');
+{
+  const d = makeDb();
+  T.importTopology(d, 10, {
+    cbu: 'KMX',
+    rooms: [{ location: 'L', name: 'R', objects: [{ name: 'A01', kind: 'rack', col: 1, row: 1 }],
+      devices: [
+        { label: 'CORE-1', kind: 'switch', rack: 'A01', u_pos: 40 },            // no u_height
+        { label: 'BIG-CHASSIS', kind: 'switch', rack: 'A01', u_pos: 20, u_height: 7 },
+      ] }],
+  }, { mode: 'merge' });
+
+  t('an unknown U height stays unknown instead of becoming 1', () => {
+    // Defaulting here hid "unknown" behind a number and, worse, made the
+    // client's equipment-catalogue lookup unreachable: the value was always
+    // truthy, so a 7U chassis drew as a 1U slab.
+    const devs = T.getTopology(d, 10, 'KMX').rooms[0].objects[0].devices;
+    const core = devs.find(x => x.label === 'CORE-1');
+    assert.strictEqual(core.u_height, null, 'null, not 1');
+    const big = devs.find(x => x.label === 'BIG-CHASSIS');
+    assert.strictEqual(big.u_height, 7, 'a recorded height is passed through unchanged');
+  });
+}
+
 console.log('heat');
 t('emits one cell per rack that has a reading, and skips the rest', () => {
   const cells = T.getHeat(db, 10, 'KMX', 'load')[0].cells;
