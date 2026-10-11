@@ -1,0 +1,49 @@
+cbu,label,ip,snmp_version,answered,rtt_ms,nmc_version,sys_descr,failure,route_used,probe_host,surveyed_at
+,BULK-TEST-01,10.99.99.1,2c,no,1008,,,no-route,10.99.99.1 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+,BULK-TEST-01,10.99.99.1,2c,no,1009,,,no-route,10.99.99.1 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HAEA_HQ,HAEA-IDF2-UPS,10.189.193.210,2c,no,1007,,,no-route,10.189.193.210 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HAEA_HQ,HAEA-IDF3-UPS,10.189.193.220,2c,no,1009,,,no-route,10.189.193.220 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HAEA_HQ,HAEA-IDF4-UPS,10.189.193.230,2c,no,1008,,,no-route,10.189.193.230 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HAEA_HQ,HAEA-IDF5-UPS,10.189.193.240,2c,no,1008,,,no-route,10.189.193.240 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HAEA_HQ,HAEA-MDF-UPS-A,10.189.193.196,2c,no,1008,,,no-route,10.189.193.196 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HAEA_HQ,HAEA-MDF-UPS-B,10.189.193.197,2c,no,1008,,,no-route,10.189.193.197 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,HMA UPS PG-A,10.112.0.76,2c,no,1007,,,no-route,10.112.0.76 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,HMA UPS PG-B,10.112.0.77,2c,no,1008,,,no-route,10.112.0.77 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,HMA UPS TC-A,10.112.5.21,2c,no,1007,,,no-route,10.112.5.21 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,HMA UPS TC-B,10.112.5.20,2c,no,1008,,,no-route,10.112.5.20 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 1W-A,10.112.3.155,2c,no,1008,,,no-route,10.112.3.155 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 1W-B,10.112.3.169,2c,no,1007,,,no-route,10.112.3.169 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 2E-A,10.112.7.21,2c,no,1008,,,no-route,10.112.7.21 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 2E-B,10.112.7.20,2c,no,1009,,,no-route,10.112.7.20 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 2W-A,10.112.9.39,2c,no,1008,,,no-route,10.112.9.39 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 2W-B,10.112.9.50,2c,no,1008,,,no-route,10.112.9.50 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 3E-A,10.112.11.139,2c,no,1007,,,no-route,10.112.11.139 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 3E-B,10.112.11.40,2c,no,1007,,,no-route,10.112.11.40 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 3W-A,10.112.13.44,2c,no,1008,,,no-route,10.112.13.44 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 3W-B,10.112.13.19,2c,no,1008,,,no-route,10.112.13.19 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 4E-A,10.112.15.74,2c,no,1008,,,no-route,10.112.15.74 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 4E-B,10.112.15.15,2c,no,1008,,,no-route,10.112.15.15 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 4W-A,10.112.17.186,2c,no,1009,,,no-route,10.112.17.186 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 4W-B,10.112.17.208,2c,no,1011,,,no-route,10.112.17.208 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 5E-A,10.112.19.136,2c,no,1008,,,no-route,10.112.19.136 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 5E-B,10.112.19.180,2c,no,1008,,,no-route,10.112.19.180 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 5W-A,10.112.21.157,2c,no,1008,,,no-route,10.112.21.157 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 5W-B,10.112.21.187,2c,no,1008,,,no-route,10.112.21.187 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 6E-A,10.112.23.155,2c,no,1008,,,no-route,10.112.23.155 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 6E-B,10.112.23.2,2c,no,1007,,,no-route,10.112.23.2 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 6W-A,10.112.25.32,2c,no,1008,,,no-route,10.112.25.32 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,IDF UPS 6W-B,10.112.25.20,2c,no,1007,,,no-route,10.112.25.20 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,MPOE UPS 1E-A,10.112.5.34,2c,no,1009,,,no-route,10.112.5.34 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+HMA,MPOE UPS 1E-B,10.112.5.19,2c,no,1010,,,no-route,10.112.5.19 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KMX,A01-UPS,10.60.1.13,2c,no,1008,,,no-route,10.60.1.13 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KMX,B07-UPS,10.60.1.14,2c,no,1007,,,no-route,10.60.1.14 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KMX,D01-UPS,10.60.1.15,2c,no,1008,,,no-route,10.60.1.15 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KMX,KMX-UPS-01,10.60.1.11,2c,no,1006,,,no-route,10.60.1.11 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KMX,KMX-UPS-02,10.60.1.12,2c,no,1008,,,no-route,10.60.1.12 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KUS,IDF1,10.119.141.25,2c,no,1008,,,no-route,10.119.141.25 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KUS,IDF2,10.119.142.237,2c,no,1008,,,no-route,10.119.142.237 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KUS,IDF3,10.119.143.129,2c,no,1008,,,no-route,10.119.143.129 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KUS,IDF4,10.119.144.7,2c,no,1007,,,no-route,10.119.144.7 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KUS,IDF5,10.119.145.9,2c,no,1009,,,no-route,10.119.145.9 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KUS,IDF6,10.119.146.135,2c,no,1009,,,no-route,10.119.146.135 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z
+KUS,IDF7,10.119.147.21,2c,no,1008,,,no-route,10.119.147.21 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 1001,cflex-v2-vm,2026-10-11T13:59:46.692Z

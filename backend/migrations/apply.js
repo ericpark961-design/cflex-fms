@@ -50,25 +50,30 @@ const files = fs.readdirSync(dir)
   .filter(f => !ONLY || f.startsWith(ONLY))
   .sort();
 
-if (!fs.existsSync(DB_PATH)) { console.error(`database not found: ${DB_PATH}`); process.exit(1); }
-const db = openDb(DB_PATH);
-let ran = 0, skipped = 0;
+module.exports = { statements, openDb };
 
-for (const f of files) {
-  const sql = fs.readFileSync(path.join(dir, f), 'utf8');
-  let stmts;
-  try { stmts = statements(sql); } catch (e) { console.log(`- ${f}: SKIPPED (${e.message})`); continue; }
-  let applied = 0, already = 0;
-  for (const s of stmts) {
-    try { db.exec(s); applied++; }
-    catch (e) {
-      if (/duplicate column name/i.test(e.message)) { already++; continue; }
-      console.error(`\n${f}\n  statement: ${s.slice(0, 120)}\n  error: ${e.message}`);
-      process.exit(1);
+if (require.main === module) {
+  if (!fs.existsSync(DB_PATH)) { console.error(`database not found: ${DB_PATH}`); process.exit(1); }
+  const db = openDb(DB_PATH);
+  let ran = 0, skipped = 0;
+
+  for (const f of files) {
+    const sql = fs.readFileSync(path.join(dir, f), 'utf8');
+    let stmts;
+    try { stmts = statements(sql); } catch (e) { console.log(`- ${f}: SKIPPED (${e.message})`); continue; }
+    let applied = 0, already = 0;
+    for (const s of stmts) {
+      try { db.exec(s); applied++; }
+      catch (e) {
+        if (/duplicate column name/i.test(e.message)) { already++; continue; }
+        console.error(`\n${f}\n  statement: ${s.slice(0, 120)}\n  error: ${e.message}`);
+        process.exit(1);
+      }
     }
+    ran += applied; skipped += already;
+    console.log(`- ${f}: ${applied} applied, ${already} already present`);
   }
-  ran += applied; skipped += already;
-  console.log(`- ${f}: ${applied} applied, ${already} already present`);
+  console.log(`\n${files.length} file(s), ${ran} statement(s) applied, ${skipped} already present`);
+  db.close?.();
+
 }
-console.log(`\n${files.length} file(s), ${ran} statement(s) applied, ${skipped} already present`);
-db.close?.();

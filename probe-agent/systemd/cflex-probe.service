@@ -1,0 +1,27 @@
+[Unit]
+Description=cflex-probe — RingOn C-Flex FMS customer-site probe agent
+Documentation=https://github.com/ericpark961-design/cflex-probe
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cflex
+Group=cflex
+WorkingDirectory=/opt/cflex-probe
+EnvironmentFile=/opt/cflex-probe/.env
+ExecStart=/usr/bin/node /opt/cflex-probe/src/index.js
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/cflex-probe.log
+StandardError=append:/var/log/cflex-probe.err
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/cflex-probe/data /var/log
+
+[Install]
+WantedBy=multi-user.target

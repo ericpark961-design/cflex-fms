@@ -75,10 +75,10 @@ function symptomOf(alert) {
   return String(alert.metric || alert.message || 'unknown').toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 40);
 }
 
-function dedupKeyFor(alert) {
+function dedupKeyFor(alert, assetType = 'ups') {
   return sm.makeDedupKey({
     tenantId: alert.tenant_id,
-    asset: { type: 'ups', id: String(alert.device_id || '') },
+    asset: { type: assetType, id: String(alert.device_id || '') },
     severity: sm.priorityToSeverity(alert.priority),
     symptom: symptomOf(alert),
   });
@@ -91,7 +91,8 @@ function dedupKeyFor(alert) {
 function ensureIncidentForAlert(db, alert, opts = {}) {
   const device = opts.device || null;
   const severity = sm.priorityToSeverity(alert.priority);
-  const dedupKey = dedupKeyFor(alert);
+  const assetType = opts.assetType || 'ups';
+  const dedupKey = dedupKeyFor(alert, assetType);
   const now = Date.now();
 
   const active = db.prepare(`SELECT id FROM tickets
@@ -118,7 +119,7 @@ function ensureIncidentForAlert(db, alert, opts = {}) {
       VALUES (?,?,?,?,?,?,?,?,?, 'open', ?,?,?,?,?, 'alarm', ?, '[]', ?,?)`)
     .run(alert.tenant_id, ticketNo, device?.site || alert.site || null,
       alert.device_id || null, device?.label || alert.device_label || null,
-      alert.priority || 'P3', 'UPS', title.slice(0, 500), (alert.message || '').slice(0, 2000),
+      alert.priority || 'P3', opts.domain || 'UPS', title.slice(0, 500), (alert.message || '').slice(0, 2000),
       alert.metric || null,
       alert.value != null ? Number(alert.value) : null,
       alert.threshold != null ? Number(alert.threshold) : null,
