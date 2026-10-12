@@ -356,9 +356,23 @@ async function notify(alert) {
     }
     try { await expoPush.dispatch(alert, asset); } catch (e) { console.error("[alarm-notifier] expo-push:", e.message); }
 
-    // Fire-and-forget SMS via cflex-sms gateway (CFLEX_ALERT_TOKEN required).
-    // Independent of tenant fms_alarm_routes — always dispatched when token is set.
-    // Dedupe key = site|category so same on-battery event doesn't spam every poll.
+    // SMS via the cflex-sms gateway.
+    //
+    // This used to be "independent of tenant fms_alarm_routes — always
+    // dispatched when token is set", which meant an operator could set the SMS
+    // route to enabled=0, see it disabled on screen, and still receive every
+    // message. On 2026-10-11 that sent up to 22 texts an hour off 2,296
+    // reachability alarms from devices nobody can reach, and the only way to
+    // stop it was to delete the gateway token.
+    //
+    // The route table is now the single source of truth, the same as every
+    // other channel: no enabled sms route at the alarm's priority, no SMS.
+    // FMS_SMS_FORCE=1 restores the old behaviour for a tenant that has no
+    // routes configured yet.
+    const smsRule = rules.find(r => r.channel === 'sms' && shouldSend(r, alert.priority));
+    if (!smsRule && process.env.FMS_SMS_FORCE !== '1') {
+      return results;
+    }
     try {
       const site = asset?.location || asset?.label || 'unknown-site';
       const category = alert.metric || alert.device_id?.replace(/^ups-.*/, 'UPS') || 'FMS';
@@ -366,7 +380,7 @@ async function notify(alert) {
       const text = formatAlertMessage({ priority: alert.priority, site, category, detail });
       const dedupeKey = `${site}|${category}`;
       setImmediate(() => {
-        sendFmsAlert(text, { dedupeKey }).catch(e =>
+        sendFmsAlert(text, { dedupeKey, to: smsRule?.target || undefined }).catch(e =>
           console.error('[alarm-notifier] cflex-alert:', e.message));
       });
     } catch (e) { console.error('[alarm-notifier] cflex-alert build:', e.message); }

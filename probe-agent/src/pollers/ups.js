@@ -58,8 +58,15 @@ function evaluateAlerts(device, metrics, thresholds = DEFAULT_THRESHOLDS) {
 // Per-device reachability memory, so a device that has been down for six weeks
 // does not produce a fresh P2 on every cycle. It produced 3,594 alert rows in
 // October alone, which is not monitoring — it is a wall nobody can read.
+//
+// One alert per hour per device was still 41 an hour for this fleet, because
+// all 41 HAEA devices are unreachable and will stay that way until a probe is
+// placed inside their network. The interval therefore doubles each time: a
+// device that has just gone down is urgent, and one that has been down for a
+// fortnight is a fact, not news.
 const unreachableSince = new Map();
-const RE_ALERT_MS = 60 * 60 * 1000;
+const FIRST_RE_ALERT_MS = 60 * 60 * 1000;      // 1 h after the transition
+const MAX_RE_ALERT_MS = 24 * 60 * 60 * 1000;   // then 2, 4, 8, 16, capped at a day
 
 async function pollDevice(device) {
   const startedAt = Date.now();
@@ -77,19 +84,23 @@ async function pollDevice(device) {
       device_id: device.id, device_name: device.name, kind: 'ups',
       ts: Date.now(), ok: false, error: error || 'no metrics', took_ms: took,
     });
-    // Alert on the transition, then at most hourly while it stays down.
+    // Alert on the transition, then on a doubling interval while it stays down.
     const prev = unreachableSince.get(device.id);
-    if (!prev || Date.now() - prev.lastAlert >= RE_ALERT_MS) {
-      const downFor = prev ? Math.round((Date.now() - prev.since) / 60000) : 0;
+    const wait = prev ? prev.interval : 0;
+    if (!prev || Date.now() - prev.lastAlert >= wait) {
+      const downMin = prev ? Math.round((Date.now() - prev.since) / 60000) : 0;
+      const next = prev ? Math.min(prev.interval * 2, MAX_RE_ALERT_MS) : FIRST_RE_ALERT_MS;
       await forwarder.sendEvent('alert', {
         device_id: device.id, device_name: device.name,
         severity: 'P2', metric: 'reachability',
-        message: downFor
-          ? `UPS unreachable ${downFor}분 경과: ${why}`
+        message: prev
+          ? `UPS unreachable ${downMin}분 경과: ${why} (다음 알림 ${Math.round(next / 60000)}분 후)`
           : `UPS unreachable: ${why}`,
         ts: Date.now(),
       });
-      unreachableSince.set(device.id, { since: prev?.since || Date.now(), lastAlert: Date.now() });
+      unreachableSince.set(device.id, {
+        since: prev?.since || Date.now(), lastAlert: Date.now(), interval: next,
+      });
     }
     // The caller could not tell success from failure: both paths returned
     // undefined, so the cycle logged "41 ok, 0 fail" while every one of the 41

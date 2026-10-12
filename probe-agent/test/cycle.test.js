@@ -81,6 +81,33 @@ const t = async (name, fn) => {
       'and the next outage alarms again');
   });
 
+  await t('a device that stays down backs off instead of alarming forever', async () => {
+    // 41 devices unreachable for six weeks at one alert an hour each is 41 an
+    // hour, forever, for a condition nobody can act on until a probe is placed
+    // inside the customer network. The interval doubles instead.
+    sent.length = 0; answered = new Set();
+    ups.unreachableSince.clear();
+    const id = 42;
+    await ups.pollDevice({ id, name: 'LONG DOWN' });              // the transition
+    const first = ups.unreachableSince.get(id);
+    assert.equal(first.interval, 60 * 60 * 1000, 'the next one is an hour away');
+
+    // Pretend an hour passed, and keep pretending.
+    const seen = [];
+    for (let i = 0; i < 6; i++) {
+      const st = ups.unreachableSince.get(id);
+      ups.unreachableSince.set(id, { ...st, lastAlert: Date.now() - st.interval });
+      await ups.pollDevice({ id, name: 'LONG DOWN' });
+      seen.push(ups.unreachableSince.get(id).interval / 3600000);
+    }
+    assert.deepEqual(seen, [2, 4, 8, 16, 24, 24], 'doubling, capped at a day');
+    // 7 alerts over what would have been 55 hours, instead of 55.
+    assert.equal(sent.filter(s => s.kind === 'alert' && s.payload.severity === 'P2').length, 7);
+    const lastAlert = sent.filter(x => x.kind === 'alert').at(-1);
+    assert.match(lastAlert.payload.message, /다음 알림 \d+분 후/,
+      'and the message says when it will speak again');
+  });
+
   await t('the cycle is concurrent enough to finish inside the interval', async () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.js'), 'utf8');
     assert.match(src, /Promise\.all\(Array\.from\(\{ length: Math\.min\(cfg\.pollConcurrency/,
