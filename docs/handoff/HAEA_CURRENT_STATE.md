@@ -4,7 +4,7 @@
 
 **이 문서의 목적**: 설계 스펙이 **무엇을 만들어야 하는지**를 적은 문서라면, 이 문서는 **지금 무엇이 있는지**를 적은 문서다. 두 문서의 차이가 §9에 있고, 그게 실제 작업 목록이다.
 
-**대조 기준**: `CFLEX_FMS_OnPrem_Design_Spec_v1.3.md` (SPEC-CFLEX-HAEA-2026-1023 **v1.3** 검수본) + 부록 C `Appendix_C_Q3-2026_PM_Inventory_Seed.csv` (v1.3 보정본, sha256 `c614220d…`). v1.0 대비 추가분은 §9-D(3D 평면도 §4.4, 상용 제품화 §14)와 §9-E(PM 리포트 디지털화 §4.5 + 시드 검증)에 정리했다.
+**대조 기준**: `CFLEX_FMS_OnPrem_Design_Spec_v1.4.md` (SPEC-CFLEX-HAEA-2026-1023 **v1.4**) + 부록 C `Appendix_C_Q3-2026_PM_Inventory_Seed.csv` (v1.3 보정본, sha256 `c614220d…`). v1.0 대비 추가분은 §9-D(3D 평면도 §4.4, 상용 제품화 §14) · §9-E(PM 리포트 디지털화 §4.5 + 시드 검증) · §9-F(컨테이너 배포 §5-B)에 정리했다.
 
 **수량 기준 (v1.3 §1 — 혼용 금지)**
 
@@ -658,6 +658,89 @@ HAEA HQ  'UPS 17.0 (ID1225)'    'UPS 16.9, ID:1044'
 - **신규 B23**: Q3 시드 48행 + PDF 48건 임포트 (Exhibit 1 IP와 **시리얼로 조인** — 라벨로 조인하면 E-2 ②번 때문에 깨진다)
 - **신규 B24**: Symmetra 계열 배터리 수명 규칙 (R7이 SRT·Modular Ultra만 다룬다)
 - **B5(Exhibit 1 임포트)**가 커진다 — 시리얼 조인 + 중복 경고 + 프레임/MIM 2중 시리얼 + 라벨 정규화
+
+### F. v1.4 추가분 — 컨테이너 배포 프로파일(§5-B)
+
+**배포 방식의 기본이 바뀌었다.** Podman 컨테이너가 기본, §5의 베어 설치는 폴백이다. `cflex-install --profile container|bare`가 둘 다 처리한다.
+
+#### F-1. 저장소 현황 — 컨테이너 산출물 0건
+
+```
+Containerfile / Dockerfile       0건 (운영 `cflex-frontend/Dockerfile`은 저장소 밖)
+compose.yaml                     0건
+*.container / *.pod (Quadlet)    0건
+images/ 디렉터리                 0건
+scripts/build-offline-bundle.sh  0건
+```
+
+§5-B.4가 요구하는 레포 구조(`images/{collector,app,web,redis,postgres}/Containerfile`, `compose.yaml`, `quadlet/` 템플릿, 번들 빌드 스크립트)는 전부 신규다. 다만 **§9-A1(앱 베이스 들여오기)이 선행조건**이다 — `cflex/app` 이미지에 넣을 앱이 아직 저장소에 없다.
+
+#### F-2. 이미지 5종 대비 현재 코드
+
+| 이미지 | 베이스 | 들어갈 것 | 현재 |
+|---|---|---|---|
+| `cflex/collector` | `ubi8/nodejs-20` | SNMP 폴러 · **trap 리스너** · 로컬 큐 · 포워더 | `probe-agent/` 있음. **trap 리스너 없음**(§9-B2). 로컬 큐는 `better-sqlite3` → **UBI8 glibc로 사전 컴파일 필요** |
+| `cflex/app` | `ubi8/nodejs-20` | API · 워커 · 알람 · 리포트 · ITSM · SMTP/Teams | `backend/`는 독립 실행 불가(§2.3). **폰트 문제 있음 — F-3** |
+| `cflex/web` | `ubi8/nginx-122` | TLS 종단 · 정적 자산 · **3D 모델 `auth_request` 서빙** | `nginx/*.conf` 4종은 Azure 전제. `auth_request` 0건. twin 빌드 산출물은 정적이라 이식 쉬움 |
+| `cflex/redis` | `rhel8/redis-6` | 세션 · 큐 · 캐시, app01→app02 복제 | **Redis 사용 코드 0건**(§9-A5) |
+| `cflex/postgres` | `rhel8/postgresql-16` | DB + 마이그레이션 엔트리포인트 + 백업 사이드카 | **PostgreSQL 코드 0건**(§9-A3). 마이그레이션 6개가 SQLite 전용 문법 |
+
+#### F-3. 월간 리포트 폰트 — UBI8에서 한글이 공백으로 나온다
+
+§5-B.2는 app 이미지에 "헤드리스 크롬 대신 PDF 라이브러리 사용, **폰트 포함**"을 명시한다. 앞쪽은 이미 충족이고 뒤쪽은 깨져 있다.
+
+- **크롬 불필요 ✅** — `backend/services/fms-pdf-gen.js`는 `pdfkit`을 쓴다. 파일 안의 `chrome` 2건은 페이지 장식을 뜻하는 단어이고 브라우저가 아니다.
+- **폰트 ❌** — 경로가 하드코딩된 **Debian/Ubuntu 레이아웃**이다:
+
+```js
+const FONT_REG  = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf';
+const FONT_BOLD = '/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf';
+const HAS_KO = fs.existsSync(FONT_REG);
+...
+const FB = HAS_KO ? 'bold' : 'Helvetica-Bold';
+```
+
+현재 호스트가 Ubuntu 22.04라 그 경로가 존재한다(`fonts-nanum`). **RHEL 8은 그 경로가 아니고**(`naver-nanum-gothic-fonts`는 `/usr/share/fonts/naver-nanum/`), **UBI8 베이스 이미지에는 폰트가 거의 없다.** 저장소에도 `.ttf`/`.otf`가 0개다.
+
+→ 가드가 있어 **크래시는 안 하고 Helvetica로 떨어진다. 그래서 한글이 조용히 공백으로 렌더된다** — SOW Deliverable 6(월간 Executive Report)이 아무 오류 없이 깨진 PDF를 낸다. 가장 나쁜 실패 방식이다.
+
+**경로 해석은 고쳤다** (`fms-pdf-gen.js` + `fms-pdf-gen.test.js` 5종):
+
+```
+FMS_FONT_DIR (설정)                    → 명시값이 우선
+<release>/shared/fonts                 → 번들
+/opt/app/cflex/shared/fonts            → RHEL 온프레 번들 (§5-B)
+/usr/share/fonts/naver-nanum           → RHEL 8 패키지
+/usr/share/fonts/truetype/nanum        → Debian/Ubuntu 패키지
+```
+
+`NanumGothic` / `NanumBarunGothic` 양쪽 변형을 받고, Bold가 없으면 Regular로 폴백한다(null이면 `registerFont`에서 던진다). 그리고 **못 찾으면 로드 시점에 한 번 크게 경고한다** — 조건만이 아니라 *결과*("한글이 공백으로 렌더됨")와 조치법을 같이 적는다.
+
+**남은 것**: 실제 `.ttf` 파일을 번들에 넣는 일(B25). Nanum은 OFL 1.1이라 재배포 가능 — SBOM에 기재. 저장소에 폰트 바이너리를 커밋할지, 번들 빌드 때 받아올지는 §14-7 파이프라인 결정과 묶인다.
+
+#### F-4. §5-B가 새로 만드는 제약
+
+| 제약 | 지금 코드에 걸리는 지점 |
+|---|---|
+| **Docker 금지 / Podman rootless** | 운영은 pm2. 컨테이너 경험이 저장소에 없다 |
+| **UBI 베이스만** (Docker Hub·Alpine·Debian 금지) | `node:20-alpine` 같은 습관적 선택이 금지된다. `better-sqlite3`를 **UBI8 glibc**로 빌드해야 한다 (Alpine musl 아님) |
+| **rootless에서 UDP 162 바인딩** | trap 리스너가 1024 미만 포트를 요구한다. v1.4가 두 길을 준다 — `net.ipv4.ip_unprivileged_port_start=161` sysctl 또는 firewalld 162→1162 포워딩. **설치기가 선택·문서화.** trap 리스너 자체가 아직 없으므로(§9-B2) 설계 시점에 함께 결정할 것 |
+| **읽기 전용 루트 FS + tmpfs** | `fms-pdf-gen.js`가 `MEDIA_DIR`에 `mkdirSync`한다 → 호스트 볼륨으로 빼야 한다. `buffer.js`의 SQLite 큐도 동일 |
+| **로그 stdout → journald** | 현재 평문 `console.*` + pm2 파일 로그. §14-10의 JSON 구조화 로그와 같은 작업 |
+| **비루트 UID 1001 고정** | `cflex-probe.service`는 `User=cflex`. 컨테이너에서는 UID 숫자를 맞춰야 볼륨 권한이 맞는다 |
+| **`latest` 태그 금지, Quadlet에 고정 태그** | 릴리스 버전 체계가 없다(§14-6) |
+| **이미지 서명 + `podman image trust`** | 없다 |
+| **이미지 내부 패키지 패치 = RingOn 월 1회** | **운영 약정이 늘어난다.** 호스트 OS는 HAEA Satellite, 이미지 내부는 우리 책임. 월 1회 정기 리빌드 + 중요 CVE 수시 + 변경로그·스캔 리포트 동봉. SOW 갱신본에 명시해야 한다 |
+
+#### F-5. §9-A·B에 더하는 것
+
+- **A2(설치기·번들)**가 두 프로파일이 된다. 컨테이너 우선 검증, 베어는 같은 소스에서 함께 산출.
+- **A6(프로세스 관리)**가 systemd 유닛 → **Quadlet 유닛**으로 바뀐다. `probe-agent/systemd/cflex-probe.service`의 하드닝은 컨테이너 쪽으로 옮겨간다.
+- **신규 B25**: 폰트 `.ttf` 번들 포함 (F-3). **경로 해석·폴백 경고는 고쳤다**; 남은 건 파일을 번들에 넣는 일이다.
+- **신규 B26**: `better-sqlite3` UBI8 glibc 사전 컴파일 (A3로 PostgreSQL로 가도 **collector 로컬 큐는 남는다**).
+- **신규 B27**: 읽기 전용 루트 FS 대응 — 쓰기 경로를 전부 볼륨으로 외부화.
+- **신규 B28**: 이미지 서명·신뢰 정책, 월 1회 리빌드 파이프라인.
+- **신규 C6 (현장 전제)**: **HAEA가 Podman을 허용하는지 미확인** (§13-11). rootless 정책과 EDR 컨테이너 가시성도 함께. **거절되면 §5 베어 프로파일로 간다** — A2·A6의 작업량이 프로파일에 따라 갈린다.
 
 ### C. 현장 전제 (코드 아님, 일정 리스크)
 

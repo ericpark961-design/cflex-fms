@@ -8,9 +8,47 @@ const db = require('../config/database');
 const MEDIA_DIR = process.env.FMS_MEDIA_DIR || '/opt/cflex-v2/cflex-api/data/fms-reports';
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
-const FONT_REG  = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf';
-const FONT_BOLD = '/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf';
-const HAS_KO = fs.existsSync(FONT_REG);
+// Korean text needs a Korean font, and pdfkit's built-in Helvetica has no
+// Korean glyphs — it renders them as nothing at all. So a missing font does
+// not crash the report, it silently produces one with blank cells, which is
+// the worst way for SOW Deliverable 6 to fail.
+//
+// The path used to be hard-coded to the Debian layout
+// (/usr/share/fonts/truetype/nanum/), which exists on the current Ubuntu host
+// and does NOT exist on RHEL 8 (naver-nanum-gothic-fonts installs to
+// /usr/share/fonts/naver-nanum/) or in a UBI8 container, which ships almost no
+// fonts. Spec v1.4 §5-B.2 therefore requires the font INSIDE the app image.
+//
+// Search order: an explicit setting, then the bundle, then the two distro
+// layouts. Nanum is OFL 1.1, so bundling and redistributing it is allowed.
+const FONT_DIRS = [
+  process.env.FMS_FONT_DIR,                              // explicit, wins
+  path.join(__dirname, '..', 'shared', 'fonts'),         // repo / release layout
+  '/opt/app/cflex/shared/fonts',                         // RHEL on-prem bundle
+  '/usr/share/fonts/naver-nanum',                        // RHEL 8 package
+  '/usr/share/fonts/truetype/nanum',                     // Debian / Ubuntu package
+].filter(Boolean);
+
+function findFont(...names) {
+  for (const dir of FONT_DIRS) {
+    for (const n of names) {
+      const p = path.join(dir, n);
+      try { if (fs.existsSync(p)) return p; } catch { /* unreadable dir */ }
+    }
+  }
+  return null;
+}
+
+const FONT_REG = findFont('NanumGothic.ttf', 'NanumBarunGothic.ttf');
+const FONT_BOLD = findFont('NanumGothicBold.ttf', 'NanumBarunGothicBold.ttf') || FONT_REG;
+const HAS_KO = !!FONT_REG;
+
+if (!HAS_KO) {
+  // Loud, once, at load: a report that quietly drops every Korean character
+  // must not look like a successful run.
+  console.error('[fms-pdf-gen] NO KOREAN FONT FOUND — reports will render Korean text as BLANK. '
+    + 'Searched: ' + FONT_DIRS.join(', ') + '. Set FMS_FONT_DIR or bundle NanumGothic.ttf.');
+}
 
 // IBM Carbon palette
 const C = {
