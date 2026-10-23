@@ -63,7 +63,8 @@ a4485a1  s1: collect the rest of the room — PDU, NetBotz, network and CRAC
 
 | 디렉터리 | 역할 | 파일 수 | 독립 실행 |
 |---|---|---|---|
-| `backend/` | FMS API 라우트·서비스·마이그레이션 | 50 | **불가** (§2.3) |
+| `packages/notify/` | **알람 발송 9채널 — 독립 패키지** (DB·env·의존성 0) | 7 | **가능** |
+| `backend/` | FMS API 라우트·서비스·마이그레이션 | 52 | **불가** (§2.3) |
 | `apps/twin/` | `/twin` 3D·운영 콘솔 (Vite 8 + React 19) | 636 | **가능** |
 | `probe-agent/` | Node 수집기 (현장 설치용, 운영 중) | 27 | 가능 (의존성 설치 필요) |
 | `probe/` | Python 수집기 (Phase 0/1 별개 구현) | 22 | 가능 (pytest 필요) |
@@ -396,6 +397,26 @@ npm run dev                  # 터미널 2 — http://localhost:5174/twin/
 
 ### 7.4 알림 채널
 
+**`packages/notify/` 로 뽑아 놨다 (Codex 인계용).** DB·`process.env`·런타임 의존성 0개. `README.md`에 채널별 target 형식·설정 키·주입 슬롯·CLI가 다 있다.
+
+| | |
+|---|---|
+| 모듈 | `packages/notify/src/{index,channels,message,http}.js` |
+| CLI | `packages/notify/bin/cflex-notify.js` — `check` / `test --deliver` / `send`. **스펙 §5.2의 `cflex-install verify --send-test`가 쓸 명령** |
+| 테스트 | `packages/notify/test/notify.test.js` 14종, **네트워크 없음** (HTTP 클라이언트 주입) |
+| 어댑터 | `backend/services/notify-adapter.js` + 테스트 5종 — FMS `alert` 행 + `fms_alarm_routes` → 패키지 모양. **환경변수를 읽는 유일한 지점** |
+
+운영 `alarm-notifier.js`는 **그대로 뒀다** — 돌아가고 있고, 스프린트 중간에 바꿔서 얻을 게 없다. 어댑터가 같은 입력으로 두 구현을 비교할 수 있게 해준다.
+
+패키지가 **일부러 모르는 것**: 테넌트, 음소거 창, 중복 이력, 발송 로그, 에스컬레이션, 재시도, 로컬/포털 중복 발송 방지. 전부 DB가 필요하고 매니지드 포털과 온프레가 다르다.
+
+**온프레에서 걸리는 세 가지** (패키지가 `plan()`으로 발송 전에 보고한다):
+1. **SMS·LINE은 Sentinel Connect 경유** — LINE/Twilio 직접이 아니다. 폐쇄망에서 안 닿는다. 스펙이 "SMS는 포털 측 처리"라고 한 이유
+2. **이메일 전송 2종** — Resend(인터넷) / **SMTP(HAEA)**. SMTP sender는 주입식이라 패키지에 메일 의존성이 없다
+3. **프록시** — HTTP 클라이언트가 주입식이라 프록시 agent를 그 슬롯에 넣는다. 옛 코드는 `axios`를 모듈 스코프에서 import해서 불가능했다
+
+### 7.5 알림 채널 — 기존 구현 (운영 중)
+
 `backend/services/alarm-notifier.js` — 디스패처 9종: `line` `sms` `teams` `email` `slack` `discord` `pagerduty` `servicenow` `webhook`. 라우팅은 `fms_alarm_routes`(tenant, channel, min_priority, target, enabled, escalate_after_min, escalate_to), 발송 기록은 `fms_alarm_dispatch_log`.
 
 별도 SMS 경로: `backend/services/cflex-alert.js` → 외부 게이트웨이 (`site|category` 10분 쿨다운). **2026-10-12 기준 일시중단 상태** — 라우트 `enabled=0`을 무시하고 발송하던 결함을 고치고, 게이트웨이 토큰도 주석 처리했다 (커밋 `6c9cb6e`).
@@ -491,8 +512,8 @@ Python 수집기: **실행 못 함** — `pytest` 미설치 (`No module named py
 | **B4** | **배터리 EOL 90일** | 규칙 없음. `batteryReplace` 표시만 읽는다 |
 | **B5** | **Exhibit 1 XLSX 임포트** | 현재 JSON rows만. 시리얼 불일치 경고·프레임/MIM 2중 시리얼 없음 |
 | **B6** | **NMC 자동 탐지·제조일 추정** | 없음 (APC 시리얼 YYWW) |
-| **B7** | **ServiceNow eBonding** | 디스패처만. 우선순위 매핑·INC 번호 연결·테스트 티켓 없음 (**SOW 수락 기준**) |
-| **B8** | **Teams 프록시 경유** | 디스패처는 있으나 프록시 미지원, 라우트 행 없음 |
+| **B7** | **ServiceNow eBonding** | ⚠ **절반 됐다** — `packages/notify`가 Table API·P1→impact/urgency 1 매핑·`correlation_id`·**INC 번호 반환**을 한다. 남은 것: 알람↔INC 저장, 업데이트·종료 전이, `cflex-install`의 테스트 티켓 (**SOW 수락 기준**) |
+| **B8** | **Teams 프록시 경유** | ⚠ `packages/notify`가 HTTP 클라이언트 주입 슬롯을 제공한다 — 프록시 agent를 만들어 넣는 일만 남았다. 라우트 행은 여전히 없음 |
 | **B9** | **SAML SSO 준비** | 0건 |
 | **B10** | **역할 3종 (Admin/Operator/Viewer)** | 현재 5종, 이름 다름 |
 | **B11** | **유지보수 모드** | 장비 음소거만. 사이트·기간 단위 PM 억제 없음 |
