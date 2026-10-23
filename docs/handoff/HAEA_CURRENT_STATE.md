@@ -2,7 +2,9 @@
 
 2026-10-22 작성 · Claude Code ↔ Codex 공동 작업용 인계 문서
 
-**이 문서의 목적**: `CFLEX_FMS_HAEA_RHEL_Design_Spec_v1.md`(SPEC-CFLEX-HAEA-2026-1023 v1.0)가 **무엇을 만들어야 하는지**를 적은 문서라면, 이 문서는 **지금 무엇이 있는지**를 적은 문서다. 두 문서의 차이가 §9에 있고, 그게 실제 작업 목록이다.
+**이 문서의 목적**: 설계 스펙이 **무엇을 만들어야 하는지**를 적은 문서라면, 이 문서는 **지금 무엇이 있는지**를 적은 문서다. 두 문서의 차이가 §9에 있고, 그게 실제 작업 목록이다.
+
+**대조 기준**: `CFLEX_FMS_OnPrem_Design_Spec_v1.1.md` (SPEC-CFLEX-HAEA-2026-1023 **v1.1**). v1.0 대비 추가분(3D 평면도 뷰 §4.4, 상용 제품화 §14)은 §9-D에 따로 정리했다. v1.1은 성격이 바뀌었다 — **HAEA 1회성 커스텀이 아니라 C-Flex FMS 2.x 정식 온프레미스 에디션**이고, HAEA 고유 값은 전부 설정·데이터로 분리해 같은 번들로 KMX·GLOVIS·MPA·GENESIS에 배포할 수 있어야 한다.
 
 **작성 원칙**: 저장소를 읽고 테스트를 실제로 실행해 확인한 사실만 적었다. 비밀번호·토큰·인증서 개인키·SNMP community 값·webhook URL은 포함하지 않는다. 이 문서 작성 중 **운영 서버와 고객 VM은 변경하지 않았다** (읽기도 하지 않았다 — 전부 저장소 기준).
 
@@ -490,6 +492,71 @@ Python 수집기: **실행 못 함** — `pytest` 미설치 (`No module named py
 | **B15** | **AI 코파일럿/RCA** | 외부 LLM 의존 → **오프라인 HAEA에서 동작 불가.** 비활성화 또는 제외 결정 필요 |
 | **B16** | **용량 목표 검증** | 500 UPS / 50 사이트 / 10초 폴링 산정표 없음 (§4.5) |
 
+### D. v1.1 추가분 — 3D 평면도(§4.4) · 상용 제품화(§14)
+
+v1.0에는 없던 요구다. **`apps/twin/`이 범위 외가 아니라 필수 기능이 됐다.**
+
+#### D-1. 3D 평면도 뷰 (§4.4) — 기존 구현 이식
+
+| 요구 | 현재 `apps/twin/` | 차이 |
+|---|---|---|
+| 브라우저 WebGL | Three.js 0.169 (`src/twin/LedgerScene.js`) | ✅ 스택 일치. §13-9 "개발팀이 기재" 항목 = **Three.js 0.169 + React 19 + Vite 8**. 런타임 의존성 5개 라이선스: react·react-dom·three MIT, maplibre-gl **BSD-3-Clause**, lucide-react **ISC** — 전부 재배포 가능, SBOM 기재 필요 |
+| **CDN·외부 URL 호출 0건** | ❌ **3곳 위반** (아래) | **SAT #11 즉시 실패** |
+| 모델 포맷 GLB/glTF + Draco | ❌ **로더 없음.** 절차적 three.js 지오메트리 (타일 격자 + 박스 + 장비 사진 텍스처) | 로더·업로드·메타데이터 테이블 전부 신규 |
+| Admin 모델 업로드 | ❌ 없음 | 신규 |
+| 좌표 `(site, floor, x, y, z, rotation)` | `(col, row, w, d, face)` — 600 mm 타일 격자, **층(floor) 개념 없음** | 변환 + floor 계층 추가 |
+| Admin 드래그 배치 편집기 | ❌ 없음. 좌표는 원장 JSON 수동 편집 | 신규 |
+| Location 문자열 → 층/구역 초기 매핑 | ❌ 없음 | 신규 |
+| 미배치 목록 | ✅ `#/devices` 트리와 랙 실장도에 있음 (`U 위치 미지정`) | 층 단위로 확장 |
+| 마커 색상 = 알람 등급, 통신단절 회색 점멸 | ✅ 색상 있음 / ❌ 점멸 없음 | 부분 |
+| 클릭 → 상세 패널 (현재값·트렌드·알람·배터리 교체·PM) | ✅ 상세·트렌드·알람 / ❌ 배터리 교체 예정·PM 리포트 | 부분 |
+| 알람 시 해당 층 자동 포커스 | ❌ 객체 단위 `focus(name)`·`rackView(name)`은 있음. 층 개념이 없어 "층 포커스" 불가 | 부분 |
+| WebSocket/SSE | ❌ **30초 폴링** (`/v1/fms/alerts` 등) | 신규 또는 요구 완화 |
+| 2D 평면도 폴백 (저사양 PC) | ❌ `'top'` 카메라 프리셋은 WebGL 안에 있다. **WebGL이 없으면 아무것도 안 뜬다** | 신규 (같은 좌표의 2D 투영) |
+| 모바일/태블릿 터치 | ⚠ OrbitControls 기본 터치만. 미검증 | 검증 필요 |
+| 포털로 모델·좌표 동기 | ❌ 없음 | 신규 |
+| 모델 파일 로그인 사용자만 (nginx auth_request) | ❌ `/twin/` 정적 서빙, 인증 없음 | 신규 |
+| 민감 레이어 비공개 | ❌ 없음 | 신규 |
+
+**외부 URL 호출 3건 (오프라인 환경에서 깨지는 지점)**
+
+| 위치 | 호출 | 오프라인 결과 |
+|---|---|---|
+| `apps/twin/index.html:8-9` | `fonts.googleapis.com` (IBM Plex Sans KR) | 폰트 fallback — 화면은 뜨지만 타이포 깨짐 |
+| `apps/twin/src/MapScreen.jsx:17` | `tiles.openfreemap.org` (maplibre 타일) | **`#/map` 알람 지도 화면 전체 백지** |
+| `apps/twin/src/MapScreen.jsx:55` | `openfreemap.org`, `openstreetmap.org` (attribution 링크) | 링크만 죽음 |
+
+→ 폰트는 번들에 포함, 지도는 **타일을 번들에 넣거나 `#/map`을 온프레 에디션에서 제외**해야 한다. `frontend/public/us-{states,counties}-10m.json`(주·카운티 경계)이 이미 있어 오프라인 벡터 지도로 대체하는 길이 있다.
+
+미머지 브랜치 `fix/alarmmap-basemap-keyless`(`3edf0e1`, *replace CARTO basemap with keyless OpenFreeMap positron*)는 **HEAD의 조상이 아니다** — 그런데 HEAD의 `MapScreen.jsx`는 이미 OpenFreeMap을 쓴다. 즉 같은 변경이 다른 경로로 들어왔고, 그 브랜치는 HEAD보다 29,000줄 뒤처진 옛 상태다. **머지 대상이 아니라 정리 대상이다.**
+
+#### D-2. 상용 제품화 (§14) — 12개 요구 대비
+
+| # | 요구 | 현재 |
+|---|---|---|
+| 1 | 에디션 구조 (Cloud / On-Prem / Collector 어플라이언스) | ❌ 단일 배포. 에디션 개념·빌드 분기 없음 |
+| 2 | OS 매트릭스 RHEL 8.10 / 9.x / Rocky 9 + CI 3종 | ❌ CI는 워크플로 1개 (`.github/workflows/deploy-twin.yml`). OS 컨테이너 테스트 없음 |
+| 3 | **벤더 추상화 — UPS 드라이버 플러그인** | ⚠ **절반 있다.** `probe-agent/src/pollers/index.js`가 kind→collector 레지스트리이고 `oid-catalog.js`가 벤더별 OID를 분리한다. 단 UPS는 프로파일 2종(표준/APC) 하드코딩 — Eaton·Vertiv·Mitsubishi·Delta를 "드라이버 추가만으로" 넣는 구조는 아니다 |
+| 4 | 멀티테넌트 `tenant_id` + 사이트/건물/층/구역 | ⚠ `tenant_id`는 전 테이블에 있다. **층·구역 계층은 없다** (room → rack 2단) |
+| 5 | 설정 분리, 번들 고객 무관(동일 체크섬) | ❌ KMX 원장이 `apps/twin/src/demo/`에 **번들 내부**에 있다. `site.yaml` 개념 없음 |
+| 6 | SemVer + GPG 서명 + N-2 업그레이드 + 롤백 | ❌ 번들 자체가 없음 |
+| 7 | CI 오프라인 번들 재현 빌드 + SBOM + 취약점 스캔 | ❌ |
+| 8 | **SNMP 시뮬레이터로 44대+ E2E** | ⚠ **기반 완성.** `probe-agent/sim/` 4종(PDU·NetBotz·CRAC·스위치) + 운영측 UPS 시뮬 3종. **trap 생성은 없고**, 44대 동시 기동 하네스도 없다 |
+| 9 | 제품 문서 EN/KR 세트 | ❌ 개발 문서만 |
+| 10 | 관측성 — 헬스 엔드포인트, 구조화 로그(JSON) | ⚠ `GET /v1/fms/probes`·`channels/health` 있음. **로그는 평문 console** |
+| 11 | UI 다국어 EN/KR(+ES), 사이트별 TZ·단위 | ⚠ **KO/EN 완비** — 사전 663 키 / 사용 중 532 문자열, 미번역 0건을 `i18n.test.mjs` 게이트가 강제한다. ES 없음. °C 고정, TZ는 CBU 단위만 |
+| 12 | 3D 평면도 제품화 | D-1 참조 |
+
+#### D-3. v1.1이 §9-A·B에 더하는 것
+
+- **A3(PostgreSQL)**가 §14-4(층·구역 계층)와 묶인다 — 스키마를 두 번 고치지 않으려면 함께 설계할 것.
+- **A4(포털 mTLS)**에 §4.4의 "모델·좌표 포워딩"이 추가된다. 용량 상한 설정 포함.
+- **B15(AI 코파일럿)** 판단이 더 급해졌다 — §14-1의 에디션 구조에서 "On-Prem은 AI 없음"으로 분리하는 것이 가장 단순하다.
+- **신규 B17**: WebSocket/SSE (§4.4) — 현재 30초 폴링.
+- **신규 B18**: 오프라인 자산 번들화 (폰트·지도 타일) — SAT #11 통과 조건.
+- **신규 B19**: 층(floor) 계층 + 좌표 모델 전환 + Admin 배치 편집기.
+- **신규 B20**: trap 생성 시뮬레이터 (§14-8) — B2(trap 리스너)와 쌍이다.
+
 ### C. 현장 전제 (코드 아님, 일정 리스크)
 
 | # | 항목 | 상태 |
@@ -522,4 +589,4 @@ C1~C5는 스펙 §10·§13과 동일하며 이 문서가 추가할 정보는 없
 - 비밀번호·토큰·인증서 개인키·SNMP community 값·webhook URL — 의도적으로 제외
 - 운영 서버·고객 VM 상태 — 이 문서는 저장소만 보고 썼다
 - `cflex-shell/` `sentinel-api/` `ringonservice-net/` — HAEA 범위 외
-- `apps/twin/` 내부 상세 (3D·카탈로그·용량 모듈) — HAEA Phase 1의 로컬 대시보드 요구와 범위가 다르다. 재사용 여부는 별도 판단
+- `apps/twin/` 내부 상세 (카탈로그·용량 모듈의 모듈별 설명) — 분량 때문에 생략했다. **범위 판단은 §9-D에 있다**: v1.1 §4.4가 3D 평면도 뷰를 필수로 지정했으므로 twin은 범위 외가 아니다.
