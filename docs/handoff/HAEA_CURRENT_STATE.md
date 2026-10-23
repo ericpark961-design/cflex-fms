@@ -4,7 +4,17 @@
 
 **이 문서의 목적**: 설계 스펙이 **무엇을 만들어야 하는지**를 적은 문서라면, 이 문서는 **지금 무엇이 있는지**를 적은 문서다. 두 문서의 차이가 §9에 있고, 그게 실제 작업 목록이다.
 
-**대조 기준**: `CFLEX_FMS_OnPrem_Design_Spec_v1.2.md` (SPEC-CFLEX-HAEA-2026-1023 **v1.2**) + 부록 C `Appendix_C_Q3-2026_PM_Inventory_Seed.csv`. v1.0 대비 추가분은 §9-D(3D 평면도 §4.4, 상용 제품화 §14)와 §9-E(PM 리포트 디지털화 §4.7 + 시드 검증)에 정리했다. v1.1은 성격이 바뀌었다 — **HAEA 1회성 커스텀이 아니라 C-Flex FMS 2.x 정식 온프레미스 에디션**이고, HAEA 고유 값은 전부 설정·데이터로 분리해 같은 번들로 KMX·GLOVIS·MPA·GENESIS에 배포할 수 있어야 한다.
+**대조 기준**: `CFLEX_FMS_OnPrem_Design_Spec_v1.3.md` (SPEC-CFLEX-HAEA-2026-1023 **v1.3** 검수본) + 부록 C `Appendix_C_Q3-2026_PM_Inventory_Seed.csv` (v1.3 보정본, sha256 `c614220d…`). v1.0 대비 추가분은 §9-D(3D 평면도 §4.4, 상용 제품화 §14)와 §9-E(PM 리포트 디지털화 §4.5 + 시드 검증)에 정리했다.
+
+**수량 기준 (v1.3 §1 — 혼용 금지)**
+
+| 숫자 | 뜻 | 이 문서에서 |
+|---|---|---|
+| **44** | SOW Exhibit 1 계약 대수 | §14-8 시뮬레이터 E2E 목표 |
+| **41** | Exhibit 1 중 NMC IP 기재분 (방화벽 룰 대상) | 수집기가 실제 폴링하는 대수 |
+| **48** | Q3 2026 실사 대수 (부록 C 시드) | 카탈로그 커버리지 게이트 (`fleet.test.mjs`) |
+
+⚠ **`docs/snmp_reach_2026-10-11.csv`의 48행은 위의 48이 아니다.** 그건 당시 DB에 등록된 전 장비(HMA 28 + KUS 7 + HQ 6 + KMX 5 + 테스트 2)이고 숫자가 우연히 같다. 혼동을 막기 위해 §3.2에 명시했다. v1.1은 성격이 바뀌었다 — **HAEA 1회성 커스텀이 아니라 C-Flex FMS 2.x 정식 온프레미스 에디션**이고, HAEA 고유 값은 전부 설정·데이터로 분리해 같은 번들로 KMX·GLOVIS·MPA·GENESIS에 배포할 수 있어야 한다.
 
 **작성 원칙**: 저장소를 읽고 테스트를 실제로 실행해 확인한 사실만 적었다. 비밀번호·토큰·인증서 개인키·SNMP community 값·webhook URL은 포함하지 않는다. 이 문서 작성 중 **운영 서버와 고객 VM은 변경하지 않았다** (읽기도 하지 않았다 — 전부 저장소 기준).
 
@@ -186,7 +196,7 @@ npm run dev                  # 터미널 2 — http://localhost:5174/twin/
 
 | 기능 | 위치 | 검증 근거 |
 |---|---|---|
-| UPS SNMP 폴링 (v1/v2c/v3 authPriv) | `probe-agent/src/services/snmp-helpers.js`, `ups-metrics.js` | 운영 중 (41대 폴링, 전부 타임아웃 — 경로 없음) |
+| UPS SNMP 폴링 (v1/v2c/v3 authPriv) | `probe-agent/src/services/snmp-helpers.js`, `ups-metrics.js` | 운영 중 — **41대**(= Exhibit 1 중 IP 기재분) 폴링, 전부 타임아웃. 경로 없음(§9-C2) |
 | 폴링 동시성 (직렬 → bounded) | `probe-agent/src/index.js` | 420s → 44s 실측 |
 | 수집 성공/실패 정직 보고 | `probe-agent/src/pollers/ups.js` | `0 ok, 41 fail` (이전 `41 ok, 0 fail` 거짓보고 수정) |
 | store-and-forward 큐 | `probe-agent/src/buffer.js` | SQLite enqueue/dequeue/ack/fail/purgeOld |
@@ -211,7 +221,7 @@ npm run dev                  # 터미널 2 — http://localhost:5174/twin/
 | **AI 코파일럿·RCA** | `fms-copilot.js`(12 테스트), `fms-rca.js` — 외부 LLM 의존, HAEA 오프라인 환경에서 동작 불가 |
 | **ServiceNow eBonding** | `alarm-notifier.js`의 `dispatchServiceNow` 디스패처만. 인시던트 매핑·중복방지·테스트 티켓 기능 없음 |
 | **Teams 알림** | `dispatchTeams` 구현됨. 라우트 행 자체가 없어 미사용. 프록시 경유 미지원 |
-| **SNMP 도달성 조사** | `deploy/s1/snmp-reach.js` — 동작. 48대 전부 `no-route`로 확인됨 |
+| **SNMP 도달성 조사** | `deploy/s1/snmp-reach.js` — 동작. 당시 등록 장비 **48대 전부** `no-route` (HMA 28 + KUS 7 + HQ 6 + KMX 5 + 테스트 2 — **Q3 실사 48대와 다른 집합**, 숫자만 같다) |
 
 ### 3.3 미구현 (저장소에 코드 0건)
 
@@ -223,7 +233,7 @@ npm run dev                  # 터미널 2 — http://localhost:5174/twin/
 | **SNMP trap 리스너 (UDP 162)** | §3.1 — 저장소 전체 검색 결과 0건 |
 | **mTLS 포털 포워더** (`cflex-forwarder`) | §3.4 |
 | **App Active/Standby** (Redis 세션·무상태화·페일오버) | §3.2, §8 |
-| **SAML 2.0 SSO** | §3.2, §4.4 — `saml` 문자열 0건 |
+| **SAML 2.0 SSO** | §3.2, §4.6 — `saml` 문자열 0건 |
 | **Exhibit 1 XLSX 임포트** | §4.1 — `bulk-import`는 JSON rows만 |
 | **배터리 EOL 90일 알림** | §4.2 — 규칙 없음. `batteryReplace` OID는 읽지만 설치일·수명 계산 없음 |
 | **NMC 자동 탐지·시리얼 불일치 경고** | §4.1 |
@@ -232,7 +242,7 @@ npm run dev                  # 터미널 2 — http://localhost:5174/twin/
 | **유지보수 모드 (PM 억제)** | §4.2 — `fms_alarm_mutes`는 장비 단위 음소거뿐 |
 | **SELinux 정책 모듈 (.pp)** | §5.2 |
 | **감사로그 append-only** | §7 |
-| **비밀정보 암호화 저장 (마스터 키)** | §4.4 — 현재 `.env` 평문 |
+| **비밀정보 암호화 저장 (마스터 키)** | §4.6 — 현재 `.env` 평문 |
 
 ---
 
@@ -332,7 +342,7 @@ npm run dev                  # 터미널 2 — http://localhost:5174/twin/
 
 저장소 코드가 실제로 분기하는 값: `super_admin`(9회) · `admin`(9) · `fms_admin`(3) · `si_operator`(1) · `engineer`(1).
 
-스펙 §4.4는 **Admin / Operator / Viewer 3종**을 요구한다. 현재 역할 체계와 이름·수가 다르다. 매핑 설계 필요.
+스펙 §4.6은 **Admin / Operator / Viewer 3종**을 요구한다. 현재 역할 체계와 이름·수가 다르다. 매핑 설계 필요.
 
 ### 6.3 Collector (X-Probe-Key)
 
@@ -340,7 +350,7 @@ npm run dev                  # 터미널 2 — http://localhost:5174/twin/
 
 ### 6.4 비밀정보
 
-현재 전부 `.env` 평문 (`JWT_SECRET`, `CFLEX_ALERT_TOKEN`, SNMP community, SMTP/Slack/Teams 자격). 스펙 §4.4는 0600 + 암호화 저장 + systemd credential을 요구한다. 미구현.
+현재 전부 `.env` 평문 (`JWT_SECRET`, `CFLEX_ALERT_TOKEN`, SNMP community, SMTP/Slack/Teams 자격). 스펙 §4.6은 0600 + 암호화 저장 + systemd credential을 요구한다. 미구현.
 
 ---
 
@@ -557,11 +567,11 @@ v1.0에는 없던 요구다. **`apps/twin/`이 범위 외가 아니라 필수 �
 - **신규 B19**: 층(floor) 계층 + 좌표 모델 전환 + Admin 배치 편집기.
 - **신규 B20**: trap 생성 시뮬레이터 (§14-8) — B2(trap 리스너)와 쌍이다.
 
-### E. v1.2 추가분 — PM 리포트 디지털화(§4.7) + 시드 데이터 검증
+### E. v1.2/v1.3 추가분 — PM 리포트 디지털화(§4.5) + 시드 데이터 검증
 
-#### E-1. PM 모듈 (§4.7) — 전부 미구현
+#### E-1. PM 모듈 (§4.5) — 전부 미구현
 
-분기 PM이 지금은 유닛당 4쪽 Word/PDF 수작업이다 (Q3 2026: HMA 35 · KUS 7 · HAEA 6 = **48건**). v1.2는 이 양식을 제품 기능으로 흡수하라고 한다.
+분기 PM이 지금은 유닛당 4쪽 Word/PDF 수작업이다 (Q3 2026-10-02/05/06 실사: HMA 35 · KUS 7 · HAEA 6 = **48건**). v1.2/v1.3은 이 양식을 제품 기능으로 흡수하라고 한다.
 
 | 요구 | 현재 |
 |---|---|
@@ -573,7 +583,35 @@ v1.0에는 없던 요구다. **`apps/twin/`이 범위 외가 아니라 필수 �
 
 #### E-2. 시드 CSV 검증 — 규칙 7종을 실제로 걸어본 결과
 
-48행을 §4.7의 규칙에 걸었다. **5개는 스펙 기술과 일치, 1개는 시드에서 확인 불가, 1개는 스펙이 틀렸다.** 그리고 **스펙이 안 짚은 문제 4개**가 더 나왔다.
+48행을 §4.5의 규칙에 걸었다. **5개는 스펙 기술과 일치, 1개는 시드에서 확인 불가, 1개는 스펙이 틀렸다.** 그리고 **v1.3이 시드에서 보정한 것 — 제 검증이 놓친 종류**
+
+v1.3은 `HMA-UPS-MPOE-A` 한 행을 고쳤다. **열 밀림**이었다.
+
+| 열 | v1.2 | v1.3 |
+|---|---|---|
+| `mfg_date_reported` | `Manual` | (공란) |
+| `firmware` | `IE INFO RACK 4 (HMA MPOE UPS 1E-A)` | (공란) |
+| `note` | — | `chassis label mfg 2022-W48 (serial); Exhibit 1 lists S/N 5D2249T04846 (module)` |
+
+**펌웨어 열에 위치 문자열이 들어 있었고 제 R5 검사는 통과시켰다.** "비어 있나"만 봤기 때문이다. 위치 문자열은 비어 있지 않다.
+
+→ **임포트 검증기는 공란이 아니라 형태(shape)를 봐야 한다.** 그걸 넣고 다시 돌리니 5건이 더 나왔다:
+
+| 열 | 값 | 성격 |
+|---|---|---|
+| `firmware` | `BMC 16.0` (KUS IDF6) | UPS가 아닌 다른 컴포넌트 버전 — 오류 아님, 값 도메인 변이 |
+| `battery_strings` | `INTERNAL` ×4 (HAEA HQ 전 4대) | 내장 배터리. 숫자 열에 단어 → 타입이 `int | 'INTERNAL'`이다. 숫자로 파싱하면 한 사이트 전체가 NaN |
+
+그리고 `firmware`는 **자유 텍스트**다. 같은 세 가지 사실(컴포넌트·버전·ID)이 최소 5가지 표기로 들어 있고 **표기가 사이트별로 뭉친다** — 리포트를 타이핑한 사람별이다.
+
+```
+HMA      'UPS 16.9 (ID:1044)'   '16.9 (ID:1044)'   'BMC 16.0'
+HAEA HQ  'UPS 17.0 (ID1225)'    'UPS 16.9, ID:1044'
+```
+
+정규식으로 맞추려던 제 첫 시도는 방향이 틀렸다 — 한 표기를 고집하면 사이트 하나가 통째로 떨어진다. **정규화 파서**가 필요하고, 게이트는 "표기가 맞나"가 아니라 "(컴포넌트, 버전, ID)로 파싱되나"를 본다. 위치 문자열은 파싱되지 않으므로 같은 테스트가 v1.2의 열 밀림도 잡는다.
+
+**스펙이 안 짚은 문제 4개**가 더 나왔다.
 
 | 규칙 | 결과 |
 |---|---|
@@ -615,8 +653,8 @@ v1.0에는 없던 요구다. **`apps/twin/`이 범위 외가 아니라 필수 �
 
 #### E-4. §9-A·B에 더하는 것
 
-- **신규 B21**: PM 체크리스트 모듈 (§4.7 전체). 자동 채움 재료는 수집기에 이미 있다
-- **신규 B22**: 데이터 품질 규칙 7종 + E-2가 찾은 4종 = **11종**을 임포트 검증기로
+- **신규 B21**: PM 체크리스트 모듈 (§4.5 전체). 자동 채움 재료는 수집기에 이미 있다
+- **신규 B22**: 데이터 품질 규칙 7종 + E-2가 찾은 4종 + **열 형태 검증 3종**(열 밀림, 숫자 열의 `INTERNAL`, 자유텍스트 `firmware` 정규화) = **14종**을 임포트 검증기로. 공란 검사만으로는 열 밀림을 못 잡는다
 - **신규 B23**: Q3 시드 48행 + PDF 48건 임포트 (Exhibit 1 IP와 **시리얼로 조인** — 라벨로 조인하면 E-2 ②번 때문에 깨진다)
 - **신규 B24**: Symmetra 계열 배터리 수명 규칙 (R7이 SRT·Modular Ultra만 다룬다)
 - **B5(Exhibit 1 임포트)**가 커진다 — 시리얼 조인 + 중복 경고 + 프레임/MIM 2중 시리얼 + 라벨 정규화

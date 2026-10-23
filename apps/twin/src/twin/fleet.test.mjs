@@ -132,5 +132,83 @@ t('every surveyed unit has a usable rating for the capacity module', () => {
     'a UPS with no rating makes every headroom figure above it unanswerable');
 });
 
+
+t('a column holding the wrong kind of value is caught, not just an empty one', () => {
+  // The v1.2 seed had HMA-UPS-MPOE-A's LOCATION string sitting in the firmware
+  // column and the word 'Manual' in mfg_date_reported — a column shift. My
+  // first pass checked only for emptiness, so it passed: a location string is
+  // not empty. v1.3 corrected the row, and the lesson is that an importer has
+  // to validate the SHAPE of a field, not its presence.
+  const shape = {
+    serial: [/^[A-Z]{2}\d{10,}$/, 'two letters then ten or more digits'],
+    serial_yyww: [/^\d{4}$/, 'four digits, YYWW'],
+    pm_date: [/^\d{1,2}\/\d{1,2}\/\d{4}$/, 'M/D/YYYY'],
+    checks: [/^\d+$/, 'a count'],
+    fails: [/^\d+$/, 'a count'],
+    exhibit1: [/^[YN]$/, 'Y or N'],
+    // firmware is free text with per-site punctuation; see the parse test below.
+  };
+  const offenders = [];
+  for (const r of fleet) {
+    for (const [col, [re_, desc]] of Object.entries(shape)) {
+      if (!r[col]) continue;                       // emptiness is rule 5's job
+      if (!re_.test(r[col])) offenders.push(`${r.unit}.${col}=${JSON.stringify(r[col])} (expected ${desc})`);
+    }
+  }
+  assert.deepEqual(offenders, [], offenders.join('\n      '));
+});
+
+t('firmware is free text, so it is parsed rather than pattern-matched', () => {
+  // Chasing a regex here was the wrong instinct. The column carries the same
+  // three facts in at least five spellings, and the spellings cluster BY SITE
+  // — i.e. by whoever typed that site's reports:
+  //
+  //   HMA      'UPS 16.9 (ID:1044)'  '16.9 (ID:1044)'  'BMC 16.0'
+  //   HAEA HQ  'UPS 17.0 (ID1225)'   'UPS 16.9, ID:1044'
+  //
+  // What matters is not the spelling but whether (component, version, id)
+  // comes out. A parser that normalises is required; a matcher that insists on
+  // one form would drop a whole site.
+  const parse = (v) => {
+    const m = /^(?:([A-Z]{2,4})\s+)?(\d+(?:\.\d+)+)/i.exec(v.trim());
+    if (!m) return null;
+    const id = /ID:?\s*(\d+)/i.exec(v);
+    return { component: m[1] ? m[1].toUpperCase() : null, version: m[2], id: id ? id[1] : null };
+  };
+  const unparsed = [];
+  const bySite = {};
+  for (const r of fleet) {
+    if (!r.firmware) continue;
+    const p = parse(r.firmware);
+    if (!p || !p.version) { unparsed.push(`${r.unit}=${JSON.stringify(r.firmware)}`); continue; }
+    (bySite[r.site] = bySite[r.site] || new Set()).add(r.firmware.replace(/[\d.]+/g, 'N'));
+  }
+  assert.deepEqual(unparsed, [], 'every firmware string yields a version');
+  // The spelling variance is real and worth asserting, so nobody "simplifies"
+  // the parser back into a single-format matcher.
+  const variants = Object.values(bySite).reduce((n, s) => n + s.size, 0);
+  assert.ok(variants >= 4, `at least four spellings across sites, found ${variants}`);
+  assert.equal(parse('UPS 16.9 (ID:1044)').id, '1044');
+  assert.equal(parse('UPS 17.0 (ID1225)').id, '1225', 'no colon');
+  assert.equal(parse('UPS 16.9, ID:1044').id, '1044', 'comma instead of parentheses');
+  assert.equal(parse('BMC 16.0').component, 'BMC');
+  assert.equal(parse('13.3 (ID:1225)').component, null, 'no component prefix');
+  // And prose must not parse as firmware — this is how the v1.2 seed hid a
+  // location string in this column.
+  assert.equal(parse('IE INFO RACK 4 (HMA MPOE UPS 1E-A)'), null);
+});
+
+t('a numeric column that legitimately holds a word is declared, not tolerated', () => {
+  // battery_strings is 'INTERNAL' for the four HAEA HQ units with internal
+  // batteries. That is a real meaning, not a typo — but it means the column is
+  // `int | 'INTERNAL'`, and an importer that parses it as a number silently
+  // gets NaN for a quarter of one site.
+  const words = fleet.filter(r => r.battery_strings && !/^\d+$/.test(r.battery_strings));
+  assert.deepEqual(words.map(r => r.battery_strings), ['INTERNAL', 'INTERNAL', 'INTERNAL', 'INTERNAL'],
+    'the only non-numeric battery_strings value is INTERNAL');
+  assert.equal(words.length, 4);
+  assert.ok(words.every(r => r.site === 'HAEA'), 'and it is confined to HAEA HQ');
+});
+
 console.log(fail ? `\nFAIL: ${fail} check(s)` : '\nok - the catalogue can name the customer\'s own hardware');
 process.exit(fail ? 1 : 0);
