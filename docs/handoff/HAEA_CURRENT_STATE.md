@@ -1,0 +1,525 @@
+# HAEA RHEL 상용화 — 현재 저장소 상태
+
+2026-10-22 작성 · Claude Code ↔ Codex 공동 작업용 인계 문서
+
+**이 문서의 목적**: `CFLEX_FMS_HAEA_RHEL_Design_Spec_v1.md`(SPEC-CFLEX-HAEA-2026-1023 v1.0)가 **무엇을 만들어야 하는지**를 적은 문서라면, 이 문서는 **지금 무엇이 있는지**를 적은 문서다. 두 문서의 차이가 §9에 있고, 그게 실제 작업 목록이다.
+
+**작성 원칙**: 저장소를 읽고 테스트를 실제로 실행해 확인한 사실만 적었다. 비밀번호·토큰·인증서 개인키·SNMP community 값·webhook URL은 포함하지 않는다. 이 문서 작성 중 **운영 서버와 고객 VM은 변경하지 않았다** (읽기도 하지 않았다 — 전부 저장소 기준).
+
+**선행 문서**: `docs/CODEX_HANDOFF_2026-10-11.md` (10-11 체크포인트, 병행 개발 규칙). 그 문서의 규칙은 유효하고, 이 문서는 HAEA RHEL 관점의 내용을 더한다.
+
+---
+
+## 1. 저장소·브랜치·커밋
+
+| 항목 | 값 |
+|---|---|
+| GitHub | `git@github.com:ericpark961-design/cflex-fms.git` (origin, fetch=push) |
+| 로컬 경로 | `/Users/macstudio/work/cflex-fms` |
+| 현재 브랜치 | `feat/twin-rack-elevation` |
+| 커밋 | `6c9cb6e` — *fms: stop the SMS flood — and stop a disabled route from sending anyway* |
+| 워킹트리 | clean (미커밋 변경 0건) |
+| `main` 대비 | **ahead 9 / behind 0** — 이 브랜치가 최신이고 `main`은 뒤처져 있다 |
+
+### 1.1 워크트리 (Codex가 이미 쓰고 있는 것)
+
+```
+/Users/macstudio/work/cflex-fms         6c9cb6e [feat/twin-rack-elevation]   ← Claude Code
+/Users/macstudio/work/cflex-fms-codex   23576fd [codex/bootstrap]            ← Codex
+```
+
+`codex/bootstrap`은 `23576fd`(docs 커밋)에 있고, 그 뒤 Claude Code가 3개 커밋을 더했다:
+
+```
+6c9cb6e  fms: stop the SMS flood — and stop a disabled route from sending anyway
+a4485a1  s1: collect the rest of the room — PDU, NetBotz, network and CRAC
+360011e  s1: find out what the collectors were actually doing, and make them say it
+23576fd  docs: include supplied competitive baseline and device integration guide   ← codex/bootstrap
+```
+
+**Codex는 `feat/twin-rack-elevation`(또는 그 이후)에서 rebase하거나 분기하는 것이 맞다.** `23576fd` 기준으로 작업하면 S1 수집기·프로브 헬스 작업과 충돌한다.
+
+### 1.2 다른 브랜치
+
+`checkpoint/handoff-2026-10-11`, `checkpoint/source-2026-10-11`(10-11 고정), `ci/deploy-twin`, `feat/fms-twin-nav-link`, `feat/twin-3d-app`, `feat/twin-v3-ledger`, `fix/alarmmap-basemap-keyless`(미머지), `main`.
+
+---
+
+## 2. 코드 경로와 실행 방법
+
+### 2.1 전체 구조
+
+| 디렉터리 | 역할 | 파일 수 | 독립 실행 |
+|---|---|---|---|
+| `backend/` | FMS API 라우트·서비스·마이그레이션 | 50 | **불가** (§2.3) |
+| `apps/twin/` | `/twin` 3D·운영 콘솔 (Vite 8 + React 19) | 636 | **가능** |
+| `probe-agent/` | Node 수집기 (현장 설치용, 운영 중) | 27 | 가능 (의존성 설치 필요) |
+| `probe/` | Python 수집기 (Phase 0/1 별개 구현) | 22 | 가능 (pytest 필요) |
+| `deploy/` | 배포 스크립트·패치·auto-recovery | 25 | — |
+| `nginx/` | vhost 설정 (현 Azure 기준) | 5 | — |
+| `frontend/` | 1.x 잔존 (FMS 페이지 1개 + 지도 데이터) | 9 | — |
+| `cflex-shell/`, `sentinel-api/`, `ringonservice-net/`, `reference/` | HAEA 범위 외 | 32 | — |
+
+### 2.2 Collector — `probe-agent/`
+
+```
+probe-agent/
+├── src/index.js                 폴링 루프 (bounded concurrency), 하트비트, 부트스트랩
+├── src/config.js                env 로딩 (CFLEX_URL, POLL_INTERVAL_MS, POLL_CONCURRENCY, SNMP_*)
+├── src/forwarder.js             App으로 전송 (axios), 장비/객체 인벤토리 pull
+├── src/buffer.js                store-and-forward 큐 (better-sqlite3)
+├── src/pollers/index.js         kind → collector 라우팅 레지스트리
+├── src/pollers/{ups,pdu,netbotz,network,crac}.js
+├── src/services/snmp-helpers.js  세션 생성 (v1/v2c/v3 authPriv), UPS OID 프로파일 2종
+├── src/services/snmp-read.js     get / walkTable (부분 응답 허용)
+├── src/services/oid-catalog.js   OID 카탈로그 — 스케일·확신도 명시
+├── src/services/ups-metrics.js   UPS 지표 fetch
+├── src/services/ups-probe-engine.js
+├── sim/{lib,sim-pdu,sim-netbotz,sim-crac,sim-switch}.js   SNMP 시뮬레이터 (개발 전용)
+├── test/{cycle,collectors}.test.js
+├── systemd/cflex-probe.service   하드닝 포함 (NoNewPrivileges, ProtectSystem=strict)
+└── install.sh
+```
+
+실행:
+
+```sh
+cd probe-agent
+npm install                       # 또는 npm ci (lock 파일은 .gitignore 되어 있지 않음 — 확인 필요)
+cp .env.example .env              # ※ .env.example 없음 — README 참조해 수동 작성
+node src/index.js
+```
+
+필요 env (값은 적지 않는다): `CFLEX_URL`, `CFLEX_TOKEN`, `TENANT_ID`, `PROBE_ID`, `POLL_INTERVAL_MS`(기본 60000), `POLL_CONCURRENCY`(기본 12), `HEARTBEAT_INTERVAL_MS`(기본 30000), `SNMP_VERSION`/`SNMP_COMMUNITY`/`SNMP_TIMEOUT_MS`/`SNMP_RETRIES`, `BUFFER_DB_PATH`, `LOCAL_API_PORT`.
+
+시뮬레이터로 하드웨어 없이 검증:
+
+```sh
+SNMP_PORT=16401 PDU_TYPE=switched LOAD_A=6.1,7.4,5.2 node sim/sim-pdu.js
+SNMP_PORT=16501 node sim/sim-netbotz.js
+SNMP_PORT=16601 COOLING=standby ALARMS=1 node sim/sim-crac.js
+SNMP_PORT=16701 PORTS=48 DOWN=2 SHUT=1 TEMP_C=42 node sim/sim-switch.js
+```
+
+각 시뮬레이터는 **서비스하는 진짜 값을 평문 십진수로 출력**한다. 수집기가 스케일을 틀리면 그 숫자와 불일치한다.
+
+### 2.3 Application — `backend/` (⚠ 독립 실행 불가)
+
+`backend/`는 **라이브러리·라우트·마이그레이션만 있는 패치셋**이다. 다음이 **없다**:
+
+- `package.json` / 의존성 선언
+- 서버 부트스트랩 (`app.listen`, express 앱 구성)
+- DB 커넥션 모듈 (`src/config/database`)
+- **인증 미들웨어** — 저장소 전체에 `*auth*` 파일이 0건
+
+`backend/` 코드는 `require('../config/database')`, `req.user` 등으로 **cflex-v2 베이스(`/opt/cflex-v2/cflex-api`)를 전제**한다. 즉 지금 저장소만으로는 API를 띄울 수 없다.
+
+→ **RHEL 번들을 만들려면 이 베이스를 저장소로 들여오는 작업이 선행된다.** §9-A1.
+
+구성:
+
+```
+backend/
+├── routes/      fms.routes.js(48), incidents.routes.js(13), probe.routes.js(12),
+│                fms-push.routes.js(3), fms-ack.routes.js(2), integrations-slack.routes.js(2)
+├── services/    21개 — alarm-notifier, fms-metrics, fms-probe-health, fms-incident,
+│                fms-triage, fms-reeval, fms-rca, fms-copilot, fms-topology,
+│                fms-derive-status, fms-device-control, fms-pdf-gen,
+│                fms-report-{scheduler,mailer}, cflex-alert, expo-push-notifier …
+├── incident/    state_machine.js (+ README, test)
+├── migrations/  001~008 + 0010 + apply.js
+├── seed/        KMX 원장 빌더·임포터·데모 시나리오
+└── triage/      rules.json
+```
+
+### 2.4 Twin / 로컬 대시보드 — `apps/twin/`
+
+**지금 저장소에서 유일하게 독립 실행되는 UI.** 오프라인 mock으로 백엔드 없이 뜬다.
+
+```sh
+cd apps/twin
+npm ci
+node mock/server.js          # 터미널 1 — mock API :3001
+npm run dev                  # 터미널 2 — http://localhost:5174/twin/
+```
+
+검증: `npm test` · `npm run build` · `npm run lint`. 의존성 5개 (react, react-dom, three, maplibre-gl, lucide-react) — **네이티브 모듈 없음**.
+
+### 2.5 Database
+
+**현재: SQLite 단일 파일.** PostgreSQL 코드는 저장소에 0건이다.
+
+- 드라이버: `better-sqlite3`(운영), `node:sqlite`(테스트 폴백)
+- 운영 파일: `/opt/cflex-v2/cflex-api/data/cflex.db` (저장소 외부)
+- 마이그레이션 실행: `node backend/migrations/apply.js --db <path> [--only 007]`
+  - 멱등. `duplicate column name`만 삼키고 나머지 오류는 중단.
+  - `statements()`를 export하므로 테스트에서 같은 분할기를 재사용한다.
+
+### 2.6 외부 포털 연동
+
+**현재 구현**: `probe-agent/src/forwarder.js` → `axios` → `cfg.cflexUrl` (기본 `https://cflex.runless.co.uk`), 인증은 **bearer 토큰 1개**(`CFLEX_TOKEN`).
+
+**스펙 요구**: `https://cflex.fms.support` (40.114.79.164 static), **mTLS 장치 인증서**, HTTPS 프록시 경유, IP 핀.
+
+→ 호스트명·인증방식·프록시 모두 다르다. §9-A4.
+
+### 2.7 배포 스크립트 (현 Azure 기준 — RHEL 아님)
+
+| 파일 | 하는 일 |
+|---|---|
+| `deploy/deploy-twin.sh` | twin 빌드 → rsync → nginx 검사·reload |
+| `deploy/deploy-fms-backend.sh` | 서비스·라우트·마이그레이션 복사, 004 적용, KMX 임포트, pm2 재시작 |
+| `deploy/s1/patch-probe-health.js` | 마커 가드 멱등 패치 — 하트비트/스윕/라우트 |
+| `deploy/s1/patch-collectors.js` | 마커 가드 멱등 패치 — 객체 피드/메트릭 수신/조회 라우트 |
+| `deploy/s1/snmp-reach.js` | SNMP 도달성 조사 → CSV + `snmp_reach` 테이블 |
+| `deploy/auto-recovery/` | healthcheck timer·boot recover (8/24 사고의 당사자 — §8.3) |
+
+**전부 pm2 + Azure Ubuntu 전제다.** RHEL systemd·오프라인 번들용 설치기는 없다. §9-A2.
+
+---
+
+## 3. 기능 구분 — 구현 완료 / 시연용 / 미구현
+
+### 3.1 실제 구현 완료 (테스트 또는 라이브 검증됨)
+
+| 기능 | 위치 | 검증 근거 |
+|---|---|---|
+| UPS SNMP 폴링 (v1/v2c/v3 authPriv) | `probe-agent/src/services/snmp-helpers.js`, `ups-metrics.js` | 운영 중 (41대 폴링, 전부 타임아웃 — 경로 없음) |
+| 폴링 동시성 (직렬 → bounded) | `probe-agent/src/index.js` | 420s → 44s 실측 |
+| 수집 성공/실패 정직 보고 | `probe-agent/src/pollers/ups.js` | `0 ok, 41 fail` (이전 `41 ok, 0 fail` 거짓보고 수정) |
+| store-and-forward 큐 | `probe-agent/src/buffer.js` | SQLite enqueue/dequeue/ack/fail/purgeOld |
+| PDU·NetBotz·네트워크·CRAC 수집 | `probe-agent/src/pollers/*.js` | **실 SNMP 23/23 검증** (시뮬레이터 대상) |
+| OID 스케일·확신도 관리 | `probe-agent/src/services/oid-catalog.js` | 12 테스트 |
+| 메트릭 저장 + 출처(provenance) | `backend/services/fms-metrics.js` | 10 테스트 |
+| 프로브 헬스·10분 무신호 → P2 인시던트 | `backend/services/fms-probe-health.js` | 8 테스트, 라이브 |
+| 인시던트 상태머신 | `backend/incident/state_machine.js` | 14 테스트 |
+| 알람 트리아지·재평가 | `backend/services/fms-triage.js`, `fms-reeval.js` | 17 + 4 테스트 |
+| 신선도 게이트 (5분) | `backend/services/fms-derive-status.js` | 16 테스트 |
+| 알림 채널 9종 | `backend/services/alarm-notifier.js` | Slack 라이브, 나머지 enabled=0 |
+| Twin 콘솔 (3D·인벤토리·용량) | `apps/twin/` | 11 게이트 |
+| 용량 계획 (체인·N+1 냉방·증설 시뮬) | `apps/twin/src/twin/roomCapacity.js` | 포함 |
+
+### 3.2 시연용 / 부분 구현 (실데이터 아님, 또는 한쪽만)
+
+| 기능 | 상태 |
+|---|---|
+| **KMX CCR 원장·데모 시나리오** | `backend/seed/kmx_*`, `apps/twin/src/demo/kmx_ccr_topology.json` — 합성 데이터. 자기일관성은 맞췄으나 실측 아님 |
+| **PDU/NetBotz/CRAC 실측** | 수집기는 검증됐으나 **실 장비 수집 0건** — 시뮬레이터에서만 흘렀다 |
+| **월간 Executive Report** | `fms-pdf-gen.js`(18 KB), `fms-report-{scheduler,mailer}.js` 존재. 실데이터 발행 이력 없음 |
+| **AI 코파일럿·RCA** | `fms-copilot.js`(12 테스트), `fms-rca.js` — 외부 LLM 의존, HAEA 오프라인 환경에서 동작 불가 |
+| **ServiceNow eBonding** | `alarm-notifier.js`의 `dispatchServiceNow` 디스패처만. 인시던트 매핑·중복방지·테스트 티켓 기능 없음 |
+| **Teams 알림** | `dispatchTeams` 구현됨. 라우트 행 자체가 없어 미사용. 프록시 경유 미지원 |
+| **SNMP 도달성 조사** | `deploy/s1/snmp-reach.js` — 동작. 48대 전부 `no-route`로 확인됨 |
+
+### 3.3 미구현 (저장소에 코드 0건)
+
+| 기능 | 스펙 |
+|---|---|
+| **PostgreSQL 16** (파티셔닝·보존·백업) | §3.3 |
+| **오프라인 설치 번들** (`cflex-fms-2.x-rhel8-offline.tar.gz`, SHA256SUMS, SBOM) | §5.1 |
+| **`cflex-install`** (preflight / verify / netcheck / upgrade / rollback) | §5.2–5.3 |
+| **SNMP trap 리스너 (UDP 162)** | §3.1 — 저장소 전체 검색 결과 0건 |
+| **mTLS 포털 포워더** (`cflex-forwarder`) | §3.4 |
+| **App Active/Standby** (Redis 세션·무상태화·페일오버) | §3.2, §8 |
+| **SAML 2.0 SSO** | §3.2, §4.4 — `saml` 문자열 0건 |
+| **Exhibit 1 XLSX 임포트** | §4.1 — `bulk-import`는 JSON rows만 |
+| **배터리 EOL 90일 알림** | §4.2 — 규칙 없음. `batteryReplace` OID는 읽지만 설치일·수명 계산 없음 |
+| **NMC 자동 탐지·시리얼 불일치 경고** | §4.1 |
+| **APC 시리얼 YYWW → 제조일 추정** | §4.1 |
+| **라이프사이클/예산 예측 내보내기** | §4.3 |
+| **유지보수 모드 (PM 억제)** | §4.2 — `fms_alarm_mutes`는 장비 단위 음소거뿐 |
+| **SELinux 정책 모듈 (.pp)** | §5.2 |
+| **감사로그 append-only** | §7 |
+| **비밀정보 암호화 저장 (마스터 키)** | §4.4 — 현재 `.env` 평문 |
+
+---
+
+## 4. API 계약
+
+### 4.1 마운트 구조 (cflex-v2 베이스, `src/server.js`)
+
+```
+/v1/fms/*        verifyToken 통과 필수 (JWT)
+/v1/probe/*      X-Probe-Key 헤더가 있으면 통과, 없으면 JWT (관리 엔드포인트)
+/v1/incidents/*  verifyToken
+```
+
+⚠ `verifyToken`이 **라우팅보다 먼저** 돈다. 따라서 **없는 경로도 401을 반환**한다 — 401은 엔드포인트가 마운트됐다는 증거가 아니다.
+
+### 4.2 `/v1/fms/*` (48 + S1 패치 3)
+
+인벤토리·자산: `GET /summary` `/fleet-live` `/floor` `/sites-map` `/assets` `/assets/:id` `/devices` `/devices/:id` · `PUT /assets/:id` · `PATCH /devices/:id` · `POST /assets/bulk-import`
+
+알람·티켓: `GET /alerts` `/tickets` `/tickets/:id` `/alerts/:id/ticket` · `POST /tickets/from-alert` `/tickets/:id/rca` · `POST /devices/:id/mute` `/unmute` · `GET /mutes` · `DELETE /mutes/:id`
+
+임계치: `GET|PUT /assets/:id/thresholds`
+
+토폴로지·전원체인: `GET /topology` `/topology/heat` `/topology/export` `/power-chain/:deviceId` `/power-chain/object/:objectId` · `POST /topology/import`
+
+라우팅·채널: `GET|POST /routes` · `PUT|DELETE /routes/:id` · `POST /routes/:id/test` `/routes/simulate` · `GET /channels/health`
+
+제어: `GET /control/actions` `/control/log` `/control/config` · `PUT /control/config` · `POST /devices/:id/action`
+
+리포트: `GET /reports/monthly` `/reports/monthly/pdf` `/reports/monthly/history` · `POST /reports/monthly/send`
+
+기타: `POST /copilot` · `POST /demo/kmx/start` `/demo/kmx/reset`
+
+**S1 패치로 추가 (커밋된 `fms.routes.js`에는 없고 `deploy/s1/*.js`가 주입)**: `GET /probes` `/object/:name` `/devices/:id/metrics`
+
+### 4.3 `/v1/probe/*` (Collector ↔ App)
+
+`POST /heartbeat` · `GET /jobs/next` · `POST /jobs/:jobUuid/result` `/progress` · `POST /event` · `GET /devices` · 관리: `GET /list` `POST /create` `POST /:id/{disable,enable}` `DELETE /:id` `GET /:id/jobs`
+
+**S1 패치 추가**: `GET /objects` (비-UPS 인벤토리 피드)
+
+`POST /event`의 `kind`: `telemetry` | `alert` | `metrics`(S1 신규) | 기타는 조용히 수락.
+
+### 4.4 `/v1/incidents/*` (13)
+
+`GET /` `/:id` `/:id/timeline` `/:id/workbench` `/:id/verify` · `POST /:id/state` `/:id/triage/rerun` `/:id/triage/feedback` `/:id/action` `/:id/dispatch` `/:id/rca/draft` `/:id/comment` · `PATCH /:id/dispatch/:did`
+
+---
+
+## 5. DB 스키마·마이그레이션
+
+### 5.1 마이그레이션
+
+| 파일 | 내용 |
+|---|---|
+| `001_fms_schema.sql` | 기반: `fms_rooms` `fms_alarm_routes` `fms_alarm_dispatch_log` `fms_alarm_mutes` `fms_oncall` `fms_report_log` `fms_control_*` `fms_insights` `fms_ai_log` 등 |
+| `002_fms_push_subscriptions.sql` | Expo 푸시 구독 |
+| `003_alerts_ack.sql` | `alerts.acked_at` / `acked_by` |
+| `004_fms_topology.sql` | `fms_rooms` 확장, `fms_racks`(=**모든 룸 객체**), `fms_devices`, `fms_power_links`, `ups_devices.{rack_id,u_pos,u_height}` |
+| `005_fms_s2_workbench.sql` | 인시던트 워크벤치: `incident_alarm_links`, `fms_dispatch`, `fms_triage_feedback`, `alerts.{simulated,object_id}` |
+| `006_dispatch_log_tenant.sql` | `fms_alarm_dispatch_log.tenant_id` + 경로 기반 백필 |
+| `007_s1_data_provenance.sql` | `probe_status`, `fms_metrics`, `snmp_reach`, `fms_devices` 계획값/SNMP 컬럼, `fms_rooms` 전압, **`ups_devices.last_ok_polled`** |
+| `008_s1_metric_provenance.sql` | `fms_metrics.{raw_value,oid,confidence,label,notes}`, `fms_racks` 폴링 컬럼, `fms_devices.{protocol,pdu_type,probe_id}` |
+| `0010_incidents_layer.sql` | `cflex_tickets` 계열 — **별도 Postgres 모노레포용. SQLite 운영 DB에 미적용** |
+
+### 5.2 알아야 할 함정
+
+1. **`fms_racks`에 랙만 있는 게 아니다.** CRAC·PDU 캐비넷·분전반·센서·누수존 전부 `kind` 컬럼으로 구분해 들어있다. 테이블명이 004 당시 잔재다.
+2. **`last_polled`는 실패해도 갱신된다.** 시도 시각이지 수집 시각이 아니다. "5분 내 신선"은 **`last_ok_polled`로만** 답할 수 있다 (007에서 추가).
+3. **`fms_metrics.raw_value`는 스케일 보정용이다.** 원시 정수를 보관하므로 잘못된 스케일을 `fms-metrics.rescale()`로 제자리 수정할 수 있다. 버리고 재수집하지 않는다.
+4. **마이그레이션은 SQLite 전용 문법**이다 (`AUTOINCREMENT`, `PRAGMA`). 6개 파일이 해당. PostgreSQL 전환 시 전부 재작성 대상.
+5. `apply.js`는 `;`로 분할하고 `BEGIN;`/`CREATE TRIGGER`가 보이면 거부한다. 주석 안의 `;`도 과거에 사고를 냈다 (현재는 인용부호 없는 줄의 trailing 주석을 제거해 회피).
+
+### 5.3 보존
+
+| 데이터 | 현재 | 스펙 §3.3 |
+|---|---|---|
+| `ups_metrics` | **7일** (`ups-poller.js` 시간당 prune) | raw 3년 |
+| `fms_metrics` | **30일** (`FMS_METRICS_KEEP_DAYS`) | raw 3년 |
+| 집계 테이블 | **없음** | 시간/일 집계 10년 |
+| 알람·감사 | 무제한 | 10년 |
+
+→ 7일 보존 때문에 8월 이전 이력이 남아있지 않다. §8.2 참조.
+
+---
+
+## 6. 인증 구조
+
+### 6.1 사용자 (JWT)
+
+- 미들웨어: `auth.middleware.js` — **cflex-v2 베이스에 있고 이 저장소에 없다.**
+- 흐름: `Authorization: Bearer <jwt>` → `jwt.verify(token, JWT_SECRET)` → payload의 `userId`(정수) 또는 `email`로 `users` 조회 → `is_active` 확인 → `req.user = { userId, tenantId, role, email }`
+- 시크릿: `src/config/constants` (env override) — **env에만 있지 않다.** 번들화 시 정리 필요.
+- 테넌트 스코프: `tenantOf(req)` — `admin`/`super_admin`은 `?tenant_id=`로 교차 조회 가능, 그 외는 자기 테넌트 고정.
+
+### 6.2 역할
+
+저장소 코드가 실제로 분기하는 값: `super_admin`(9회) · `admin`(9) · `fms_admin`(3) · `si_operator`(1) · `engineer`(1).
+
+스펙 §4.4는 **Admin / Operator / Viewer 3종**을 요구한다. 현재 역할 체계와 이름·수가 다르다. 매핑 설계 필요.
+
+### 6.3 Collector (X-Probe-Key)
+
+`probes` 테이블의 `api_key_prefix`(앞 8자)로 후보를 좁히고 `bcrypt.compare`로 검증 → `req.probe = {id, probe_uuid, tenant_id, label, status}`. `status='disabled'`면 거부.
+
+### 6.4 비밀정보
+
+현재 전부 `.env` 평문 (`JWT_SECRET`, `CFLEX_ALERT_TOKEN`, SNMP community, SMTP/Slack/Teams 자격). 스펙 §4.4는 0600 + 암호화 저장 + systemd credential을 요구한다. 미구현.
+
+---
+
+## 7. SNMP · 재전송 큐 · 알람 · 알림 채널 구현 위치
+
+### 7.1 SNMP
+
+| 항목 | 위치 |
+|---|---|
+| 세션 생성 (v1/v2c/v3 authPriv) | `probe-agent/src/services/snmp-helpers.js:createSession` |
+| get / walkTable (부분 응답 허용) | `probe-agent/src/services/snmp-read.js` |
+| OID 카탈로그 (스케일·확신도·note) | `probe-agent/src/services/oid-catalog.js` |
+| UPS 프로파일 — 표준 RFC 1628 | `snmp-helpers.js:OID_UPS_MIB` (12 OID) |
+| UPS 프로파일 — APC PowerNet | `snmp-helpers.js:OID_APC_POWERNET` (13 OID) |
+| 프로파일 선택 | `snmp-helpers.js:selectOidProfile` / `isApcVendor` |
+| 도달성 조사 | `deploy/s1/snmp-reach.js` |
+| **trap 리스너 (UDP 162)** | **없음** |
+
+현재 UPS 수집 항목 (APC 프로파일): 제조사·모델·펌웨어, 배터리 상태/런타임/용량%/온도/교체표시, 배터리 사용시간, 입력전압, 출력상태/전압/부하%.
+
+**스펙 §3.1 대비 누락**: 입·출력 **전류**, **주파수**, **kVA/kW**, 배터리 **설치일·교체권장일**, **셀프테스트 결과·일시**, **알람 상태 비트**, **내부 온도**, **시리얼**. Modular Ultra(SRYLF)·Symmetra LX(SYAF) 계열 OID 차이 흡수도 없다.
+
+### 7.2 재전송 큐 (store-and-forward)
+
+`probe-agent/src/buffer.js` — better-sqlite3 로컬 큐. `enqueue` / `dequeue` / `ack` / `fail` / `purgeOld` / `stats`. `BUFFER_RETENTION_DAYS` 기본 7일 (스펙과 일치). `forwarder.drain()`이 30초마다 비운다.
+
+**미검증**: 순서 보장, 중복 제거 키(장비ID+timestamp), 40 GB 디스크 상한. 스펙 §3.1이 요구하는 무손실 검증(SAT #5)은 수행하지 않았다.
+
+### 7.3 알람
+
+| 단계 | 위치 |
+|---|---|
+| 임계 평가 (수집기측) | `probe-agent/src/pollers/ups.js:evaluateAlerts` — P1/P2 기본 임계 8종 |
+| 도달불가 알람 + 백오프 | `probe-agent/src/pollers/ups.js` — 전이 1회 → 1h → 2 → 4 → 8 → 16 → 24h 상한 |
+| 알람 수신·중복제거 | `backend/routes/probe.routes.js:POST /event` (`kind='alert'`, 10분/장비+메트릭+우선순위) |
+| 인시던트 생성·dedup | `backend/services/fms-incident.js:ensureIncidentForAlert` (`assetType`별 dedup 공간 분리) |
+| 상태머신 | `backend/incident/state_machine.js` — open→ack→in_progress→resolved→closed |
+| 자동 트리아지 | `backend/services/fms-triage.js` + `backend/triage/rules.json` |
+| 재평가·플래핑 | `backend/services/fms-reeval.js` |
+| 음소거 | `fms_alarm_mutes` + `alarm-notifier.js:isMuted` |
+| 프로브 다운 (10분) | `backend/services/fms-probe-health.js:sweep` |
+| 신선도 게이트 (5분) | `backend/services/fms-derive-status.js` |
+
+### 7.4 알림 채널
+
+`backend/services/alarm-notifier.js` — 디스패처 9종: `line` `sms` `teams` `email` `slack` `discord` `pagerduty` `servicenow` `webhook`. 라우팅은 `fms_alarm_routes`(tenant, channel, min_priority, target, enabled, escalate_after_min, escalate_to), 발송 기록은 `fms_alarm_dispatch_log`.
+
+별도 SMS 경로: `backend/services/cflex-alert.js` → 외부 게이트웨이 (`site|category` 10분 쿨다운). **2026-10-12 기준 일시중단 상태** — 라우트 `enabled=0`을 무시하고 발송하던 결함을 고치고, 게이트웨이 토큰도 주석 처리했다 (커밋 `6c9cb6e`).
+
+푸시: `backend/services/expo-push-notifier.js` (모바일 앱용, HAEA 범위 외).
+
+---
+
+## 8. RHEL 8.10 · Node 20 호환성과 현재 테스트 결과
+
+### 8.1 호환성 평가
+
+| 항목 | 현재 | RHEL 8.10 / Node 20 |
+|---|---|---|
+| 개발 Node | **v22.22.2** (npm 10.9.7) | 타깃은 **nodejs:20** AppStream |
+| `probe-agent` engines | `{"node": ">=20"}` | ✅ |
+| `apps/twin` engines | **선언 없음** | Vite 8 + React 19 — Node 20에서 동작하나 **검증 안 됨** |
+| `node:sqlite` | Node 22 전용 (테스트 폴백) | **Node 20에 없음** — 테스트 하네스가 RHEL에서 깨진다 |
+| 네이티브 모듈 | `better-sqlite3`(prebuild 필요) · `bcryptjs`(순수 JS) · `net-snmp`(순수 JS) · `axios`·`express`·`dotenv`(순수 JS) | **better-sqlite3만 RHEL 8 glibc 사전 컴파일 필요** |
+| DB | SQLite | **PostgreSQL 16 요구** → better-sqlite3 자체가 사라질 수도 있다 |
+| 프로세스 관리 | pm2 | **systemd** (`probe-agent/systemd/` 1개만 존재) |
+| SELinux | 미고려 | Enforcing 전제, 정책 모듈 필요 |
+| 서드파티 저장소 | npm 직접 설치 | **금지** — 오프라인 번들 |
+
+**결론**: `probe-agent`는 Node 20에서 바로 동작할 가능성이 높다 (engines 선언 + 순수 JS 의존성 + better-sqlite3 prebuild만 해결). `backend`는 베이스가 저장소에 없어 평가 자체가 불가능하다. `apps/twin`은 빌드 산출물만 nginx로 서비스하면 되므로 런타임 Node 버전 문제가 없다 (빌드는 우리 쪽에서 수행).
+
+**Node 20 검증은 수행하지 않았다.** 로컬이 22이고, nvm 등으로 20을 설치해 재실행하는 작업은 이 문서 범위에 넣지 않았다. §9-B1.
+
+### 8.2 실행한 테스트와 결과 (2026-10-22, Node v22.22.2, macOS)
+
+백엔드 순수 로직 (`node <file>`, 외부 의존성 없음):
+
+| 파일 | 결과 |
+|---|---|
+| `backend/incident/state_machine.test.js` | **14 pass / 0 fail** |
+| `backend/services/fms-derive-status.test.js` | **16 pass / 0 fail** |
+| `backend/services/fms-triage.test.js` | **17 pass / 0 fail** |
+| `backend/services/fms-reeval.test.js` | **4 pass / 0 fail** |
+| `backend/seed/kmx_demo_scenario.test.js` | **6 pass / 0 fail** |
+| `backend/services/fms-probe-health.test.js` | **8 ok** (자체 하네스) |
+| `backend/services/fms-metrics.test.js` | **10 ok** (자체 하네스) |
+| `backend/services/fms-topology.test.js` | **31 passed** |
+| `backend/services/fms-copilot.test.js` | **12 passed** |
+
+수집기:
+
+| 파일 | 결과 |
+|---|---|
+| `probe-agent/test/cycle.test.js` | **6 ok** — 거짓 성공 보고, 동시성, 백오프, 하트비트 |
+| `probe-agent/test/collectors.test.js` | **12 ok** — 스케일·행 선별 (PDU 10분의1 A, ENTITY-SENSOR 지수·정밀도, IF-MIB 물리포트) |
+
+Twin:
+
+```
+npm test   → 11 게이트 통과 / 0 실패
+npm run build → ✓ built in 325ms
+npm run lint  → 오류 0, 경고 3 (TwinScreen.jsx react-hooks/exhaustive-deps)
+```
+
+Python 수집기: **실행 못 함** — `pytest` 미설치 (`No module named pytest`). `probe/tests/`에 3개 파일 존재.
+
+실 SNMP 통합 검증 (2026-10-11, Azure 개발 VM + 시뮬레이터): **23/23 통과**, 전 경로 (probe → `/v1/probe/event` → `fms_metrics` → `/v1/fms/object/:name`). RHEL에서는 재수행 필요.
+
+### 8.3 운영 환경에서 알아야 할 사고 2건
+
+1. **2026-08-24 ~ 10-09, 프로덕션 API 40,103회 재시작.** `deploy/auto-recovery/healthcheck.sh`의 복구 동작이 dev 환경 502에 반응해 **프로덕션** pm2를 재시작하도록 설정돼 있었다. 그 6주간 폴러가 한 주기도 끝내지 못했다. 패치됨. **RHEL 번들에 이 스크립트를 그대로 가져가면 안 된다.**
+2. **수집기가 6주간 "41 ok, 0 fail"로 거짓 보고.** `pollDevice()`가 성공·실패 모두 `undefined`를 반환해 호출부가 "호출이 돌아옴"을 성공으로 셌다. 수정됨 (`360011e`).
+
+관련 진단 문서: `docs/s1_data_diagnosis.md`, `docs/snmp_reach_2026-10-11.csv`.
+
+---
+
+## 9. 설계 스펙 대비 차이 (= 작업 목록)
+
+### A. 구조적 차이 — 선행 작업
+
+| # | 항목 | 현재 | 스펙 | 비고 |
+|---|---|---|---|---|
+| **A1** | **App 베이스 부재** | `backend/`는 패치셋. package.json·부트스트랩·DB config·인증 미들웨어 없음 | 번들에 앱 전체 포함 (§5.1 `app/`) | **최우선.** 이게 없으면 번들을 만들 수 없다 |
+| **A2** | **설치기·번들 없음** | pm2 + rsync 스크립트 | 오프라인 tar.gz + SHA256SUMS + SBOM + `cflex-install` (preflight/verify/netcheck/upgrade/rollback) | §5 전체 |
+| **A3** | **DB 엔진** | SQLite 단일 파일 | PostgreSQL 16, 월 네이티브 파티션, 보존 3년/10년, pg_basebackup+WAL | 마이그레이션 6개 SQLite 전용 문법 |
+| **A4** | **포털 전송** | `cflex.runless.co.uk`, bearer 토큰 | `cflex.fms.support` (40.114.79.164), **mTLS 장치 인증서**, 프록시 경유, IP 핀 | §3.4 |
+| **A5** | **Active/Standby** | 단일 노드, 상태 보유 | 무상태 + Redis 6 세션/큐, app01↔app02 | §3.2, §8 |
+| **A6** | **프로세스 관리** | pm2 | systemd 6유닛 + 하드닝 + SELinux .pp | §5.2 |
+
+### B. 기능 차이
+
+| # | 항목 | 비고 |
+|---|---|---|
+| **B1** | **Node 20 검증** | 로컬 22. `node:sqlite` 폴백이 20에서 깨진다 |
+| **B2** | **SNMP trap 리스너 (UDP 162)** | 코드 0건. 방화벽 룰 A에 포함돼 있다 |
+| **B3** | **UPS 수집 항목 확장** | 전류·주파수·kVA/kW·배터리 설치일/교체권장일·셀프테스트·알람비트·내부온도·시리얼. SRYLF/SYAF OID 차이 흡수 |
+| **B4** | **배터리 EOL 90일** | 규칙 없음. `batteryReplace` 표시만 읽는다 |
+| **B5** | **Exhibit 1 XLSX 임포트** | 현재 JSON rows만. 시리얼 불일치 경고·프레임/MIM 2중 시리얼 없음 |
+| **B6** | **NMC 자동 탐지·제조일 추정** | 없음 (APC 시리얼 YYWW) |
+| **B7** | **ServiceNow eBonding** | 디스패처만. 우선순위 매핑·INC 번호 연결·테스트 티켓 없음 (**SOW 수락 기준**) |
+| **B8** | **Teams 프록시 경유** | 디스패처는 있으나 프록시 미지원, 라우트 행 없음 |
+| **B9** | **SAML SSO 준비** | 0건 |
+| **B10** | **역할 3종 (Admin/Operator/Viewer)** | 현재 5종, 이름 다름 |
+| **B11** | **유지보수 모드** | 장비 음소거만. 사이트·기간 단위 PM 억제 없음 |
+| **B12** | **라이프사이클/예산 예측 내보내기** | 없음 |
+| **B13** | **감사로그 append-only** | 없음 |
+| **B14** | **비밀정보 암호화 저장** | `.env` 평문 |
+| **B15** | **AI 코파일럿/RCA** | 외부 LLM 의존 → **오프라인 HAEA에서 동작 불가.** 비활성화 또는 제외 결정 필요 |
+| **B16** | **용량 목표 검증** | 500 UPS / 50 사이트 / 10초 폴링 산정표 없음 (§4.5) |
+
+### C. 현장 전제 (코드 아님, 일정 리스크)
+
+| # | 항목 | 상태 |
+|---|---|---|
+| **C1** | NMC SNMP | **현재 v1만 설정.** v3/v2c 현장 작업 필요 |
+| **C2** | 라우팅 | 10.138.14.x → HMA/KUS NMC VLAN 미확인. 안 되면 Collector 3대 |
+| **C3** | 방화벽 룰 B (포털 아웃바운드) | 승인 대기. 거절 시 로컬 모드(SMTP) 필수 |
+| **C4** | GMDM 코드·핸드오버 | 대기 |
+| **C5** | HMA 수량 | Exhibit 1 31대 vs 실사 35대. PG-A2·PG-B2·6F Boardroom IP 없음 |
+
+C1~C5는 스펙 §10·§13과 동일하며 이 문서가 추가할 정보는 없다.
+
+---
+
+## 10. 공동 작업 규칙 (제안)
+
+1. **분기 기준은 `feat/twin-rack-elevation`(`6c9cb6e`)**. `codex/bootstrap`은 `23576fd`라 S1 작업이 빠져 있다.
+2. **담당 분리 제안** — 충돌면이 거의 없다:
+   - Codex: **A1**(App 베이스 들여오기) → **A2**(설치기·번들) → **A6**(systemd·SELinux)
+   - Claude Code: **A3**(PostgreSQL 전환) → **B2**(trap) → **B3**(OID 확장) → **B4**(배터리 EOL)
+   - 공통 합의 필요: **A4**(포털 mTLS 프로토콜 — 양쪽 코드에 걸친다), **A5**(무상태화)
+3. 기존 작업 경로에서 `checkout`/`reset`/`stash` 하지 않는다 (10-11 규칙 유지).
+4. **운영 서버·고객 VM 변경 금지**는 이 단계 내내 유효하다. 검증은 시뮬레이터(`probe-agent/sim/`)와 로컬 DB로 한다.
+5. 운영 `/opt` 파일은 Git 정본과 다를 수 있다. S1 패치가 `deploy/s1/*.js`로 주입된 라우트가 그 예다. **번들을 만들기 전에 파일 해시와 DB 스키마를 대조**해야 한다.
+
+---
+
+## 부록. 이 문서에 들어가지 않은 것
+
+- 비밀번호·토큰·인증서 개인키·SNMP community 값·webhook URL — 의도적으로 제외
+- 운영 서버·고객 VM 상태 — 이 문서는 저장소만 보고 썼다
+- `cflex-shell/` `sentinel-api/` `ringonservice-net/` — HAEA 범위 외
+- `apps/twin/` 내부 상세 (3D·카탈로그·용량 모듈) — HAEA Phase 1의 로컬 대시보드 요구와 범위가 다르다. 재사용 여부는 별도 판단
