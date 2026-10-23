@@ -117,6 +117,10 @@ export function upsRating(d = {}) {
   if (kw != null) return { watts: Math.round(kw * 1000), basis: `원장 ${kw} kW` };
 
   const e = catalogModel(d.model);
+  // APC part numbers carry the rating: SYAF16KRMT is a 16 kVA Symmetra frame,
+  // SRT8KRMXLT an 8 kVA SRT. For a family the catalogue only knows as a range
+  // (Symmetra LX 8–16 kVA), this is the one place the actual frame is stated.
+  const part = /\b(?:SYAF|SYMF|SRT|SRYLF|SRYL|SUA|SMX|SMT)(\d+(?:\.\d+)?)K/i.exec(String(d.model || ''));
   const m = /(\d+(?:\.\d+)?)\s*k(w|va)\b/i.exec(String(d.model || ''));
   if (m) {
     const n = parseFloat(m[1]);
@@ -129,6 +133,18 @@ export function upsRating(d = {}) {
   }
   const ratedW = e?.w ?? (e?.kw ? e.kw * 1000 : null);
   if (ratedW != null) return { watts: ratedW, basis: `카탈로그 ${e.label}` };
+
+  // Last: the part number, for a family whose catalogue entry is a range.
+  // SRT part numbers state kVA; Modular Ultra (SRYLF) states kW.
+  if (part) {
+    const n = parseFloat(part[1]);
+    const isKw = /^SRYLF?/i.test(part[0]);
+    const pf = isKw ? 1 : 0.9;
+    return {
+      watts: Math.round(n * 1000 * pf),
+      basis: isKw ? `부품번호 ${n} kW` : `부품번호 ${n} kVA × ${pf}`,
+    };
+  }
   return null;
 }
 

@@ -2,6 +2,13 @@
 // library sheets (REV 1.0, 2024–2025).
 //
 // Why this exists: iconIdForModel() knew six models and silently returned
+// APC labels hardware with PART NUMBERS, not the marketing names: a 5 kVA SRT
+// is 'SRT5KRMXLT' on the chassis, in Exhibit 1 and in the PM reports — never
+// 'Smart-UPS SRT 5000'. Matching only the marketing form left 41 of HAEA's 48
+// surveyed units unresolved, which meant no rack height, no kW rating, no
+// photograph and no battery-life family for most of the fleet. Both forms now
+// match; the kVA in the part number is the same number as the marketing name.
+//
 // 'srt5000' for everything else, so a Modular Ultra 15 kW, a Symmetra PX and a
 // Smart-UPS X all displayed as an SRT 5000. Five of the fleet's own units were
 // drawn as the wrong machine, and a model nobody had mapped was indistinguishable
@@ -22,20 +29,20 @@
  */
 export const APC_CATALOG = [
   // ── Smart-UPS SRT, on-line double conversion (rack) ───────────────
-  { id: 'srt1000',  match: /SRT\s*1000(?!0)/i,              label: 'Smart-UPS SRT 1000', family: 'srt', form: 'rack', u: 2, va: 1000, w: 900, topology: 'online', mgmt: 'NMC',
+  { id: 'srt1000',  match: /SRT\s*1000(?!0)|SRT\s*1K(?![0-9])/i,              label: 'Smart-UPS SRT 1000', family: 'srt', form: 'rack', u: 2, va: 1000, w: 900, topology: 'online', mgmt: 'NMC',
     rear: { inlet: 'IEC C14', outlets: { c13: 6 }, groups: 2, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
-  { id: 'srt2200',  match: /SRT\s*2200/i,              label: 'Smart-UPS SRT 2200', family: 'srt', form: 'rack', u: 2, va: 2200, w: 1980, topology: 'online', mgmt: 'NMC',
+  { id: 'srt2200',  match: /SRT\s*2200|SRT\s*2\.?2K(?![0-9])/i,              label: 'Smart-UPS SRT 2200', family: 'srt', form: 'rack', u: 2, va: 2200, w: 1980, topology: 'online', mgmt: 'NMC',
     rear: { inlet: 'IEC C20', outlets: { c13: 8 }, groups: 2, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
-  { id: 'srt3000',  match: /SRT\s*3000(?!XLI\s*\(T)/i, label: 'Smart-UPS SRT 3000', family: 'srt', form: 'rack', u: 2, va: 3000, w: 2700, depth_mm: 635, width_mm: 482.6, height_mm: 88.9, topology: 'online', mgmt: 'NMC',
+  { id: 'srt3000',  match: /SRT\s*3000(?!XLI\s*\(T)|SRT\s*3K(?![0-9])/i, label: 'Smart-UPS SRT 3000', family: 'srt', form: 'rack', u: 2, va: 3000, w: 2700, depth_mm: 635, width_mm: 482.6, height_mm: 88.9, topology: 'online', mgmt: 'NMC',
     rear: { inlet: 'IEC C20', outlets: { c13: 8, c19: 2 }, groups: 2, fans: 0, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
-  { id: 'srt5000',  match: /SRT\s*5000/i,              label: 'Smart-UPS SRT 5000', family: 'srt', form: 'rack', u: 3, u_with_xbp: 5, va: 5000, w: 4500, depth_mm: 635, topology: 'online', mgmt: 'NMC',
+  { id: 'srt5000',  match: /SRT\s*5000|SRT\s*5K(?![0-9])/i,              label: 'Smart-UPS SRT 5000', family: 'srt', form: 'rack', u: 3, u_with_xbp: 5, va: 5000, w: 4500, depth_mm: 635, topology: 'online', mgmt: 'NMC',
     rear: { inlet: 'IEC C20', outlets: { c13: 8, c19: 4 }, groups: 2, fans: 1, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
-  { id: 'srt6000',  match: /SRT\s*6000/i,              label: 'Smart-UPS SRT 6000', family: 'srt', form: 'rack', u: 3, va: 6000, w: 5400, topology: 'online', mgmt: 'NMC',
+  { id: 'srt6000',  match: /SRT\s*6000|SRT\s*6K(?![0-9])/i,              label: 'Smart-UPS SRT 6000', family: 'srt', form: 'rack', u: 3, va: 6000, w: 5400, topology: 'online', mgmt: 'NMC',
     rear: { inlet: 'IEC C20', outlets: { c13: 8, c19: 4 }, groups: 2, fans: 1, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
-  { id: 'srt8000',  match: /SRT\s*8000/i,              label: 'Smart-UPS SRT 8000', family: 'srt', form: 'rack', u: 4, u_with_xbp: 5, va: 8000, w: 7200, depth_mm: 715, phase_in: 3, topology: 'online', mgmt: 'NMC',
+  { id: 'srt8000',  match: /SRT\s*8000|SRT\s*8K(?![0-9])/i,              label: 'Smart-UPS SRT 8000', family: 'srt', form: 'rack', u: 4, u_with_xbp: 5, va: 8000, w: 7200, depth_mm: 715, phase_in: 3, topology: 'online', mgmt: 'NMC',
     u_note: '단품 4U(개별 SKU 시트) / 5U는 XBP 포함(라인업 시트)',
     rear: { inlet: 'terminal 3φ', outlets: { c13: 8, c19: 4 }, groups: 2, fans: 3, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
-  { id: 'srt10000', match: /SRT\s*10000/i,             label: 'Smart-UPS SRT 10000', family: 'srt', form: 'rack', u: 4, u_with_xbp: 6, va: 10000, w: 9000, depth_mm: 715, width_mm: 482.6, height_mm: 266.7, phase_in: 3, topology: 'online', mgmt: 'NMC',
+  { id: 'srt10000', match: /SRT\s*10000|SRT\s*10K(?![0-9])/i,             label: 'Smart-UPS SRT 10000', family: 'srt', form: 'rack', u: 4, u_with_xbp: 6, va: 10000, w: 9000, depth_mm: 715, width_mm: 482.6, height_mm: 266.7, phase_in: 3, topology: 'online', mgmt: 'NMC',
     u_note: '단품 4U / 6U는 확장 배터리 포함 구성',
     rear: { inlet: 'terminal 3φ', outlets: { c13: 8, c19: 4 }, groups: 2, fans: 3, ports: { network: 1, serial: 1, epo: 1 }, battery: true } },
 
@@ -82,7 +89,7 @@ export const APC_CATALOG = [
 
   // ── Symmetra / Galaxy (modular, cabinet) ──────────────────────────
   { id: 'symmetra_px', match: /Symmetra\s*PX/i, label: 'Symmetra PX', family: 'symmetra', form: 'cabinet', u: null, kw_range: '20–500 kW', phase_in: 3, phase_out: 3, modular: true },
-  { id: 'symmetra_lx', match: /Symmetra\s*LX|Symmetra/i, label: 'Symmetra LX', family: 'symmetra', form: 'cabinet', u: null, kva_range: '8–16 kVA', phase_in: 3, phase_out: 3, modular: true },
+  { id: 'symmetra_lx', match: /Symmetra\s*LX|SYAF\d+K|Symmetra/i, label: 'Symmetra LX', family: 'symmetra', form: 'cabinet', u: null, kva_range: '8–16 kVA', phase_in: 3, phase_out: 3, modular: true },
   { id: 'galaxy_vx',   match: /Galaxy\s*VX/i, label: 'Galaxy VX', family: 'galaxy', form: 'cabinet', u: null, kw_range: '500–1500 kW', phase_in: 3 },
   { id: 'galaxy_vl',   match: /Galaxy\s*VL/i, label: 'Galaxy VL', family: 'galaxy', form: 'cabinet', u: null, kw_range: '200–500 kW', phase_in: 3 },
   { id: 'galaxy_vs',   match: /Galaxy\s*VS/i, label: 'Galaxy VS', family: 'galaxy', form: 'cabinet', u: null, kw_range: '20–150 kW', phase_in: 3, width_mm: 600, depth_mm: 850, height_mm: 2000 },
