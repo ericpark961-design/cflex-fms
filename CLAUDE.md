@@ -12,10 +12,12 @@
 3. 모호한 요구는 추측하지 말고 DECISIONS.md에 질문을 남긴다.
 
 ## Git 운영 (관리자는 git으로 진행을 본다)
+- **세션 하나 = 작업 트리 하나.** `/Users/macstudio/work/cflex-fms`(메인 트리)는 관리자가 기동하는 헤드리스 세션 전용이다. 사람이 여는 대화형 Claude Code 세션은 시작하자마자 `git worktree add ../cflex-fms-wt-<주제> -b wo/<ID>-<주제> main` 으로 **자기 트리를 만들고 거기서만** 작업한다. 남의 트리에서 `checkout`/`switch`/`stash`/`reset` 금지 — 2026-10-25에 두 세션이 한 트리를 공유해 고아 커밋과 TASKS 재배열 사고가 났다.
+- `docs/control/*`를 고칠 일이 있으면(STATUS 보고 포함) 자기 트리에서 커밋하고 push한다. 관리자가 main으로 합친다.
 - WO마다 브랜치: `wo/INT-003-short-name` (base: `main`). `main`에 직접 커밋하지 않는다.
 - 커밋 메시지 접두어: `[WO-INT-003] …`. 하나의 커밋은 하나의 WO. 커밋 본문에 "완료 기준 중 무엇을 충족했는지"를 적는다.
 - WO 완료 시 `gh pr create --base main --title "[WO-INT-003] …"` 로 PR을 연다(본문: 완료 기준 체크리스트 + 테스트 출력). **머지는 관리자가 한다.** PR이 없는 작업은 완료로 인정하지 않는다.
-- 매 세션 종료 시 `git push`까지 한다 (origin: github.com/ericpark961-design/cflex-fms). 푸시 안 된 작업은 보이지 않는 작업이다.
+- 매 세션 종료 시 `git push -u origin <브랜치>`까지 한다(auto 모드에서 push가 막히면 STATUS에 '미푸시'라고 적는다) (origin: github.com/ericpark961-design/cflex-fms). 푸시 안 된 작업은 보이지 않는 작업이다.
 - 관리자 지시(TASKS/DECISIONS 변경)는 `main`에 `[CTRL] …` 커밋으로 들어온다. 세션 시작 시 `git fetch && git log origin/main -5 -- docs/control`로 새 지시를 확인한다.
 
 ## 작업 중

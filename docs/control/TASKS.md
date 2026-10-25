@@ -1,4 +1,4 @@
-# 작업지시서 (TASKS) — 관리자: Cowork Claude · 갱신 2026-10-25 (PM 검토 5차)
+# 작업지시서 (TASKS) — 관리자: Cowork Claude · 갱신 2026-10-25 (PM 검토 6차)
 
 상태: `대기` → `진행` → `검토요청` → `완료` / `보류`. 에이전트는 `대기/진행`만 집어 간다. `검토요청`은 관리자가 확인 후 `완료` 처리한다.
 완료 기준(Acceptance)은 전부 충족해야 한다. 테스트 명령이 적힌 항목은 결과를 STATUS에 붙인다.
@@ -19,6 +19,7 @@
 | 9 | WO-INT-009 | 대기 | **control-mcp 정식화** (Q-03 채택) — `tools/control-mcp` README에 설치·신분(CFLEX_AGENT) 설정, Codex 워크트리 AGENTS.md에 연결 방법 추가, 왕복 테스트를 CI에 포함. WO-INT-002보다 뒤 | Codex가 같은 서버로 STATUS 보고 1회 성공, 테스트 통과 |
 | 4b | WO-INT-004b | 완료 | **계약 v1.1 반영 소작업** — `UPS_BATTERY_CAPACITY_LOW` 매핑(60%/2h 억제), 계약 테스트 버전 검사 1.1, 열린 알람 상태를 재시작 후에도 유지(파일/SQLite) | 테스트 통과, STATUS 보고 |
 | 4c | WO-INT-004c | 대기 | **내부 콘솔 프로파일** (Q-09=(B)) — `CONSOLE_PROFILE=internal` 빌드에서 포털 범위 화면(3D·NOC·파워체인·지도·Copilot) 숨김(코드 삭제 금지), 메뉴/라우트/API 노출 제거, 빌드 검사 테스트. probe-agent → 콘솔 collector API 실제 연동(인벤토리 pull·이벤트 push) 포함 | 내부 빌드에 포털 화면 라우트 0, 테스트 통과, probe-agent↔콘솔 E2E 1회 |
+| 11 | WO-INT-011 | 검토요청 | **포털 연동 1단계** (Eric 직접 지시, 사후 번호 부여) — `bin/cflex-csr.js`(장치 CSR, 키 노드 밖 불출), `bin/cflex-portal-check.js`(DNS/TCP/TLS/mTLS/API/버전/목 판정 — spec 01 §3.3 verify의 포털 절반), `docs/handoff/PORTAL_INTEGRATION_REQUIREMENTS.md`(포털이 켜야 할 6개 + nginx mTLS 설정), control-mcp 파서 충실성·완료 재개 금지 수정. 브랜치 `wo/INT-portal-integration` | 테스트(probe-agent 58/58, control-mcp 30/30) 관리자 재실행, PR, 실측 결과(3 FAIL: mTLS/CERT/API)가 Codex WO-PTL-001/002 입력으로 전달 |
 | 10 | WO-INT-010 | 대기 | **운영 DB 시뮬레이터 장비 4대 삭제** (Q-02 승인) — PDU·NetBotz·CRAC·스위치 시뮬 장비와 그 메트릭/알람 행. 사전 백업(export) → 삭제 스크립트 커밋 → 삭제 전후 행 수 STATUS 기록. `probe-agent/sim/` 코드는 유지. 운영 DB 접근은 이 WO에 한해 허용, 다른 데이터는 건드리지 않음 | 백업 파일 존재, 전후 행 수 보고, S1 '샘플 데이터 제거' 항목 닫힘 |
 
 ## B. Codex — 포털 (WO-PTL)
