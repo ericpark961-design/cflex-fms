@@ -18,12 +18,12 @@ const ctx = { tenant: 'HAEA', siteId: 'HMA-FV' };
 const TS = '2026-10-23T18:05:12.345Z';
 const UUID = '0b8a3f62-5d1e-4c2a-9f7b-1e2d3c4b5a69';
 
-test('all eight appendix-C schema files exist, parse, and carry version 1.0', () => {
+test('all eight appendix-C schema files exist, parse, and carry version 1.1', () => {
   assert.deepStrictEqual(schema.NAMES.length, 8);
   for (const n of schema.NAMES) {
     const s = schema.load(n);
     assert.strictEqual(s.$schema, 'https://json-schema.org/draft/2020-12/schema', n);
-    assert.strictEqual(s['x-contract-version'], '1.0', n);
+    assert.strictEqual(s['x-contract-version'], '1.1', n);
   }
   assert.deepStrictEqual(
     fs.readdirSync(schema.SCHEMA_DIR).filter(f => f.endsWith('.schema.json')).sort(),

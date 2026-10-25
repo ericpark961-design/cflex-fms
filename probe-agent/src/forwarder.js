@@ -1,4 +1,4 @@
-// forwarder.js — outbound to the Portal per contract IFC-CFLEX-2026-1023 v1.0.
+// forwarder.js — outbound to the Portal per contract IFC-CFLEX-2026-1023 v1.1.
 //
 //   POST /api/v1/heartbeat   every 60 s, direct (a stale heartbeat is noise)
 //   PUT  /api/v1/inventory   on change + daily full
@@ -25,6 +25,8 @@ const adapt = require('./contract/adapt');
 const { createAlarmEngine } = require('./alarms/engine');
 const { jsonStore } = require('./alarms/store');
 
+// Contract minor this Probe speaks (§0, D-10); the Portal also accepts 1.0.
+const API_VERSION = '1.1';
 const MAX_POINTS = 500;
 const BACKOFF_MIN_MS = 1000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
@@ -60,7 +62,7 @@ function retryAfterMs(h, now) {
  * @param {Function} [o.random]   0..1, for jitter
  * @param {object} [o.log]
  * @param {string} [o.version]
- * @param {object} [o.alarms]     engine options (alarms/engine.js DEFAULTS) + {maintenance}
+ * @param {object} [o.alarms]     engine options (alarms/engine.js DEFAULTS) + {maintenance, persist}
  * @param {object} [o.notifier]   alarms/local-notify.js instance; absent = no local notification
  * @param {object} [o.idStore]    ledger id → last device_id, for replaced_by (alarms/store.js)
  */
@@ -75,7 +77,7 @@ function createForwarder(o) {
   const version = o.version || '0.0.0';
   const ctx = { tenant: portal.tenant, siteId: portal.siteId };
   const alarms = o.alarms || {};
-  const engine = createAlarmEngine({ ctx, now, opts: alarms, maintenance: alarms.maintenance });
+  const engine = createAlarmEngine({ ctx, now, opts: alarms, maintenance: alarms.maintenance, persist: alarms.persist || null, log });
   const notifier = o.notifier || null;
   const idStore = o.idStore || jsonStore(null);
 
@@ -94,6 +96,7 @@ function createForwarder(o) {
     'Content-Length': String(len),
     'X-CFlex-Tenant': portal.tenant,
     'X-CFlex-Node': portal.nodeId,
+    'X-CFlex-API-Version': API_VERSION,
     'Idempotency-Key': key,
     'User-Agent': `cflex-probe/${version}`,
   });
@@ -431,12 +434,13 @@ function get() {
     });
     console.log(`[forwarder] local notify ${notifier.enabled() ? 'on' : 'configured but no channel usable'} (${cfg.notify.configPath})`);
   }
+  const buffer = require('./buffer');
   instance = createForwarder({
     notifier,
     idStore: jsonStore(cfg.notify.idStorePath),
     // Maintenance windows live with the notify config until the Local Console
     // (WO-INT-004) and the set_maintenance command (§3.6) can set them.
-    alarms: { ...cfg.alarms, maintenance: ncfg?.maintenance || [] },
+    alarms: { ...cfg.alarms, maintenance: ncfg?.maintenance || [], persist: buffer.state('alarm_engine') },
     portal: {
       enabled: cfg.portal.enabled, url: cfg.portal.url, tenant: cfg.tenantId, nodeId: cfg.portal.nodeId,
       role: 'collector', siteId: cfg.portal.siteId, profile: cfg.portal.profile,
@@ -444,7 +448,7 @@ function get() {
       timeoutMs: 15000,
     },
     legacy: { enabled: cfg.legacy.enabled, url: cfg.cflexUrl, token: cfg.cflexToken, probeId: cfg.probeId, tenantId: cfg.tenantId },
-    queue: require('./buffer'),
+    queue: buffer,
     version: require('../package.json').version,
   });
   return instance;

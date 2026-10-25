@@ -38,7 +38,7 @@ function startMockPortal({ server: tlsMaterial, tenant = 'TEST', dateOffsetMs = 
       const raw = Buffer.concat(chunks).toString('utf8');
       const send = (status, body, headers = {}) => {
         res.writeHead(status, {
-          'Content-Type': 'application/json', 'X-CFlex-API-Version': '1.0',
+          'Content-Type': 'application/json', 'X-CFlex-API-Version': '1.1',
           Date: new Date(Date.now() + state.dateOffsetMs).toUTCString(), ...headers,
         });
         res.end(JSON.stringify(body));

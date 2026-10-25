@@ -44,6 +44,7 @@
         "UPS_SELFTEST_FAIL",
         "UPS_COMM_LOST",
         "UPS_RUNTIME_LOW_WARN",
+        "UPS_BATTERY_CAPACITY_LOW",
         "PORTAL_LINK_DOWN",
         "UPS_SELFTEST_OK",
         "UPS_RETURN_FROM_BATTERY",
