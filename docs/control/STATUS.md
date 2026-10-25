@@ -80,6 +80,11 @@
 - 블로커: 없음
 - 다음 세션 계획: PR #3·#4 검토 반영 → probe-agent의 콘솔 연동(장비 pull, telemetry/events 두 번째 목적지, 지시가 있으면) → WO-INT-005
 
+### 2026-10-25 15:00 PDT — Claude Code
+- WO-INT-002: **진행** | 진행 포털 연동 1단계 | 브랜치 `wo/INT-portal-integration` | 커밋 `6b076d9` | 테스트 probe-agent 58/58 (신규 portal-check 6) | 비고 실측 3 FAIL 전부 포털 쪽: mTLS 미구성 · 장치 인증서 없음(포털 CA 부재) · /api/v1 미구현(303→/login, Review Login 앱). 전송계층(DNS·TCP·TLS 1.3·시계 +1s)은 정상. docs/handoff/PORTAL_INTEGRATION_REQUIREMENTS.md
+  - 완료 기준: Eric 직접 지시(배정 WO 없음) — cflex.fms.support 실연동 착수. 장치 CSR 생성기 + 연동 점검 도구 + 포털측 요구사항 문서
+- 블로커: 없음
+- 다음 세션 계획: 포털이 nginx mTLS + CA 발급(WO-PTL-002)을 켜면 cflex-portal-check 재실행 → 0 FAIL 확인. 그 사이 WO-INT-004/004b PR 검토 반영
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
