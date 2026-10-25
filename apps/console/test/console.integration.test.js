@@ -398,14 +398,26 @@ function externalRefs(dir) {
       if (e.isDirectory()) { walk(p); continue; }
       if (!/\.(html|js|mjs|css)$/.test(e.name)) continue;
       const s = fs.readFileSync(p, 'utf8');
-      // src/href/url()/@import/fetch/new URL/importScripts targets, and maplibre style URLs.
-      const re = /(?:src|href)\s*=\s*["'](https?:)?\/\/[^"']+|url\(\s*["']?(?:https?:)?\/\/[^)"']+|@import\s+["'](?:https?:)?\/\/[^"']+|(?:fetch|importScripts|new URL)\(\s*["'`]https?:\/\/[^"'`]+|["'`]https?:\/\/[a-z0-9.-]*(?:googleapis|gstatic|jsdelivr|unpkg|cdnjs|cloudflare|openfreemap|cartocdn|tile|fonts)[^"'`]*["'`]/gi;
+      // What a browser fetches by itself: script/img/link/iframe/media sources,
+      // CSS url()/@import, fetch/new URL/importScripts targets, and any string
+      // naming a font, tile or CDN host. A plain <a href> is a link the user
+      // may click, not a load, and is not counted (the CSP blocks loads anyway).
+      const re = /<(?:script|img|link|iframe|source|video|audio|embed)\b[^>]*?(?:src|href)\s*=\s*\\?["'](?:https?:)?\/\/[^"']+|url\(\s*["']?(?:https?:)?\/\/[^)"']+|@import\s+["'](?:https?:)?\/\/[^"']+|(?:fetch|importScripts|new URL)\(\s*["'`]https?:\/\/[^"'`]+|["'`]https?:\/\/[a-z0-9.-]*(?:googleapis|gstatic|jsdelivr|unpkg|cdnjs|cloudflare|openfreemap|cartocdn|tile|fonts)[^"'`]*["'`]/gi;
       for (const m of s.matchAll(re)) out.push(`${path.relative(dir, p)}: ${m[0].slice(0, 120)}`);
     }
   };
   walk(dir);
   return out;
 }
+
+test('no external CDN: the scanner does catch what the portal build loads (Google Fonts, map tiles)', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'cflex-scan-'));
+  fs.copyFileSync(path.resolve(ROOT, '../twin/index.html'), path.join(d, 'index.html'));
+  fs.writeFileSync(path.join(d, 'a.js'), "const s='https://tiles.openfreemap.org/styles/positron';fetch('https://x.example/y')");
+  const hits = externalRefs(d);
+  assert.ok(hits.some(h => /fonts\.googleapis/.test(h)), hits.join('\n'));
+  assert.ok(hits.some(h => /openfreemap/.test(h)) && hits.some(h => /x\.example/.test(h)), hits.join('\n'));
+});
 
 test('no external CDN: the console pages reference nothing off-origin', () => {
   assert.deepStrictEqual(externalRefs(path.join(ROOT, 'public')), []);

@@ -14,7 +14,16 @@ import { t } from './i18n';
 import { tx } from './theme';
 import { CbuBar } from './cbubar';
 
-const BASEMAP = 'https://tiles.openfreemap.org/styles/positron';
+// The HAEA Local Console build (vite.console.config.js) has no internet and a
+// same-origin CSP, so it gets a plain background with the same pins instead
+// of fetching tiles. The constant folds at build time: the console bundle
+// does not contain the tile URL at all.
+const OFFLINE = import.meta.env.VITE_CFLEX_OFFLINE === '1';
+const BASEMAP = OFFLINE
+  ? { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#e8e8e8' } }] }
+  : 'https://tiles.openfreemap.org/styles/positron';
+const ATTRIBUTION = OFFLINE ? undefined
+  : '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · <a href="https://openfreemap.org/">OpenFreeMap</a>';
 const C = { crit: '#fa4d56', warn: '#f1c21b', ok: '#42be65', nodata: '#6f6f6f', ink: '#161616', muted: '#525252' };
 const worst = (s) => (s.critical > 0 ? 'crit' : s.warn > 0 ? 'warn' : (s.ok > 0 ? 'ok' : 'nodata'));
 
@@ -51,9 +60,7 @@ export default function MapScreen({ q = {} }) {
       style: BASEMAP,
       center: [-117.86, 33.70],          // southern California; refit once sites load
       zoom: 9,
-      attributionControl: {
-        customAttribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · <a href="https://openfreemap.org/">OpenFreeMap</a>',
-      },
+      attributionControl: ATTRIBUTION ? { customAttribution: ATTRIBUTION } : false,
     });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-right');
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
