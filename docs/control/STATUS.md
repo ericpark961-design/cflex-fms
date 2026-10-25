@@ -34,6 +34,20 @@
 - 블로커: 없음
 - 다음 세션 계획: WO-INT-003 (알람 1차 분류 + 로컬 알림). Q-05 답에 따라 adapt.js의 device_id 규칙 조정
 
+### 2026-10-25 — Claude Code (3차)
+- WO-INT-003: **검토요청** | 브랜치 `wo/INT-003-alarm-local-notify` (base main `f9f00dd`) | 커밋 `3d5dd6a` | **PR #2** https://github.com/ericpark961-design/cflex-fms/pull/2
+  - 완료 기준 ① 단위 테스트(분류·억제) `probe-agent/test/alarms.test.js` 9건 — 부록 B 사전 = 스키마 enum, 심각도는 코드 기준, 중복 억제(update 최대 15분 1회), 플래핑(15분 내 3회 → 유지, 15분 조용하면 clear), 유지보수 모드, COMM_LOST 30분 홀드
+  - ② ServiceNow·SMTP 더미 서버 E2E `test/local-notify.e2e.test.js` 8건 — 폴러 알람 → 엔진 → 더미 SMTP(AUTH)·Teams·더미 ServiceNow(생성/작업노트/해결, alarm_id↔INC 파일 저장, 재시작 후 해결) → mTLS 목 포털. **테스트 티켓** `bin/cflex-test-ticket.js`(생성→작업노트→해결, INC 출력, exit 0/1/2) + `testTicket()` 함수(콘솔 버튼은 WO-INT-004)
+  - ③ `local_notified` 계약 테스트 — 알림기 출력 전 형태 스키마 통과·잘못된 타입 거부, 포털 수신 본문 포함 확인. 값은 **실제 전달 결과**(메일 거부·SN 503 → false/null)
+  - Q-05 반영: inventory `provisional:true`/`id_basis:"ledger"`, 시리얼 확인 시 구 ID `replaced_by` 1회 전송. `inventory.schema.json`에 두 필드 추가(Codex 수신 검증에 영향, 태그 1.0 유지)
+  - `packages/notify` 의존성 0 유지 — SMTP 클라이언트(STARTTLS·AUTH PLAIN/LOGIN) + ServiceNow create/update/resolve
+  - 테스트: `node --test probe-agent/test/*.test.js` **42/42** · `packages/notify` npm test 14종 ok + 5/5 · backend notify-adapter ok
+  - 동작 변화: 배터리 용량 경고(60% 미만)는 부록 B 코드가 없어 포털로 보내지 않음(Q-07). update는 매 사이클 → 최대 15분 1회
+  - 미확인: 실 HAEA 릴레이·ServiceNow 미시험(금지 범위). STARTTLS 업그레이드·https SN 프록시 경로는 테스트로 돌려보지 않음(더미는 평문). 열린 알람 상태는 메모리(재시작 시 재-raise, INC 매핑은 유지)
+- 질문: `Q-2026-10-25-07`(배터리 용량 경고 코드 없음) · `Q-2026-10-25-08`(스키마 v1.1 필드 vs 태그 1.0)
+- 블로커: 없음
+- 다음 세션 계획: PR #2 검토 반영 → WO-INT-004 (Local Console: 알람 목록/ACK·유지보수 설정·테스트 티켓 버튼이 이번 엔진/알림기를 사용)
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
