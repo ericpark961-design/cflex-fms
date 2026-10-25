@@ -1,5 +1,14 @@
 // config.js — load + validate env
-require('dotenv').config();
+//
+// dotenv is a convenience, not a requirement: in production systemd supplies
+// the environment (`EnvironmentFile=/opt/cflex-probe/.env` in the unit), so
+// `.env` is already loaded by the time this runs. Requiring it hard meant an
+// install-time CLI — cflex-csr, cflex-test-ticket — died with
+// MODULE_NOT_FOUND on a host where dependencies are not installed yet, which
+// is exactly when those tools are needed.
+try { require('dotenv').config(); } catch (e) {
+  if (e.code !== 'MODULE_NOT_FOUND') throw e;
+}
 
 const cfg = {
   cflexUrl: process.env.CFLEX_URL || 'https://cflex.runless.co.uk',
