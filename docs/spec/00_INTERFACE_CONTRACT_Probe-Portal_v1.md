@@ -1,6 +1,6 @@
-# C-Flex FMS 2.x — Probe ↔ Managed Service Portal 인터페이스 계약 v1.0
+# C-Flex FMS 2.x — Probe ↔ Managed Service Portal 인터페이스 계약 v1.1
 
-- 문서번호: IFC-CFLEX-2026-1023 v1.0 — **양쪽 팀(Claude Code = 내부 Probe/On-Prem, Codex = 외부 Portal)이 공유하는 유일한 계약서.** 변경은 반드시 이 문서의 버전을 올리고 양쪽에 동시에 반영한다.
+- 문서번호: IFC-CFLEX-2026-1023 **v1.1** (2026-10-25: inventory `provisional`/`id_basis` 추가, 알람 코드 `UPS_BATTERY_CAPACITY_LOW`(P3) 추가 — 하위호환 minor) — **양쪽 팀(Claude Code = 내부 Probe/On-Prem, Codex = 외부 Portal)이 공유하는 유일한 계약서.** 변경은 반드시 이 문서의 버전을 올리고 양쪽에 동시에 반영한다.
 - 원칙: **Probe가 항상 먼저 연결한다(아웃바운드 전용).** Portal은 Probe로 인바운드 연결을 열지 않는다. Portal → Probe 방향의 요청은 Probe가 폴링하는 "command queue"로만 전달한다.
 
 ---
@@ -16,13 +16,13 @@
 | 멱등성 | 모든 POST는 `Idempotency-Key`(UUIDv4) 헤더 필수. Portal은 24시간 내 동일 키 재수신 시 200 + 동일 응답 |
 | 재시도 | 5xx/네트워크 오류: 지수 백오프 1s→2s→…→최대 5분, 지터 ±20%. 4xx는 재시도 금지(409 제외). Probe 로컬 큐 보존 기본 7일 |
 | 레이트 | 노드당 60 req/min. 초과 시 429 + `Retry-After` |
-| 버전 | 경로 `/api/v1`; 응답 헤더 `X-CFlex-API-Version: 1.0`. 하위호환 변경은 minor, 비호환은 `/api/v2` |
+| 버전 | 경로 `/api/v1`; 응답 헤더 `X-CFlex-API-Version: 1.1`(1.0 요청도 수락). 하위호환 변경은 minor, 비호환은 `/api/v2` |
 | 응답 포맷 | JSON. 오류: `{ "error": { "code": "string", "message": "string", "details": {} } }` |
 
 ## 2. 공통 식별자
 - `tenant` : 고객 코드 (`HAEA`). Portal 발급, 불변.
 - `site_id` : 테넌트 내 사이트 코드 (`HMA-FV`, `KUS-IRV`, `HAEA-HQ`).
-- `device_id` : **Probe가 생성하는 안정 ID** = `sha1(tenant|site_id|serial)[:16]`. 시리얼 변경 시 새 device_id + `replaced_by` 링크.
+- `device_id` : **Probe가 생성하는 안정 ID** = `sha1(tenant|site_id|serial)[:16]`. 시리얼 미확인 장비는 `sha1(tenant|site_id|"ledger:<원장id>")`로 **임시 ID**를 쓰고 inventory에 `provisional:true`, `id_basis:"ledger"`를 표시한다(v1.1). 시리얼 확인 시 새 device_id로 inventory를 보내고 구 ID에 `replaced_by`를 단다. Portal은 provisional 장비를 '시리얼 미확인'으로 표시하고 승계 시 이력을 합친다.
 - `node_id` : Probe/App 노드 (`cap01`, `app01`).
 - `alarm_id` : Probe 생성 UUID, 알람 생애(raise→update→clear) 동안 불변.
 
@@ -41,7 +41,7 @@
 { "full":true, "devices":[ { "device_id":"3f9c…","site_id":"HMA-FV","label":"MPOE UPS 1E-A",
    "vendor":"APC","model":"SYAF16KRMT","serial":"AD2248220154","serial_alt":["5D2249T04846"],
    "nmc_ip":"10.112.5.34","location":{"building":"HMA FV","floor":"1E","room":"IE Info Room","rack":"4"},
-   "in_sow":true,"mfg_date":"2022-11","mfg_date_source":"serial|nmc|manual","firmware":"…",
+   "in_sow":true,"provisional":false,"id_basis":"serial|ledger","mfg_date":"2022-11","mfg_date_source":"serial|nmc|manual","firmware":"…",
    "battery":{"installed":"2022-11","due":"2027-05","strings":4},"tags":["symmetra"] } ] }
 ```
 응답 200 `{ "accepted":48, "rejected":[{"device_id":"…","reason":"duplicate_serial"}] }`
@@ -101,7 +101,7 @@ Portal이 관리하는 **선택적** 중앙 설정(알람 임계치, 폴링 주�
 `in_v[]` V, `in_a[]` A, `in_hz` Hz, `out_v[]` V, `out_a[]` A, `out_hz` Hz, `load_pct` %, `load_kva`, `load_kw`, `bat_pct` %, `bat_v` V, `bat_a` A, `bat_temp_c` °C, `runtime_s` s, `status` enum, `bypass` bool, `selftest` enum, `selftest_ts`, `alarm_bits` hex, `int_temp_c`, `fan_ok` bool, `bat_replace_flag` bool, `bat_installed` YYYY-MM, `bat_due` YYYY-MM, `fw` string, `comm_ok` bool, `poll_latency_ms`.
 
 ## 부록 B. 알람 코드 사전 (v1, 기본 심각도)
-P1: `UPS_ON_BATTERY`, `UPS_LOW_BATTERY`, `UPS_OUTPUT_OFF`, `UPS_BATTERY_FAILED`, `UPS_OVERLOAD_SHUTDOWN_IMMINENT` · P2: `UPS_OVERLOAD`, `UPS_ON_BYPASS`, `UPS_HIGH_TEMP`, `UPS_BATTERY_REPLACE`, `UPS_FAN_FAIL`, `COLLECTOR_DOWN` · P3: `UPS_SELFTEST_FAIL`, `UPS_COMM_LOST`(30분), `UPS_RUNTIME_LOW_WARN`, `PORTAL_LINK_DOWN` · P4: `UPS_SELFTEST_OK`, `UPS_RETURN_FROM_BATTERY`, `UPS_CONFIG_CHANGED`, `BATTERY_EOL_90D`, `CLOCK_DRIFT`, `CONFIG_CONFLICT`. 사이트별 심각도 오버라이드는 Portal 정책.
+P1: `UPS_ON_BATTERY`, `UPS_LOW_BATTERY`, `UPS_OUTPUT_OFF`, `UPS_BATTERY_FAILED`, `UPS_OVERLOAD_SHUTDOWN_IMMINENT` · P2: `UPS_OVERLOAD`, `UPS_ON_BYPASS`, `UPS_HIGH_TEMP`, `UPS_BATTERY_REPLACE`, `UPS_FAN_FAIL`, `COLLECTOR_DOWN` · P3: `UPS_SELFTEST_FAIL`, `UPS_COMM_LOST`(30분), `UPS_RUNTIME_LOW_WARN`, `UPS_BATTERY_CAPACITY_LOW`(v1.1: 용량 경고, 기본 60% 미만, 방전 복귀 후 2시간 억제; 30% 미만은 `UPS_LOW_BATTERY` P1), `PORTAL_LINK_DOWN` · P4: `UPS_SELFTEST_OK`, `UPS_RETURN_FROM_BATTERY`, `UPS_CONFIG_CHANGED`, `BATTERY_EOL_90D`, `CLOCK_DRIFT`, `CONFIG_CONFLICT`. 사이트별 심각도 오버라이드는 Portal 정책.
 
 ## 부록 C. 스키마 파일
 `heartbeat.schema.json`, `inventory.schema.json`, `telemetry.schema.json`, `events.schema.json`, `files.schema.json`, `commands.schema.json`, `config.schema.json`, `error.schema.json` — 모두 JSON Schema draft 2020-12, 이 문서와 동일 버전 태그.

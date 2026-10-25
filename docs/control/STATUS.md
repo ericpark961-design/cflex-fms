@@ -56,3 +56,4 @@
 - 2026-10-25: 역할 분리 명세(docs/spec/00·01·02) 배포, 확인서 검토 의견 전달(§0·§7.1·§7.2·§4.3·§4.4), 계약 3종 → 1종 통일 지시.
 - 2026-10-25 (2차): WO-INT-001 **완료** 승인(v2 확인서 md·§7.2 복원·§10 역할분리 확인, 174/0 테스트). Q-01 → (A) main 정상화는 WO-INT-000으로 Claude Code 수행. Q-03 → (A) control-mcp 채택(조건부), WO-INT-009 등록. Q-02 → Eric 결정 대기(관리자 의견: 삭제). 프로브 코드(WO-INT-002 forwarder)는 아직 착수 전 — 다음 세션 1순위.
 - 2026-10-25 (3차): WO-INT-000 **완료**(origin/main=cbb4f49→7766313). WO-INT-002 **완료** — PR #1 관리자 머지(7766313), 테스트 22/22 관리자 재실행 확인, 비밀값 없음. Q-04=(A) Basic만, Q-05=임시 ID+provisional 표시(계약 v1.1 예정), Q-06=(A) docs/spec/schemas 정본(D-08). 다음: WO-INT-003 진행 지시. 미해결: index.js 실기동 스모크(node_modules 없음) → WO-INT-007에서 같이.
+- 2026-10-25 (4차): WO-INT-003 **완료** — PR #2 머지, 테스트 42/42 + notify 6/6 재실행, 비밀값 없음. Q-07=(B) 새 코드 UPS_BATTERY_CAPACITY_LOW(P3), Q-08=계약 v1.1 승격(스키마 태그 1.1). WO-INT-004(Local Console) 진행 지시, WO-INT-004b(v1.1 반영) 등록. 미시험: 실제 HAEA 릴레이/ServiceNow, STARTTLS — 현장 SAT 항목.

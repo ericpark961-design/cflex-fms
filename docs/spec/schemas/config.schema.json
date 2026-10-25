@@ -2,27 +2,48 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cflex.fms.support/schemas/v1.0/config.schema.json",
   "title": "GET /api/v1/config?node_id=&since= — response (contract IFC-CFLEX-2026-1023 v1.0 §3.7)",
-  "x-contract-version": "1.0",
+  "x-contract-version": "1.1",
   "$comment": "Optional central config. Local site.yaml wins; a conflict raises CONFIG_CONFLICT on the Probe.",
   "type": "object",
-  "required": ["config_version"],
+  "required": [
+    "config_version"
+  ],
   "properties": {
-    "config_version": { "type": "integer", "minimum": 0 },
+    "config_version": {
+      "type": "integer",
+      "minimum": 0
+    },
     "config": {
       "type": "object",
       "properties": {
-        "poll_interval_s": { "type": "integer", "minimum": 10 },
-        "thresholds": { "type": "object" },
+        "poll_interval_s": {
+          "type": "integer",
+          "minimum": 10
+        },
+        "thresholds": {
+          "type": "object"
+        },
         "maintenance_windows": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["start", "end"],
+            "required": [
+              "start",
+              "end"
+            ],
             "properties": {
-              "site_id": { "type": "string" },
-              "device_id": { "type": "string" },
-              "start": { "type": "string" },
-              "end": { "type": "string" }
+              "site_id": {
+                "type": "string"
+              },
+              "device_id": {
+                "type": "string"
+              },
+              "start": {
+                "type": "string"
+              },
+              "end": {
+                "type": "string"
+              }
             }
           }
         }

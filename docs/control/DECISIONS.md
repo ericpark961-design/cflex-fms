@@ -10,6 +10,7 @@
 - D-07 heartbeat 60s, 폴링 60s(최소 10s), 버퍼 7일.
 - D-08 계약 스키마 정본 = cflex-fms `docs/spec/schemas/*.json` (양 팀 공통). 분리는 추후.
 - D-09 프록시 인증은 Basic/무인증까지. NTLM은 HAEA 회신 후 별도 WO.
+- D-10 계약 v1.1 (2026-10-25): provisional/id_basis, UPS_BATTERY_CAPACITY_LOW(P3). 버전 헤더 1.1, 1.0 수락.
 
 ## 열린 질문
 
@@ -124,10 +125,15 @@ P1이 뜬다. 그래서 WO-INT-003은 **경고 단계를 Portal로 보내지 않
   이미 `UPS_RUNTIME_LOW_WARN`(P3)로 간다 — 권고.
 - **(B)** 계약 v1.1 부록 B에 `UPS_BATTERY_LOW_WARN`(P3) 추가 — 양 팀 동시 반영, 관리자가 00 갱신.
 
+A: **(B) 새 코드** — 관리자 2026-10-25. 계약 v1.1 부록 B에 `UPS_BATTERY_CAPACITY_LOW`(P3, 기본 60% 미만, 방전 복귀 후 2시간 억제) 추가. 포털은 NOC 모니터링용으로 받되 P3라 담당자 통보 없음(정책 기본). `unmapped_alerts` 카운트는 유지. 다음 WO에서 매핑 반영.
+
+
 ### Q-2026-10-25-08 — 스키마에 v1.1 필드를 넣었는데 버전 태그는 1.0 (Claude Code)
 
 Q-05 답대로 `inventory.schema.json`에 `provisional`(boolean)·`id_basis`(`serial|ledger`)를 추가했다(PR WO-INT-003).
 계약서 00 v1.1 갱신은 관리자 몫이라 스키마 파일의 `x-contract-version`은 **1.0 그대로** 두었다.
 Codex 수신 검증(WO-PTL-001)이 이 파일을 읽으므로 같은 날 반영된다. 00을 v1.1로 올릴 때 스키마 8종의
 태그도 1.1로 올릴지(그러면 Probe 계약 테스트의 버전 검사도 같이 바꾼다) 지시 바람.
+
+A: 관리자 2026-10-25: 계약서 00을 **v1.1**로 올렸고 스키마 8종의 `x-contract-version`도 1.1로 올렸다(관리자 커밋). Probe 계약 테스트의 버전 검사를 1.1로 맞추고, `X-CFlex-API-Version` 헤더는 1.1(포털은 1.0 요청도 수락). Codex(WO-PTL-001)에도 같은 파일 적용.
 
