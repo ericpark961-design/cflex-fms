@@ -48,6 +48,38 @@
 - 블로커: 없음
 - 다음 세션 계획: PR #2 검토 반영 → WO-INT-004 (Local Console: 알람 목록/ACK·유지보수 설정·테스트 티켓 버튼이 이번 엔진/알림기를 사용)
 
+### 2026-10-25 — Claude Code (4차)
+- WO-INT-004b: **검토요청** | 브랜치 `wo/INT-004b-contract-1.1` (base main `e59f6b9`) | 커밋 `e6c6947` | **PR #3** https://github.com/ericpark961-design/cflex-fms/pull/3
+  - `UPS_BATTERY_CAPACITY_LOW`(P3) 매핑: 60% 미만(30% 미만은 `UPS_LOW_BATTERY` P1 유지). 방전 중, 그리고 방전 복귀(UPS_ON_BATTERY clear) 후 2시간 동안 억제. 억제 시각은 재시작해도 유지
+  - 계약 테스트의 버전 검사를 1.1로 올림. Probe 요청 헤더 `X-CFlex-API-Version: 1.1`
+  - **열린 알람 재시작 유지**: 버퍼 SQLite에 `state` 테이블을 두고 같은 alarm_id로 update/clear를 이어 감. 플랩 이력과 통신두절 30분 카운트는 저장하지 않음(재시작하면 0부터)
+  - **관리자 확인**: `events.schema.json` 코드 enum에 `UPS_BATTERY_CAPACITY_LOW`가 빠져 있어 추가함(e59f6b9는 태그만 1.1로 올림). UPS 폴러가 내는 경고 순서를 바꿈(output_source를 battery_pct보다 먼저)
+  - 테스트: `cd probe-agent && npm test` **48/48** (신규 alarm-state 6건)
+- WO-INT-004: **검토요청** | 브랜치 `wo/INT-004-local-console` (base main `e59f6b9`) | 커밋 `c133b60`·`9634919`·`c4c0d14` | **PR #4** https://github.com/ericpark961-design/cflex-fms/pull/4
+  - `apps/console`(cflex-app): 의존성 0, node:http, Redis는 RESP 직접 구현, SQLite(better-sqlite3 우선, 없으면 node:sqlite)
+  - 완료 기준 ① app01/app02 동일 이미지: 프로세스 상태 없음. 통합 테스트로 두 인스턴스를 띄워 확인함 — app01에서 만든 세션이 app02에서 통하고, app01을 중지해도 app02가 계속 응답(SAT 6), 잠금은 두 노드 공통
+  - ② 세션 Redis: 토큰은 SHA-256만 저장, Redis 장애 시 503
+  - ③ 통합 테스트 `cd apps/console && npm test` **22/22**
+  - ④ 외부 CDN 0건:
+    - 모든 응답에 CSP `default-src 'self'`
+    - twin 콘솔 빌드 `npm run build:console`에서 Google Fonts·OpenFreeMap 제거
+    - 번들 스캔 테스트 + 스캐너 자가검증
+  - 범위:
+    - 로컬 계정과 역할 3종: scrypt, 비밀번호 정책, 최초 변경 강제, 5회 실패 시 15분 잠금, 감사로그 append-only
+    - 알람: 목록/상세/ACK/코멘트
+    - 장비: 현황, 트렌드 1h~30d
+    - 설정 `/settings`: 사이트·장비·CSV 임포트(§2.2 경고 5종)·SNMP 크리덴셜(AES-GCM)·임계치·알림 채널·**테스트 티켓 버튼**·유지보수·사용자·collector 키·상태(포털 링크)
+    - nginx 443 설정, 0.0.0.0 바인딩
+  - collector API(수신은 계약 스키마로 검증, devices/config pull)는 만들어 둠. **probe-agent가 콘솔로 보내고 받아 오도록 바꾸는 작업은 아직**
+  - 한계:
+    - app01/app02 실제 VM 분리는 WO-INT-008(PostgreSQL)이 끝나야 가능(SQLite 파일은 VM 간 공유 불가)
+    - XLSX 임포트 없음(CSV만), SAML은 플래그만 있음
+    - 브라우저로 육안 확인은 못 함. 스모크로 twin이 로드 시 부르는 엔드포인트를 전부 호출해 봄(포털 범위만 404/빈 목록)
+  - probe-agent는 이 브랜치에서 41/42 — 실패 1건은 v1.1 버전 검사이고 PR #3에서 고침
+- 질문: `Q-2026-10-25-09` (기존 UI = `apps/twin`인지, 포털 범위 화면 처리 — A/B/C)
+- 블로커: 없음
+- 다음 세션 계획: PR #3·#4 검토 반영 → probe-agent의 콘솔 연동(장비 pull, telemetry/events 두 번째 목적지, 지시가 있으면) → WO-INT-005
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
