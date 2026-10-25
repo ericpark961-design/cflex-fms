@@ -8,6 +8,8 @@
 - D-05 AI·자동화의 장비 쓰기 금지(88870a7 유지). Probe는 SNMP 읽기 전용.
 - D-06 수량 기준: 44(SOW) / 41(NMC IP, 방화벽) / 48(Q3 실사) 혼용 금지.
 - D-07 heartbeat 60s, 폴링 60s(최소 10s), 버퍼 7일.
+- D-08 계약 스키마 정본 = cflex-fms `docs/spec/schemas/*.json` (양 팀 공통). 분리는 추후.
+- D-09 프록시 인증은 Basic/무인증까지. NTLM은 HAEA 회신 후 별도 WO.
 
 ## 열린 질문
 
@@ -83,6 +85,9 @@ https/tls, 의존성 0, 테스트 통과). NTLM은 같은 CONNECT 소켓에서 3
 - **(B)** NTLM을 지금 구현한다(자체 구현, 테스트용 NTLM 더미 프록시 포함). 1~2 세션.
 - **(C)** 프록시 대신 Collector에서 40.114.79.164:443 직통 허용을 요청한다(방화벽 요청서 v3에 이미 있음).
 
+A: **(A)** — 관리자 2026-10-25. Basic + 무인증만 유지. HAEA 프록시 방식은 방화벽 양식 회신(docs/spec/01 §6-3)으로 확인한 뒤 NTLM/Kerberos가 필요하면 별도 WO로 반입(오프라인 번들에 패키지 추가). 지금 구현 변경 없음.
+
+
 ### Q-2026-10-25-05 — 시리얼 없는 장비의 device_id (Claude Code)
 
 계약 §2: `device_id = sha1(tenant|site_id|serial)[:16]`. 그러나 현재 장비 원장(구 클라우드
@@ -94,6 +99,9 @@ https/tls, 의존성 0, 테스트 통과). NTLM은 같은 CONNECT 소켓에서 3
 - **(B)** 시리얼 없는 장비는 Portal로 보내지 않는다(인벤토리·텔레메트리 모두 보류).
 - **(C)** 계약 v1.1에서 시리얼 없을 때의 규칙을 명시한다(양 팀 동시 반영).
 
+A: 임시 ID 방식 **채택하되 표시 의무** — 관리자 2026-10-25. 시리얼 미수집 장비는 `sha1(tenant|site|"ledger:<id>")`로 보내고 inventory에 `provisional:true`, `id_basis:"ledger"`를 넣는다. 시리얼 확인 시 새 device_id로 inventory 전송 + 구 ID에 `replaced_by` 링크(계약 §2). 계약서 v1.1에 `provisional`/`id_basis` 필드 추가(관리자가 00 갱신). Codex는 provisional 장비를 '시리얼 미확인'으로 표시하고 ID 승계 시 이력을 합친다.
+
+
 ### Q-2026-10-25-06 — 계약 스키마 파일의 위치 (Claude Code)
 
 계약 §7은 스키마를 공용 레포 `cflex-contract`에 두고 두 팀이 서브모듈로 참조한다고 한다. WO-INT-002 지시는
@@ -102,3 +110,6 @@ Codex(WO-PTL-001)가 같은 파일로 수신 검증을 해야 계약 테스트�
 
 - **(A)** 당분간 `docs/spec/schemas`가 정본, Codex 워크트리는 이 경로를 참조. `cflex-contract` 분리는 나중에 — 권고.
 - **(B)** 지금 `cflex-contract` 레포를 만들고 서브모듈로 전환(레포 생성은 Eric 권한).
+
+A: **(A)** — 관리자 2026-10-25. `docs/spec/schemas`가 정본(D-08). Codex는 `/Users/macstudio/work/cflex-fms/docs/spec/schemas`를 읽어 수신 검증(WO-PTL-001 완료 기준에 포함). `cflex-contract` 분리는 양쪽 계약 테스트가 안정된 뒤 관리자가 결정.
+
