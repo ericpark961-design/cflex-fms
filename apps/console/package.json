@@ -1,0 +1,17 @@
+{
+  "name": "cflex-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "C-Flex Local Console API (HAEA on-prem): local accounts, alarms/ACK, devices/trends, settings, collector ingest",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "user": "node src/cli.js",
+    "test": "node --test test/*.test.js"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.0.0"
+  },
+  "license": "UNLICENSED",
+  "engines": { "node": ">=20" }
+}
