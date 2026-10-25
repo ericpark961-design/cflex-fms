@@ -23,6 +23,7 @@
 // re-auth before sending.
 
 const db = require('../config/database');
+const policy = require('./fms-control-policy');
 
 // ─── Action catalogue ────────────────────────────────────────────────
 // Keys are stable identifiers used by the API. `risk` is low|medium|high.
@@ -162,12 +163,37 @@ async function executeEcostruxure(payload, cfg) {
 }
 
 // ─── Public entry point ─────────────────────────────────────────────
-async function performAction({ tenantId, deviceId, actionKey, params = {}, user }) {
+async function performAction({ tenantId, deviceId, actionKey, params = {}, user, origin }) {
   const cfg = getConfig(tenantId);
   const action = ACTIONS[actionKey];
   if (!action) {
     return { ok: false, error: 'unknown action', actions: Object.keys(ACTIONS) };
   }
+
+  // The write ban comes FIRST, before the tenant row — `control_enabled` is a
+  // default and this is a prohibition. A tenant cannot configure its way past
+  // it, and a caller that does not say who it is counts as automation.
+  // See fms-control-policy.js for why this is not left to the unwired stubs.
+  const verdict = policy.check({ actionKey, origin });
+  if (!verdict.allowed) {
+    // A refusal is an event worth keeping: it is the record that the ban held.
+    try {
+      db.prepare(`INSERT INTO fms_control_log
+        (tenant_id, device_id, device_label, action, channel, params, ok, result, error,
+         user_email, user_id, dry_run, executed_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+          tenantId, deviceId, null, actionKey, 'denied',
+          JSON.stringify(params), 0,
+          JSON.stringify({ denied: true, class: verdict.cls, origin: verdict.origin }),
+          verdict.why, user?.email || null, user?.userId || null, 1, Date.now(),
+        );
+    } catch (_) { /* the refusal stands even if the log write fails */ }
+    return {
+      ok: false, denied: true, dry_run: true, action: actionKey,
+      origin: verdict.origin, class: verdict.cls, error: verdict.why,
+    };
+  }
+
   if (!isActionAllowed(cfg, actionKey)) {
     return { ok: false, error: `action '${actionKey}' is not in tenant's allow-list` };
   }
@@ -232,4 +258,4 @@ function listActions() {
   }));
 }
 
-module.exports = { performAction, listActions, ACTIONS };
+module.exports = { performAction, listActions, ACTIONS, policy };

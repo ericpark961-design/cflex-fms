@@ -238,24 +238,41 @@ router.post('/:id/action', async (req, res) => {
   let out;
   try {
     const { performAction } = require('../services/fms-device-control');
-    out = await performAction({ tenantId: tid, deviceId, actionKey, params: req.body?.params || {}, user: req.user });
+    out = await performAction({
+      tenantId: tid, deviceId, actionKey, params: req.body?.params || {},
+      user: req.user, origin: 'human',
+    });
   } catch (e) {
     out = { ok: false, error: e.message };
   }
 
   // The result is the point: a control action that silently did nothing is the
   // worst outcome, so it lands on the timeline either way.
+  //
+  // And a dry run must not read as a completed action. `performAction` returns
+  // `ok: ok || dryRun`, so "요청됨" was written on the timeline when nothing
+  // had been sent — which is exactly the wrong thing for an operator, or an
+  // AI reading the timeline as evidence, to believe.
+  const note = out?.denied ? `원격 조치 ${actionKey} — 거부됨(정책): ${out.error}`
+             : out?.dry_run ? `원격 조치 ${actionKey} — 시뮬레이션만, 장비로 전송 안 됨`
+             : out?.ok      ? `원격 조치 ${actionKey} — 요청됨`
+             :                `원격 조치 ${actionKey} — 실패: ${out?.error || '알 수 없음'}`;
   incident.addTimeline(db, inc.id, {
     kind: 'action', author: who(req),
-    note: `원격 조치 ${actionKey} — ${out?.ok ? '요청됨' : `실패: ${out?.error || '알 수 없음'}`}`,
-    body: { action: actionKey, ok: !!out?.ok, error: out?.error || null, result: out?.result ?? null },
+    note,
+    body: {
+      action: actionKey, ok: !!out?.ok, dry_run: !!out?.dry_run, denied: !!out?.denied,
+      error: out?.error || null, result: out?.result ?? null,
+    },
   });
 
-  // New evidence (v5 §2): a control result is a re-evaluation trigger.
-  if (out?.ok) {
+  // New evidence (v5 §2): a control result is a re-evaluation trigger — but
+  // only a real one. A dry run produced no new device state to re-evaluate.
+  if (out?.ok && !out?.dry_run) {
     reeval.queue(db, inc.id, 'action_result');
   }
-  res.status(out?.ok ? 200 : 502).json({ ok: !!out?.ok, result: out });
+  res.status(out?.denied ? 403 : out?.ok ? 200 : 502)
+     .json({ ok: !!out?.ok, dry_run: !!out?.dry_run, denied: !!out?.denied, result: out });
 });
 
 // ─── POST /v1/incidents/:id/dispatch ── send an engineer ────────────

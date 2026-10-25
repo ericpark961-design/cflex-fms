@@ -955,12 +955,23 @@ router.get('/control/actions', (req, res) => {
 router.post('/devices/:id/action', async (req, res) => {
   const tid = tenantOf(req); if (!tid) return res.status(400).json({ error: 'tenant scope required' });
   const deviceId = parseInt(req.params.id, 10);
+  // The sibling route in incidents.routes.js gated this and here it did not,
+  // so the same nine write actions were reachable by any authenticated role.
+  if (!['super_admin', 'admin', 'fms_admin'].includes(req.user?.role)) {
+    return res.status(403).json({ error: 'control requires an admin role' });
+  }
   const { action, params } = req.body || {};
   if (!action) return res.status(400).json({ error: 'action required' });
   try {
     const { performAction } = require('../services/fms-device-control');
-    const r = await performAction({ tenantId: tid, deviceId, actionKey: action, params: params || {}, user: req.user });
-    res.json(r);
+    // `origin` is what the write ban keys on. An HTTP request carrying an
+    // authenticated admin session is a person; anything calling performAction
+    // without saying so is treated as automation and refused.
+    const r = await performAction({
+      tenantId: tid, deviceId, actionKey: action, params: params || {},
+      user: req.user, origin: 'human',
+    });
+    res.status(r?.denied ? 403 : 200).json(r);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
