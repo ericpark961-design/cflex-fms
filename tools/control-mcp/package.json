@@ -1,0 +1,11 @@
+{
+  "name": "@cflex/control-mcp",
+  "version": "1.0.0",
+  "description": "C-Flex 작업지시판(TASKS/STATUS/DECISIONS)을 MCP로 노출 — 관리자 PM과 두 에이전트의 공용 접점",
+  "private": true,
+  "bin": { "cflex-control-mcp": "./server.js" },
+  "main": "control.js",
+  "scripts": { "test": "node test/control.test.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": {}
+}

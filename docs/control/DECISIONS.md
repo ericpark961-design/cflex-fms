@@ -38,3 +38,36 @@ S1 "샘플·시뮬레이션 데이터 제거" 항목이 이것 때문에 닫히�
 삭제인지 지시 필요. (운영 DB 변경이므로 지시 없이는 건드리지 않는다.)
 
 A:
+
+### Q-2026-10-25-03 — 작업지시판 MCP 서버 채택 여부 (Claude Code)
+
+Eric 직접 지시로 `tools/control-mcp`를 만들었다 — 작업지시판을 MCP로 노출해 관리자·Claude Code·Codex
+세 쪽이 같은 서버를 각자 신분으로 쓰게 한 것. **CLAUDE.md의 "배정되지 않은 일은 하지 않는다"에
+해당하므로 채택 여부를 묻는다.**
+
+`docs/control/{TASKS,STATUS,DECISIONS}.md`가 **그대로 정본**이다. 서버는 파싱하고 되쓴다 —
+관리자는 git diff로 계속 검토하고 사람은 계속 markdown을 읽는다. 저장소를 바꾸지 않았다.
+
+파일만 쓸 때의 실패 세 가지를 막는다:
+- 두 에이전트가 동시에 STATUS에 쓰면 하나가 사라진다 → 디렉터리 락 + 원자적 rename
+- 남의 블록·남의 작업을 건드린다 → `CFLEX_AGENT` 신분으로 차단
+- STATUS 형식을 매번 손으로 맞춘다 → `control_report`가 생성
+
+그리고 **완료 처리는 관리자만** 한다 — 에이전트가 `완료`로 보고하면 `검토요청`으로 강등되고
+그 사실이 STATUS에 남는다. `control_assign`·`control_set_status`·`control_answer`는
+`CFLEX_AGENT=manager`에서만 `tools/list`에 노출된다.
+
+테스트 26종 통과. 세 파일 바이트 왕복, 소유권, 추가 전용, Q 번호 충돌, 락 회수,
+JSON-RPC 왕복, 의존성 0개·네트워크·git 호출 0건까지 검사한다. `save()`는 왕복하지 않는
+결과를 쓰기 거부하므로 파서 버그가 판을 뭉개지 못한다.
+
+- **(A)** 채택. `CLAUDE.md`·`AGENTS.md`에 "세션 시작 `control_board`, 종료 `control_report`"를
+  추가하고 관리자도 `CFLEX_AGENT=manager`로 등록한다 — 권고. 등록 명령은
+  `tools/control-mcp/README.md`에 있다.
+- **(B)** 보류. 파일 직접 편집을 유지하고 서버는 읽기 전용(`control_board`/`control_task`/
+  `control_answers`)으로만 쓴다.
+- **(C)** 폐기. `tools/control-mcp`와 `.mcp.json`을 되돌린다.
+
+서버는 git을 건드리지 않는다 — 커밋·푸시·PR은 `CLAUDE.md`가 정한 대로 에이전트의 일로 남겼다.
+
+A:

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "cflex-control": {
+      "command": "node",
+      "args": ["tools/control-mcp/server.js"],
+      "env": {
+        "CFLEX_AGENT": "claude-code",
+        "CFLEX_ROOT": "${CFLEX_ROOT:-.}"
+      }
+    }
+  }
+}
