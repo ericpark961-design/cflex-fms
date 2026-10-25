@@ -15,6 +15,7 @@ function makeCerts() {
   const p = (f) => path.join(dir, f);
   const ssl = (...args) => execFileSync('openssl', args, { cwd: dir, stdio: 'pipe' });
   const ext = (name, body) => { fs.writeFileSync(p(name), body); return p(name); };
+  let seq = 1;
 
   ssl('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=cflex-test-ca',
     '-keyout', p('ca.key'), '-out', p('ca.pem'));
@@ -30,8 +31,17 @@ function makeCerts() {
   ssl('req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=TEST.rogue',
     '-keyout', p('rogue.key'), '-out', p('rogue.pem'));
 
+  // Issue another client certificate on demand: the two-node SAT needs
+  // TEST.cap02 as well, and certificate rotation needs a second TEST.cap01
+  // signed by the same CA.
+  const issueClient = (cn, name = `client-${cn.replace(/[^a-z0-9]+/gi, '-')}-${seq++}`) => {
+    leaf(name, cn, ext(`${name}.ext`, 'extendedKeyUsage=clientAuth\n'));
+    return { certPath: p(`${name}.pem`), keyPath: p(`${name}.key`), caPath: p('ca.pem'), cn };
+  };
+
   return {
     dir,
+    issueClient,
     caPath: p('ca.pem'),
     server: { cert: fs.readFileSync(p('server.pem')), key: fs.readFileSync(p('server.key')), ca: fs.readFileSync(p('ca.pem')) },
     client: { certPath: p('client.pem'), keyPath: p('client.key'), caPath: p('ca.pem') },
