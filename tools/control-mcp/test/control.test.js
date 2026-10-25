@@ -233,9 +233,17 @@ t('a report appends to my block and leaves the other agent\'s untouched', (root)
   const before = read(root, 'STATUS.md');
   const codexBlock = before.slice(before.indexOf('## Codex 블록'));
 
+  // A live row, picked from the board: WO-INT-002 is 완료 now and the
+  // reopen guard correctly refuses it, which used to fail this test.
+  const C = require('../control');
+  const live = C.load(root).tasks.sections
+    .find(x => x.owner === 'claude-code').rows.find(x => ['대기', '진행'].includes(x.status));
+  delete require.cache[require.resolve('../control')];
+  assert.ok(live, 'no live task on the board');
+
   const { call, restore } = serverAs('claude-code', root);
   const r = call('control_report', {
-    entries: [{ id: 'WO-INT-002', status: '진행', progress: '40%', branch: 'wo/INT-002-x', tests: '12/12' }],
+    entries: [{ id: live.id, status: '진행', progress: '40%', branch: 'wo/INT-002-x', tests: '12/12' }],
     next: 'schemas 생성',
   });
   restore();
@@ -245,11 +253,11 @@ t('a report appends to my block and leaves the other agent\'s untouched', (root)
   assert.ok(after.includes(before.slice(0, before.indexOf('## Codex 블록'))
     .replace(/\n+$/, '')), 'existing Claude Code entries were altered');
   assert.ok(after.includes(codexBlock), 'Codex block changed');
-  assert.ok(after.includes('WO-INT-002'), 'entry not written');
+  assert.ok(after.includes(live.id), 'entry not written');
   assert.ok(after.includes('진행 40%'));
   assert.ok(after.includes('다음 세션 계획: schemas 생성'));
   // and the task row moved with it
-  assert.match(read(root, 'TASKS.md'), /\| *WO-INT-002 *\| *진행 *\|/);
+  assert.ok(new RegExp(`\\| *${live.id} *\\| *진행 *\\|`).test(read(root, 'TASKS.md')));
 });
 
 t('an agent reporting 완료 is recorded as 검토요청 — the manager closes it', (root) => {
