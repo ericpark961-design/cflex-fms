@@ -85,13 +85,60 @@ t('the real board parses into the shape the handlers assume', (root) => {
   assert.strictEqual(bb.prefix, 'WO-PTL');
   assert.ok(a.rows.length >= 8, `expected ≥8 INT rows, got ${a.rows.length}`);
   for (const r of [...a.rows, ...bb.rows]) {
-    assert.match(r.id, /^WO-(INT|PTL)-\d{3}$/);
+    assert.match(r.id, /^WO-(INT|PTL)-\d{3}[a-z]?$/);   // 004b is a real sub-task
     assert.ok(C.STATUSES.includes(r.status), `bad status "${r.status}" on ${r.id}`);
     assert.ok(r.acceptance.trim(), `${r.id} has no acceptance criteria`);
   }
   for (const n of ['Claude Code 블록', 'Codex 블록']) {
     assert.ok(b.status.blocks.some(x => x.name === n), `missing STATUS block ${n}`);
   }
+  delete require.cache[require.resolve('../control')];
+});
+
+// ── the two defects this file failed to catch the first time ────────
+
+t('an id with a letter suffix survives a write — WO-INT-004b', (root) => {
+  // The first ROW pattern matched "WO-INT-004" out of "WO-INT-004b", the rest
+  // of the line shifted, and the row was dropped. 19 rows in, 18 out.
+  const C = require('../control');
+  const b = C.load(root);
+  const all = b.tasks.sections.flatMap(s => s.rows).map(r => r.id);
+  const suffixed = (b.raw.tasks.match(/WO-[A-Z]+-\d+[a-z]/g) || [])
+    .filter((v, i, a) => a.indexOf(v) === i);
+  for (const id of suffixed) assert.ok(all.includes(id), `${id} was dropped by the parser`);
+  // and a synthetic one, so the case stays covered when the board moves on
+  const sec = b.tasks.sections.find(s => s.owner === 'claude-code');
+  sec.rows.push({ priority: '9z', id: 'WO-INT-099z', status: '대기', work: 'x', acceptance: 'y', section: sec.key, owner: 'claude-code' });
+  C.save(b, ['tasks']);
+  delete require.cache[require.resolve('../control')];
+  const C2 = require('../control');
+  assert.ok(C2.load(root).tasks.sections.flatMap(s => s.rows).some(r => r.id === 'WO-INT-099z'),
+    'a letter-suffixed id did not survive save → load');
+  delete require.cache[require.resolve('../control')];
+});
+
+t('load refuses a file the parser cannot reproduce', (root) => {
+  // The real hole: save() verified that its OWN output round-tripped, which a
+  // stable loss passes — a dropped row serialises consistently for ever, so
+  // the check said "fine" while the write deleted a task. Fidelity has to be
+  // checked against what was read, at load.
+  //
+  // Finding an input that genuinely breaks fidelity took two tries. A row with
+  // six columns does NOT: the lazy groups absorb the extra pipes into the last
+  // cell and reproduce the line exactly. What does break is a non-row line
+  // BETWEEN rows — it goes to `after`, which serialises after every row, so
+  // the following row moves above it and the file comes back reordered.
+  const f = path.join(root, 'docs', 'control', 'TASKS.md');
+  const lines = fs.readFileSync(f, 'utf8').split('\n');
+  const rows = lines.map((l, i) => [l, i]).filter(([l]) => /^\| *[0-9]/.test(l));
+  assert.ok(rows.length >= 2, 'need two rows to interleave');
+  lines.splice(rows[1][1], 0, '<!-- 관리자 메모 -->');
+  fs.writeFileSync(f, lines.join('\n'));
+
+  const C = require('../control');
+  assert.throws(() => C.load(root), /not understood by the parser/);
+  // and the message points at the line, so it is fixable
+  try { C.load(root); } catch (e) { assert.match(e.message, /line \d+; \d+ lines in, \d+ out/); }
   delete require.cache[require.resolve('../control')];
 });
 
@@ -105,13 +152,19 @@ t('an agent cannot claim another agent\'s task', (root) => {
 });
 
 t('claiming sets 대기 → 진행 and returns the acceptance criteria', (root) => {
+  const C = require('../control');
+  const waiting = C.load(root).tasks.sections
+    .find(x => x.owner === 'claude-code').rows.find(x => x.status === '대기');
+  delete require.cache[require.resolve('../control')];
+  assert.ok(waiting, 'no 대기 task on the board to claim');
+
   const { call, restore } = serverAs('claude-code', root);
-  const r = call('control_claim', { id: 'WO-INT-005' });
+  const r = call('control_claim', { id: waiting.id });
   restore();
   assert.strictEqual(r.was, '대기');
   assert.strictEqual(r.now, '진행');
-  assert.ok(r.acceptance.includes('podman build'), 'acceptance not returned');
-  assert.match(read(root, 'TASKS.md'), /\| *WO-INT-005 *\| *진행 *\|/);
+  assert.ok(r.acceptance.trim(), 'acceptance not returned');
+  assert.ok(new RegExp(`\\| *${waiting.id} *\\| *진행 *\\|`).test(read(root, 'TASKS.md')));
 });
 
 t('claiming out of priority order warns instead of staying silent', (root) => {
@@ -200,11 +253,16 @@ t('a report appends to my block and leaves the other agent\'s untouched', (root)
 });
 
 t('an agent reporting 완료 is recorded as 검토요청 — the manager closes it', (root) => {
+  const C = require('../control');
+  const live = C.load(root).tasks.sections
+    .find(x => x.owner === 'claude-code').rows.find(x => ['대기', '진행'].includes(x.status));
+  delete require.cache[require.resolve('../control')];
+
   const { call, restore } = serverAs('claude-code', root);
-  const r = call('control_report', { entries: [{ id: 'WO-INT-001', status: '완료', commit: 'b087445' }] });
+  const r = call('control_report', { entries: [{ id: live.id, status: '완료', commit: 'b087445' }] });
   restore();
-  assert.deepStrictEqual(r.tasks_updated, ['WO-INT-001→검토요청']);
-  assert.match(read(root, 'TASKS.md'), /\| *WO-INT-001 *\| *검토요청 *\|/);
+  assert.deepStrictEqual(r.tasks_updated, [`${live.id}→검토요청`]);
+  assert.ok(new RegExp(`\\| *${live.id} *\\| *검토요청 *\\|`).test(read(root, 'TASKS.md')));
   assert.match(read(root, 'STATUS.md'), /완료 처리는 관리자가 한다/);
 });
 
@@ -299,10 +357,13 @@ t('assigning allocates the next id in the right section', (root) => {
     owner: 'claude-code', work: '**시뮬레이터 장비 4대 제거**', acceptance: '운영 DB에 sim 장비 0건',
   });
   m.restore();
-  assert.strictEqual(r.id, 'WO-INT-009');   // A holds 000..008
+  // Derived, not hard-coded — the manager keeps adding rows.
+  assert.match(r.id, /^WO-INT-\d{3}$/);
   const tasks = read(root, 'TASKS.md');
   const secA = tasks.slice(tasks.indexOf('## A.'), tasks.indexOf('## B.'));
-  assert.ok(secA.includes('WO-INT-009'), 'new row went into the wrong section');
+  assert.ok(secA.includes(r.id), 'new row went into the wrong section');
+  const secB = tasks.slice(tasks.indexOf('## B.'));
+  assert.ok(!secB.includes(r.id), 'new row leaked into the Codex section');
 });
 
 t('set_status closes a task and can log the review', (root) => {
@@ -329,7 +390,14 @@ t('board gives an agent its queue in priority order', (root) => {
   a.restore();
   assert.strictEqual(r.agent, 'claude-code');
   assert.ok(r.tasks.every(x => x.owner === 'claude-code'), 'board leaked the other agent\'s tasks');
-  assert.strictEqual(r.mine_actionable[0], 'WO-INT-001', 'priority 1 should come first');
+  // Not a hard-coded id: the board advances and WO-INT-001 is 완료 now.
+  // The invariant is that the queue is ordered and holds only live work.
+  const live = r.tasks.filter(x => ['대기', '진행'].includes(x.status));
+  assert.deepStrictEqual(r.mine_actionable, live
+    .slice().sort((a, b) => (parseInt(a.priority, 10) || 99) - (parseInt(b.priority, 10) || 99))
+    .map(x => x.id), 'queue is not in priority order');
+  assert.ok(!r.mine_actionable.some(id => r.tasks.find(x => x.id === id)?.status === '완료'),
+    'a 완료 task is still in the queue');
   assert.ok(r.decisions_confirmed.some(d => d.startsWith('D-05')), 'confirmed decisions missing');
   assert.ok(r.held.some(h => /WireGuard/.test(h)), 'the held list was not read');
 });

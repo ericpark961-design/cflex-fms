@@ -69,7 +69,11 @@ function writeAtomic(file, text) {
 // Sections are `## A. Claude Code — 내부 (WO-INT)` with a five-column table,
 // plus a trailing `## C.` that is a bullet list, not a table.
 
-const ROW = /^\|\s*([^|]*?)\s*\|\s*(WO-[A-Z]+-\d+)\s*\|\s*([^|]*?)\s*\|\s*([\s\S]*?)\s*\|\s*([\s\S]*?)\s*\|\s*$/;
+// The id may carry a letter suffix — WO-INT-004b is a sub-task the manager
+// registered against WO-INT-004. Without the suffix this pattern matched
+// "WO-INT-004" out of it, the rest of the line shifted, and the row was
+// dropped on the next write.
+const ROW = /^\|\s*([^|]*?)\s*\|\s*(WO-[A-Z]+-\d+[a-z]?)\s*\|\s*([^|]*?)\s*\|\s*([\s\S]*?)\s*\|\s*([\s\S]*?)\s*\|\s*$/;
 
 function parseTasks(text) {
   const lines = text.split('\n');
@@ -217,12 +221,38 @@ function load(root) {
   const raw = {
     tasks: read(files.tasks), status: read(files.status), decisions: read(files.decisions),
   };
-  return {
+  const board = {
     dir, files, raw,
     tasks: parseTasks(raw.tasks),
     status: parseStatus(raw.status),
     decisions: parseDecisions(raw.decisions),
   };
+
+  // Fidelity, checked here and not only in save(). save() used to verify that
+  // its own output round-tripped, and a STABLE loss passes that: a row the
+  // parser drops serialises consistently for ever, so the check said "fine"
+  // while the write deleted a task. WO-INT-004b is exactly how that was found.
+  //
+  // So: if parse → serialize cannot reproduce the file byte for byte, the
+  // parser does not understand it, and nothing may be read or written through
+  // it. Loud, with the first differing line, beats a quietly shortened board.
+  const ser = { tasks: serializeTasks, status: serializeStatus, decisions: serializeDecisions };
+  for (const k of ['tasks', 'status', 'decisions']) {
+    const back = ser[k](board[k]);
+    if (back === raw[k]) continue;
+    const a = raw[k].split('\n');
+    const b = back.split('\n');
+    let i = 0;
+    while (i < Math.max(a.length, b.length) && a[i] === b[i]) i++;
+    throw new Error(
+      `${path.basename(board.files[k])} is not understood by the parser `
+      + `(line ${i + 1}; ${a.length} lines in, ${b.length} out). `
+      + `Refusing to operate on it — fix the parser or the file, do not write.\n`
+      + `  file: ${JSON.stringify(a[i] ?? null)}\n`
+      + `  ours: ${JSON.stringify(b[i] ?? null)}`,
+    );
+  }
+  return board;
 }
 
 /**
@@ -236,8 +266,11 @@ function save(board, which) {
     for (const k of which) {
       const text = ser[k](board[k]);
       const reparsed = { tasks: parseTasks, status: parseStatus, decisions: parseDecisions }[k](text);
+      // Defence in depth. The load-time fidelity check is the one that
+      // catches a lossy parse; this catches a serialiser that emits something
+      // it cannot itself read back.
       if (ser[k](reparsed) !== text) {
-        throw new Error(`refusing to write ${k}: does not round-trip (parser bug)`);
+        throw new Error(`refusing to write ${k}: output does not re-parse (serialiser bug)`);
       }
       if (text !== board.raw[k]) { writeAtomic(board.files[k], text); written.push(k); }
     }
