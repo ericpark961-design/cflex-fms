@@ -18,6 +18,12 @@ const DEFAULT_THRESHOLDS = {
 function evaluateAlerts(device, metrics, thresholds = DEFAULT_THRESHOLDS) {
   const alerts = [];
 
+  // Output source first: the alarm engine holds the battery-capacity warning
+  // while the UPS is on battery, so it has to know that before it sees the
+  // capacity (contract appendix B v1.1).
+  if (metrics.output_source && metrics.output_source !== 'onLine' && metrics.output_source !== 'normal') {
+    alerts.push({ severity: 'P2', metric: 'output_source', value: metrics.output_source, message: `Output source: ${metrics.output_source}` });
+  }
   if (metrics.battery_pct != null) {
     if (metrics.battery_pct < thresholds.battery_critical_pct) {
       alerts.push({ severity: 'P1', metric: 'battery_pct', value: metrics.battery_pct, threshold: thresholds.battery_critical_pct, message: `Battery critically low (${metrics.battery_pct}%)` });
@@ -45,9 +51,6 @@ function evaluateAlerts(device, metrics, thresholds = DEFAULT_THRESHOLDS) {
     } else if (metrics.runtime_min < thresholds.runtime_warn_min) {
       alerts.push({ severity: 'P2', metric: 'runtime_min', value: metrics.runtime_min, threshold: thresholds.runtime_warn_min, message: `On battery — runtime low (${metrics.runtime_min} min)` });
     }
-  }
-  if (metrics.output_source && metrics.output_source !== 'onLine' && metrics.output_source !== 'normal') {
-    alerts.push({ severity: 'P2', metric: 'output_source', value: metrics.output_source, message: `Output source: ${metrics.output_source}` });
   }
   if (metrics.battery_status && /low|depleted|replace/i.test(metrics.battery_status)) {
     alerts.push({ severity: 'P1', metric: 'battery_status', value: metrics.battery_status, message: `Battery status: ${metrics.battery_status}` });

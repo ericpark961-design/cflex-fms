@@ -51,4 +51,7 @@ function stats() {
   return { pending: total, oldest_ts: oldest };
 }
 
-module.exports = { enqueue, dequeue, ack, fail, purgeOld, stats };
+/** Named state in the same file — the alarm engine's open alarms (alarms/persist.js). */
+const state = (name) => require('./alarms/persist').sqliteState(db, name);
+
+module.exports = { enqueue, dequeue, ack, fail, purgeOld, stats, state };

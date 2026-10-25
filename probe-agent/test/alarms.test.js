@@ -37,7 +37,7 @@ const validAll = (items) => {
 };
 
 test('codes: the dictionary is appendix B exactly, and the events schema enum is the same set', () => {
-  const byP = { P1: 5, P2: 6, P3: 4, P4: 6 };
+  const byP = { P1: 5, P2: 6, P3: 5, P4: 6 };
   for (const [p, n] of Object.entries(byP)) assert.strictEqual(Object.values(codes.SEVERITY).filter(s => s === p).length, n, p);
   const en = schema.load('events').$defs.code.enum;
   assert.deepStrictEqual([...en].sort(), [...codes.CODES].sort());
@@ -59,7 +59,7 @@ test('classification: every alert the UPS poller can produce maps to a code or i
   const { eng } = engine();
   const cases = [
     [{ battery_pct: 20 }, 'battery_pct', 'UPS_LOW_BATTERY'],
-    [{ battery_pct: 50 }, 'battery_pct', null],                           // warning floor only — Q-2026-10-25-07
+    [{ battery_pct: 50 }, 'battery_pct', 'UPS_BATTERY_CAPACITY_LOW'],     // warning floor only — v1.1, Q-2026-10-25-07
     [{ temp_c: 50 }, 'temp_c', 'UPS_HIGH_TEMP'],
     [{ temp_c: 40 }, 'temp_c', 'UPS_HIGH_TEMP'],
     [{ load_pct: 95 }, 'load_pct', 'UPS_OVERLOAD'],

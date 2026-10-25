@@ -1,4 +1,4 @@
-// alarms/codes.js — contract appendix B, the alarm code dictionary (v1).
+// alarms/codes.js — contract appendix B, the alarm code dictionary (v1.1).
 //
 // The severity of an alarm is its code's, not whatever the poller guessed.
 // Site-level overrides are Portal policy (appendix B, last line), so there is
@@ -19,6 +19,7 @@ const SEVERITY = Object.freeze({
   UPS_SELFTEST_FAIL: 'P3',
   UPS_COMM_LOST: 'P3',
   UPS_RUNTIME_LOW_WARN: 'P3',
+  UPS_BATTERY_CAPACITY_LOW: 'P3',
   PORTAL_LINK_DOWN: 'P3',
   UPS_SELFTEST_OK: 'P4',
   UPS_RETURN_FROM_BATTERY: 'P4',
@@ -36,6 +37,12 @@ const NODE_CODES = Object.freeze(['COLLECTOR_DOWN', 'PORTAL_LINK_DOWN', 'CLOCK_D
 /** Appendix B: `UPS_COMM_LOST (30분)` — only after 30 minutes without an answer. */
 const COMM_LOST_AFTER_MS = 30 * 60 * 1000;
 
+/**
+ * Appendix B v1.1: `UPS_BATTERY_CAPACITY_LOW` is held for 2 hours after the
+ * UPS comes back from battery — it is recharging, which is not news.
+ */
+const CAPACITY_HOLD_AFTER_BATTERY_MS = 2 * 60 * 60 * 1000;
+
 const severityOf = (code) => SEVERITY[code] || null;
 
 /**
@@ -52,9 +59,9 @@ const severityOf = (code) => SEVERITY[code] || null;
 function classify(a) {
   switch (a.metric) {
     case 'battery_pct':
-      // Capacity under the critical floor is a low battery. Under the warning
-      // floor only, the dictionary has no code — DECISIONS Q-2026-10-25-07.
-      return a.severity === 'P1' ? 'UPS_LOW_BATTERY' : null;
+      // Under the critical floor (30 %) a low battery; under the warning floor
+      // (60 %) only, the v1.1 capacity warning — DECISIONS Q-2026-10-25-07.
+      return a.severity === 'P1' ? 'UPS_LOW_BATTERY' : 'UPS_BATTERY_CAPACITY_LOW';
     case 'temp_c': return 'UPS_HIGH_TEMP';
     case 'load_pct': return 'UPS_OVERLOAD';
     case 'runtime_min': return a.severity === 'P1' ? 'UPS_LOW_BATTERY' : 'UPS_RUNTIME_LOW_WARN';
@@ -72,4 +79,4 @@ function classify(a) {
   }
 }
 
-module.exports = { SEVERITY, CODES, NODE_CODES, COMM_LOST_AFTER_MS, severityOf, classify };
+module.exports = { SEVERITY, CODES, NODE_CODES, COMM_LOST_AFTER_MS, CAPACITY_HOLD_AFTER_BATTERY_MS, severityOf, classify };
