@@ -11,6 +11,7 @@ const buffer = require('./buffer');
 const forwarder = require('./forwarder');
 const upsPoller = require('./pollers/ups');
 const collectors = require('./pollers');
+const health = require('./health');
 
 let devices = [];
 let objects = [];
@@ -107,6 +108,7 @@ async function pollAll() {
   await Promise.all(Array.from({ length: Math.min(cfg.pollConcurrency, Math.max(1, queue.length)) }, worker));
   const took = Date.now() - t0;
   lastCycle = { ok, fail, took, error: lastError, at: Date.now(), metrics: metricsSent, skipped, unsupported };
+  health.mark(lastCycle);
   console.log(`[probe] cycle: ${ok} ok, ${fail} fail, ${took}ms` +
     (metricsSent ? `, ${metricsSent} metrics` : '') +
     (skipped ? `, ${skipped} skipped` : '') +

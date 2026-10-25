@@ -1,0 +1,50 @@
+{
+  "$comment": "Firewall request v3 = docs/spec/01 §1 network table, row for row. 'direction', 'port' and 'purpose' are copied verbatim so netcheck output lines up with the request. 'checks' is what cflex-install netcheck tests for each row. Change this file only together with §1.",
+  "source": "docs/spec/01_SPEC_INTERNAL_Probe-OnPrem_for-ClaudeCode_v1.md §1 (방화벽 요청서 v3)",
+  "rows": [
+    {
+      "id": "FW-1", "direction": "collector → NMC 41대(부록 B)", "port": "UDP 161", "purpose": "SNMP v3 RO 폴링 (v2c 폴백)",
+      "checks": [ { "type": "out", "roles": ["collector"], "proto": "udp", "ports": [161], "dest": "nmc" } ]
+    },
+    {
+      "id": "FW-2", "direction": "NMC → collector", "port": "UDP 162", "purpose": "trap",
+      "checks": [ { "type": "listen", "roles": ["collector"], "proto": "udp", "port": 162, "unprivileged_port": 1162 } ]
+    },
+    {
+      "id": "FW-3", "direction": "collector → NMC", "port": "TCP 443", "purpose": "온보딩/PM 시 NMC 점검(선택)",
+      "checks": [ { "type": "out", "roles": ["collector"], "proto": "tcp", "ports": [443], "dest": "nmc", "optional": true } ]
+    },
+    {
+      "id": "FW-4", "direction": "collector/app → cflex.fms.support (40.114.79.164)", "port": "TCP 443 out", "purpose": "포털 전송(mTLS, 프록시 경유 가능) — 1순위",
+      "checks": [ { "type": "out", "roles": ["collector", "app"], "proto": "tcp", "ports": [443], "dest": "portal" } ]
+    },
+    {
+      "id": "FW-5", "direction": "HAEA 사용자 VLAN/VPN → app", "port": "TCP 443", "purpose": "로컬 콘솔",
+      "checks": [ { "type": "listen", "roles": ["app"], "proto": "tcp", "port": 443, "unprivileged_port": 8443, "sources": "user_sources" } ]
+    },
+    {
+      "id": "FW-6", "direction": "RingOn(HAEA VPN/점프) → 4 VM", "port": "TCP 22/443", "purpose": "설치·유지보수 윈도우만",
+      "checks": [ { "type": "listen", "roles": ["collector", "app", "db"], "proto": "tcp", "port": 22, "sources": "maintenance_sources", "system": true } ]
+    },
+    {
+      "id": "FW-7", "direction": "collector → app 443, app → db 5432, app01↔app02 6379/443", "port": "내부", "purpose": "",
+      "checks": [
+        { "type": "out", "roles": ["collector"], "proto": "tcp", "ports": [443], "dest": "app", "label": "collector → app 443" },
+        { "type": "listen", "roles": ["db"], "proto": "tcp", "port": 5432, "label": "db 5432 ← app" },
+        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [5432], "dest": "db", "label": "app → db 5432", "optional": true },
+        { "type": "listen", "roles": ["app"], "proto": "tcp", "port": 6379, "redis_host_only": true, "label": "redis 6379 ← peer app" },
+        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [6379], "dest": "redis", "label": "app → redis 6379" },
+        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [443], "dest": "peer_app", "label": "app ↔ peer app 443", "optional": true }
+      ]
+    },
+    {
+      "id": "FW-8", "direction": "app → HAEA SMTP 릴레이 25/587, → 프록시 → Teams 443, → ServiceNow 443, → Satellite/DNS/NTP", "port": "내부/아웃", "purpose": "",
+      "checks": [
+        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [25, 587], "dest": "smtp", "label": "app → SMTP 릴레이" },
+        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [443], "dest": "teams", "label": "app → 프록시 → Teams 443" },
+        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [443], "dest": "servicenow", "label": "app → ServiceNow 443" },
+        { "type": "out", "roles": ["app", "collector", "db"], "proto": "any", "ports": [443, 53, 123], "dest": "platform", "label": "→ Satellite/DNS/NTP", "system": true }
+      ]
+    }
+  ]
+}

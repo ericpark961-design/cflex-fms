@@ -1,0 +1,64 @@
+# cflex/app — Local Console API (apps/console) + the console build of apps/twin.
+# Spec 01 §2.2, §3.1. Build context = repository root:
+#   podman build --format docker -f images/app/Containerfile \
+#     --build-arg BASE_IMAGE=registry.access.redhat.com/ubi8/nodejs-20@sha256:… -t cflex/app:<ver> .
+ARG BASE_IMAGE=registry.access.redhat.com/ubi8/nodejs-20:1
+
+# ── twin: the existing UI, console build (no Google Fonts, no map tiles — WO-INT-004) ──
+FROM ${BASE_IMAGE} AS twin
+USER 1001
+WORKDIR /opt/app-root/src
+COPY --chown=1001:0 apps/twin/package.json apps/twin/package-lock.json apps/twin/
+RUN cd apps/twin && npm ci --no-audit --no-fund
+COPY --chown=1001:0 apps/twin apps/twin
+RUN cd apps/twin && npm run build:console
+
+# ── deps: console runtime (better-sqlite3 — Node 20 has no node:sqlite) ──
+FROM ${BASE_IMAGE} AS deps
+USER 1001
+WORKDIR /opt/app-root/src
+COPY --chown=1001:0 apps/console/package.json apps/console/
+RUN cd apps/console \
+ && npm install --omit=dev --no-audit --no-fund \
+ && node -e "require('better-sqlite3')" \
+ && npm cache clean --force
+
+# ── runtime ──
+FROM ${BASE_IMAGE}
+ARG CFLEX_VERSION=0.0.0-dev
+ARG CFLEX_COMMIT=unknown
+LABEL name="cflex/app" \
+      vendor="RingOn" \
+      version="${CFLEX_VERSION}" \
+      org.opencontainers.image.revision="${CFLEX_COMMIT}" \
+      summary="C-Flex Local Console API — HAEA on-prem" \
+      io.k8s.description="Local accounts, alarms/ACK, devices/trends, settings, collector ingest"
+
+# Repository layout kept: the console requires ../../../probe-agent/src/* (contract schema,
+# alarm notifier, transport) and ../../packages/notify by relative path.
+WORKDIR /opt/cflex
+COPY --from=deps --chown=0:0 /opt/app-root/src/apps/console/node_modules apps/console/node_modules
+COPY --chown=0:0 apps/console/package.json apps/console/
+COPY --chown=0:0 apps/console/src apps/console/src
+COPY --chown=0:0 apps/console/public apps/console/public
+COPY --chown=0:0 probe-agent/package.json probe-agent/
+COPY --chown=0:0 probe-agent/src probe-agent/src
+COPY --chown=0:0 packages/notify/package.json packages/notify/
+COPY --chown=0:0 packages/notify/src packages/notify/src
+COPY --chown=0:0 docs/spec/schemas docs/spec/schemas
+COPY --from=twin --chown=0:0 /opt/app-root/src/apps/twin/dist-console apps/twin/dist-console
+COPY --chown=0:0 images/app/healthcheck.js healthcheck.js
+
+ENV NODE_ENV=production \
+    CONSOLE_BIND=127.0.0.1 \
+    CONSOLE_PORT=8080 \
+    CONSOLE_DB=/opt/app/cflex/data/console.db \
+    CONSOLE_TWIN_DIR=/opt/cflex/apps/twin/dist-console
+
+VOLUME ["/opt/app/cflex/data"]
+EXPOSE 8080/tcp
+USER 1001
+WORKDIR /opt/cflex/apps/console
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD ["node", "/opt/cflex/healthcheck.js"]
+CMD ["node", "/opt/cflex/apps/console/src/server.js"]

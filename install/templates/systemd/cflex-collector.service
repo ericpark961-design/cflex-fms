@@ -1,0 +1,27 @@
+# C-Flex Collector — bare profile (spec 01 §3.2). Rendered by cflex-install @@INSTALLER_VERSION@@.
+[Unit]
+Description=C-Flex Collector @@VERSION@@ (@@NODE_ID@@)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=cflex
+Group=cflex
+WorkingDirectory=/opt/app/cflex/current/probe-agent
+EnvironmentFile=/opt/app/cflex/config/collector/collector.env
+ExecStart=/usr/bin/node /opt/app/cflex/current/probe-agent/src/index.js
+Restart=always
+RestartSec=10
+# Trap UDP 162 without root and without lowering the host's privileged-port boundary.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/opt/app/cflex/queue
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+#!/bin/bash
+# build-bundle — offline install bundle for HAEA (spec 01 §3.1/§3.3). Run at RingOn, not on site.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for py in /usr/libexec/platform-python python3; do
+  if command -v "$py" >/dev/null 2>&1; then
+    exec "$py" -I -B "$here/lib/run.py" cflex_install.build "$@"
+  fi
+done
+echo "build-bundle: no python3 found" >&2
+exit 2
