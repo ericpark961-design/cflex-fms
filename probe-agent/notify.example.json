@@ -1,0 +1,34 @@
+{
+  "productName": "C-Flex FMS",
+  "siteName": "HAEA",
+  "dashboardUrl": "https://fms.haeaus.internal/",
+  "policy": {
+    "local_email": true, "local_teams": true, "local_itsm": true,
+    "email_min": "P2", "teams_min": "P2", "itsm_min": "P2",
+    "notify_clear": true
+  },
+  "email": {
+    "to": ["<noc-distribution-list>@haeaus.com"],
+    "from": "C-Flex FMS <fms-noreply@haeaus.com>",
+    "smtp": {
+      "host": "<haea-smtp-relay>",
+      "port": 587,
+      "starttls": "auto",
+      "auth": { "user": "<relay-user>", "passFile": "/opt/app/cflex/secrets/smtp.pass" }
+    }
+  },
+  "teams": { "webhook": "<https://….webhook.office.com/webhookb2/…>" },
+  "servicenow": {
+    "instanceUrl": "https://<instance>.service-now.com",
+    "user": "<integration-user>",
+    "passFile": "/opt/app/cflex/secrets/servicenow.pass",
+    "table": "incident",
+    "category": "Hardware",
+    "assignmentGroup": "<sys_id or name>",
+    "resolvedState": "6",
+    "closeCode": "Solved Remotely (Permanently)"
+  },
+  "maintenance": [
+    { "ledger_id": 41, "until": "2026-11-01T06:00:00.000Z", "reason": "battery replacement" }
+  ]
+}

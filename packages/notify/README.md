@@ -203,10 +203,28 @@ SMTP는 `config.email.sendmailPath`를 주면 CLI가 그 바이너리로 보낸�
 
 `backend/services/notify-adapter.js`가 FMS `alert` 행 + `fms_alarm_routes`를 이 패키지의 모양으로 바꿔준다. 운영 `alarm-notifier.js`는 그대로 두고, 그 어댑터를 거쳐 쓰면 동작이 같다.
 
+## SMTP 릴레이 · ServiceNow 생애주기 (WO-INT-003)
+
+메일 라이브러리 없이 고객 릴레이로 보내는 SMTP 클라이언트가 들어 있다 — EHLO, STARTTLS(제공 시 자동, `required`/`never` 선택), AUTH PLAIN/LOGIN, MAIL/RCPT/DATA. `deps.smtpSend` 슬롯에 그대로 넣는다.
+
+```js
+const smtpSend = notify.smtpSender({ host: 'relay.haeaus.com', port: 587, auth: { user, pass } });
+await notify.send(n, [{ channel: 'email', target: 'noc@haeaus.com' }], { email: { transport: 'smtp', from } }, { smtpSend });
+```
+
+`servicenow` 채널은 생성만 한다(발사 후 망각). 알람 생애(raise→update→clear)를 따라가려면 생성 때 받은 `sys_id`를 호출자가 저장하고:
+
+```js
+const c = await notify.servicenow.create(n, config, { http });          // {ok, sys_id, number}
+await notify.servicenow.update(c.sys_id, { note, priority }, config);   // work_notes (+ impact/urgency)
+await notify.servicenow.resolve(c.sys_id, { note }, config);            // state/close_code는 servicenow.resolvedState/closeCode
+```
+
 ## 테스트
 
 ```sh
-node packages/notify/test/notify.test.js    # 14종, 네트워크 없음
+node packages/notify/test/notify.test.js                  # 14종, 네트워크 없음
+node --test packages/notify/test/smtp-servicenow.test.js  # 127.0.0.1 더미 SMTP·ServiceNow
 ```
 
 HTTP 클라이언트가 주입식이라 모든 디스패처를 **보냈을 URL·헤더·본문을 기록하는 레코더**에 대고 돌린다. 다른 코드베이스가 신뢰해야 하는 부분이 바로 그것이기 때문이다.

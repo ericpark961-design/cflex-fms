@@ -77,6 +77,52 @@ node --test test/*.test.js
 node test/support/mock-portal.js     # a strict local Portal to point a probe at
 ```
 
+## Alarms and local notification (WO-INT-003)
+
+`src/alarms/engine.js` classifies before anything is sent:
+
+| Rule | Behaviour | Tunable (env) |
+|---|---|---|
+| Classification | severity = the appendix-B code's (`src/alarms/codes.js`), never the poller's own P-level | — |
+| De-duplication | one alarm per (device, code); repeats become `alarm_update` at most every 15 min | `ALARM_UPDATE_EVERY_MS` |
+| Flapping | 3 raises within 15 min → `detail.flapping=true`, held open until 15 min quiet | `ALARM_FLAP_RAISES`, `ALARM_FLAP_WINDOW_MS`, `ALARM_FLAP_QUIET_MS` |
+| Maintenance | events still go to the Portal with `detail.maintenance=true`; nothing sent locally; still active when the window ends → notified then | `maintenance[]` in notify.json |
+| Comm loss | `UPS_COMM_LOST` only after 30 min without an answer (appendix B), cleared by the first good poll | — |
+
+`src/alarms/local-notify.js` then tells HAEA directly and records the outcome in
+the event's `local_notified` — what was **delivered**, so the Portal (WO-PTL-003)
+can send what HAEA did not get:
+
+| Event | E-mail (SMTP relay) | Teams | ServiceNow |
+|---|---|---|---|
+| `alarm_raise` | ≥ `email_min` | ≥ `teams_min` | ≥ `itsm_min`: incident opened, alarm_id → INC stored |
+| `alarm_update` | — | — | work note on the stored INC |
+| `alarm_clear` | if `notify_clear` | if `notify_clear` | INC resolved (also during maintenance) |
+
+Configure with `CFLEX_NOTIFY_CONFIG=/opt/app/cflex/config/notify.json` (0600) —
+see `notify.example.json`. Secrets go in files of their own (`passFile`), not in
+the JSON and never in env or argv. Without the variable there is no local
+notification and events carry no `local_notified`.
+
+| Env | Default | |
+|---|---|---|
+| `CFLEX_NOTIFY_CONFIG` | — | notify.json path |
+| `CFLEX_ITSM_STORE` | `./data/itsm-map.json` | alarm_id ↔ INC (0600, atomic replace) |
+| `CFLEX_ID_STORE` | `./data/device-ids.json` | ledger id → last device_id, for `replaced_by` |
+
+**ServiceNow test ticket** (SOW acceptance D1): opens an INC, adds a work note,
+resolves it, prints the number. The Local Console button (WO-INT-004) calls the
+same `testTicket()`.
+
+```
+node bin/cflex-test-ticket.js --config /opt/app/cflex/config/notify.json [--keep-open] [--json]
+# OK  ServiceNow test ticket INC0010001 created, updated and resolved     (exit 0; 1 failed; 2 usage)
+```
+
+Devices without a serial (Q-2026-10-25-05) are inventoried with
+`provisional: true, id_basis: "ledger"`; once the serial is known the old ID is
+sent once more with `replaced_by` the new one.
+
 ## Legacy endpoints (only with `CFLEX_LEGACY_FORWARD=1`)
 
 | Direction | Endpoint | Purpose |

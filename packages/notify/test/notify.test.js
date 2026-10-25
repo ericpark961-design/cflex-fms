@@ -238,7 +238,7 @@ const t = async (name, fn) => {
     const stripComments = (src) => src
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
-    for (const f of ['index.js', 'channels.js', 'message.js', 'http.js']) {
+    for (const f of ['index.js', 'channels.js', 'message.js', 'http.js', 'smtp.js', 'servicenow.js']) {
       const src = stripComments(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'));
       assert.ok(!/process\.env/.test(src), `${f} reads process.env — config must be passed in`);
       assert.ok(!/require\(['"].*config\/database/.test(src), `${f} imports a database`);

@@ -47,6 +47,8 @@ function fwd(over = {}) {
       ...(over.portal || {}),
     },
     legacy: over.legacy,
+    alarms: over.alarms,
+    notifier: over.notifier,
     queue, now: over.realClock ? Date.now : clock.now, random: () => 0.5, log: quiet, version: '2.1.0',
   });
   return { f, queue, clock };
@@ -188,7 +190,8 @@ test('4xx other than 409/429 is not retried: dropped, counted, and the queue mov
 });
 
 test('outage: events queue in order and drain in order once the link is back', { skip }, async () => {
-  const { f, queue, clock } = fwd();
+  // Every observation an update, so the order of three is visible.
+  const { f, queue, clock } = fwd({ alarms: { updateEveryMs: 0 } });
   const ids = [];
   portal.state.faults.push({ status: 502 });
   for (let i = 0; i < 3; i++) {
@@ -201,6 +204,21 @@ test('outage: events queue in order and drain in order once the link is back', {
   const got = portal.of('POST /api/v1/events').map(b => b.events[0]);
   assert.deepStrictEqual(got.map(e => e.kind), ['alarm_raise', 'alarm_update', 'alarm_update']);
   assert.deepStrictEqual(got.map(e => e.detail.value), [40, 41, 42]);
+});
+
+test('Q-05: a provisional ID whose serial becomes known is sent once more with replaced_by', { skip }, async () => {
+  const { f } = fwd({ realClock: true });
+  const bare = { id: 77, name: 'IDF UPS', site_id: 'KUS-IRV', kind: 'ups' };
+  await f.syncInventory([bare]);
+  await f.syncInventory([{ ...bare, serial: 'AS1234' }]);
+  const [first, second] = portal.of('PUT /api/v1/inventory');
+  assert.deepStrictEqual([first.devices[0].provisional, first.devices[0].id_basis], [true, 'ledger']);
+  const [now, link] = second.devices;
+  assert.strictEqual(now.serial, 'AS1234');
+  assert.ok(!now.provisional);
+  assert.deepStrictEqual(link, { device_id: first.devices[0].device_id, site_id: 'KUS-IRV', replaced_by: now.device_id });
+  await f.syncInventory([{ ...bare, serial: 'AS1234', name: 'renamed' }]);
+  assert.strictEqual(portal.of('PUT /api/v1/inventory')[2].devices.length, 1, 'the link is sent once, not forever');
 });
 
 test('clock: a Portal Date more than 60 s away raises CLOCK_DRIFT once, and clears it when back', { skip }, async () => {
