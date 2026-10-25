@@ -6,6 +6,7 @@
 관리자(PM 역할)는 Cowork의 Claude가 맡는다. 지시는 `docs/control/TASKS.md`로 내려오고, 보고는 `docs/control/STATUS.md`로 올린다.
 
 ## 세션 시작 시
+0. `git status --short docs/control CLAUDE.md`에 미커밋 변경이 있으면(관리자 PM 세션이 파일만 갱신한 것) 먼저 `[CTRL] control update <날짜>`로 커밋한다. 내용은 수정하지 않는다.
 1. `docs/control/TASKS.md`를 읽고 **자기(Claude Code)에게 배정된 `상태: 진행` 또는 `대기` 작업지시(WO-INT-xxx)만** 수행한다. 우선순위 번호 순서대로.
 2. 배정되지 않은 일, 범위 밖 기능 추가, 포털 쪽 코드는 하지 않는다. 필요하다고 판단되면 `docs/control/DECISIONS.md`에 `Q-날짜-번호`로 질문을 남기고 다음 WO로 넘어간다.
 3. 모호한 요구는 추측하지 말고 DECISIONS.md에 질문을 남긴다.

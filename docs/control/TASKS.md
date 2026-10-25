@@ -7,6 +7,7 @@
 
 | 우선 | ID | 상태 | 작업 | 완료 기준 |
 |---|---|---|---|---|
+| 0 | WO-INT-000 | 진행 | **Git 정리** — `main`이 17커밋 뒤처져 있음. `feat/twin-rack-elevation`(현재 HEAD, [CTRL] 포함)을 `main`에 fast-forward 머지하고 `git push origin main`. 이후 모든 작업은 `wo/*` 브랜치 + PR. (PM 세션은 SSH 키가 없어 push 불가 — Claude Code가 수행) | `origin/main == HEAD`, `gh pr list` 동작 확인, STATUS에 기록 |
 | 1 | WO-INT-001 | 진행 | **확인서·현재상태 문서 정정** — 확인서 §0·§7.1·§7.2·§4.3·§4.4를 docs/spec/00·01 기준으로 수정(내부 = Probe + Local Console + 로컬 알림; 알람 1차 분류는 내부, 라우팅은 포털; 계약은 00 하나; 업그레이드 pull은 cflex.fms.support:443 경유, 자동 적용 아님; WireGuard 보류). §5는 1·2·7 권고 채택. `docs/handoff/HAEA_CURRENT_STATE.md` §10 분담을 역할 분리로 갱신 | 수정본이 `docs/handoff/`에 md로 커밋(아티팩트 링크 아님), 잘린 §7.2 복원, 관리자 검토요청 |
 | 2 | WO-INT-002 | 대기 | **Forwarder를 계약서 00으로 교체** — `probe-agent/src/forwarder.js`: 목적지 `https://cflex.fms.support/api/v1/*`, mTLS 장치 인증서(키 파일 경로 설정), `X-CFlex-Tenant/Node`, `Idempotency-Key`, 지수 백오프·429 처리, `HTTPS_PROXY`(인증 프록시 포함) 에이전트, heartbeat 60s, 스키마 화이트리스트(계약 §5). 기존 `/v1/probe/event` 경로는 설정으로만 남김(기본 off) | `docs/spec/schemas/*.json`(계약 부록 C) 생성 + 전송 payload 스키마 검증 테스트, 프록시 경유 테스트(로컬 프록시 더미), Codex 목 서버(`/_mock`) 또는 자체 목으로 E2E 1회 통과 |
 | 3 | WO-INT-003 | 대기 | **알람 1차 분류 + 로컬 알림** — 계약 부록 B 코드 사전으로 P1–P4 분류(중복 억제·플래핑 방지·유지보수 모드), `packages/notify`로 SMTP(HAEA 릴레이)·ServiceNow(생성/업데이트/종료, alarm_id↔INC 저장) 발송, 결과를 이벤트 `local_notified`에 포함. **테스트 티켓 버튼/명령**(SOW 수락 기준) | 단위 테스트(분류·억제), ServiceNow 더미 서버 E2E, `local_notified` 필드가 events payload에 들어가는 계약 테스트 |
