@@ -142,6 +142,38 @@ t('manager-only tools are refused to an agent', (root) => {
   assert.match(String(b.error), /manager-only/);
 });
 
+t('a report does not reopen a 완료 task', (root) => {
+  // Found by doing it. With no WO assigned for a piece of directed work, a
+  // report filed against the nearest id moved WO-INT-002 from 완료 back to
+  // 진행, erasing a manager approval and a merged PR.
+  const C = require('../control');
+  const done = C.load(root).tasks.sections
+    .find(x => x.owner === 'claude-code').rows.find(x => x.status === '완료');
+  delete require.cache[require.resolve('../control')];
+  assert.ok(done, 'no 완료 task on the board to try this against');
+
+  const { call, restore } = serverAs('claude-code', root);
+  const r = call('control_report', { entries: [{ id: done.id, status: '진행', progress: '10%' }] });
+  restore();
+
+  assert.deepStrictEqual(r.tasks_updated, [`${done.id}: 완료 유지`]);
+  assert.ok(new RegExp(`\\| *${done.id} *\\| *완료 *\\|`).test(read(root, 'TASKS.md')),
+    'a 완료 task was reopened by an agent report');
+  assert.match(read(root, 'STATUS.md'), /완료 상태다 — 상태를 바꾸지 않았다/);
+});
+
+t('the manager may reopen a 완료 task', (root) => {
+  const C = require('../control');
+  const done = C.load(root).tasks.sections
+    .find(x => x.owner === 'claude-code').rows.find(x => x.status === '완료');
+  delete require.cache[require.resolve('../control')];
+
+  const m = serverAs('manager', root);
+  const r = m.call('control_set_status', { id: done.id, status: '진행', note: '재개' });
+  m.restore();
+  assert.strictEqual(r.now.status, '진행');
+});
+
 // ── STATUS is append-only, and per-agent ────────────────────────────
 
 t('a report appends to my block and leaves the other agent\'s untouched', (root) => {

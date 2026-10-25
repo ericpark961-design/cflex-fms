@@ -95,3 +95,5 @@
 - 2026-10-25 (3차): WO-INT-000 **완료**(origin/main=cbb4f49→7766313). WO-INT-002 **완료** — PR #1 관리자 머지(7766313), 테스트 22/22 관리자 재실행 확인, 비밀값 없음. Q-04=(A) Basic만, Q-05=임시 ID+provisional 표시(계약 v1.1 예정), Q-06=(A) docs/spec/schemas 정본(D-08). 다음: WO-INT-003 진행 지시. 미해결: index.js 실기동 스모크(node_modules 없음) → WO-INT-007에서 같이.
 - 2026-10-25 (4차): WO-INT-003 **완료** — PR #2 머지, 테스트 42/42 + notify 6/6 재실행, 비밀값 없음. Q-07=(B) 새 코드 UPS_BATTERY_CAPACITY_LOW(P3), Q-08=계약 v1.1 승격(스키마 태그 1.1). WO-INT-004(Local Console) 진행 지시, WO-INT-004b(v1.1 반영) 등록. 미시험: 실제 HAEA 릴레이/ServiceNow, STARTTLS — 현장 SAT 항목.
 - 2026-10-25 (5차): WO-INT-004b **완료**(PR #3, 48/48), WO-INT-004 **완료**(PR #4, console 22/22, CSP self-only·CDN 0, Redis 세션·2인스턴스 페일오버 테스트). Q-09=(B) 내부 콘솔 프로파일 → WO-INT-004c 등록. 한계 기록: app01/02 실분리는 WO-INT-008(PostgreSQL) 선행, XLSX 임포트 미구현(CSV만), 브라우저 실화면 미확인(SAT). 다음: WO-INT-005(RHEL 컨테이너) 기동.
+
+- 2026-10-25: WO-INT-002 상태 복원 — Claude Code 의 포털 연동 보고가 배정 WO 가 없어 INT-002 에 붙으면서 완료→진행으로 되돌아간 것. PR #1 머지와 3차 승인은 유효하다. control-mcp 에 완료 재개 차단 추가.

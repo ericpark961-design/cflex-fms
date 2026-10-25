@@ -220,15 +220,23 @@ function hReport({ entries, questions, next }) {
 
     const r = C.findTask(b, e.id);
     if (r && (IS_MANAGER || r.owner === AGENT) && C.STATUSES.includes(e.status)) {
-      // An agent may raise to 검토요청 but never to 완료 — that is the
-      // manager's call, and CLAUDE.md says a WO without a PR is not complete.
-      if (e.status === '완료' && !IS_MANAGER) {
+      // A closed WO is not reopened by a report. Found the hard way: with no
+      // WO assigned for a piece of directed work, a report filed against the
+      // nearest id moved WO-INT-002 from 완료 back to 진행 — erasing a
+      // manager approval and a merged PR. Reopening is the manager's call.
+      if (r.status === '완료' && !IS_MANAGER) {
+        lines.push(`  - (${e.id} 는 완료 상태다 — 상태를 바꾸지 않았다. 재개는 관리자가 한다)`);
+        touched.push(`${e.id}: 완료 유지`);
+      } else if (e.status === '완료' && !IS_MANAGER) {
+        // An agent may raise to 검토요청 but never to 완료 — CLAUDE.md says a
+        // WO without a PR is not complete.
         lines.push('  - (완료 처리는 관리자가 한다 — 검토요청으로 기록)');
         r.status = '검토요청';
+        touched.push(`${e.id}→${r.status}`);
       } else {
         r.status = e.status;
+        touched.push(`${e.id}→${r.status}`);
       }
-      touched.push(`${e.id}→${r.status}`);
     }
   }
   if (questions?.length) lines.push(`- 질문: ${questions.join(' · ')}`);
