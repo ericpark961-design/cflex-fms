@@ -37,7 +37,7 @@ A: **(A)** — 관리자 2026-10-25. WO-INT-000이 바로 이 작업이다. `fea
 S1 "샘플·시뮬레이션 데이터 제거" 항목이 이것 때문에 닫히지 않는다. 데모 시연용으로 유지인지,
 삭제인지 지시 필요. (운영 DB 변경이므로 지시 없이는 건드리지 않는다.)
 
-A: 관리자 의견 — **삭제 권고, 최종 결정은 Eric.** 운영 DB(fms.runless.co.uk)는 HAEA/KUS/HMA 실자료만 두는 것이 Codex 상업 모델 문서(KMX=DEMO 분리, 실사이트는 실자료만)와 일치한다. 데모가 필요하면 Codex 포털의 DEMO 테넌트/`flagged simulation`으로 옮긴다. Eric 확인 전까지는 건드리지 않는다. (Eric 답 대기)
+A: 관리자 의견 — **삭제 권고, 최종 결정은 Eric.** 운영 DB(fms.runless.co.uk)는 HAEA/KUS/HMA 실자료만 두는 것이 Codex 상업 모델 문서(KMX=DEMO 분리, 실사이트는 실자료만)와 일치한다. 데모가 필요하면 Codex 포털의 DEMO 테넌트/`flagged simulation`으로 옮긴다. Eric 2026-10-25: **삭제 승인**(관리자 제안대로). 실행 조건: 삭제 전 해당 4대의 장비 행·메트릭 행 수를 STATUS에 기록하고 DB 백업(또는 export) 1회 후 삭제, 삭제 SQL/스크립트를 커밋에 남김. 시뮬레이터 코드(probe-agent/sim/)는 유지.
 
 ### Q-2026-10-25-03 — 작업지시판 MCP 서버 채택 여부 (Claude Code)
 
@@ -71,3 +71,34 @@ JSON-RPC 왕복, 의존성 0개·네트워크·git 호출 0건까지 검사한�
 서버는 git을 건드리지 않는다 — 커밋·푸시·PR은 `CLAUDE.md`가 정한 대로 에이전트의 일로 남겼다.
 
 A: **(A) 채택** — 관리자 2026-10-25. 조건: ① `docs/control/*.md`가 계속 정본이고 서버는 파싱·되쓰기만 한다(현 설계 그대로). ② 외부 SaaS 저장 금지, 상태는 레포 파일에만. ③ 완료 처리는 관리자만(에이전트 '완료'→'검토요청' 강등 유지). ④ 왕복(parse→serialize) 테스트가 깨지면 서버를 멈추고 파일을 직접 쓴다. ⑤ PM 세션은 당분간 파일을 직접 읽고 쓴다 — 서버를 거치지 않아도 결과가 같아야 한다. TASKS에 WO-INT-009(control-mcp 정식화: README·AGENTS.md 사용법·Codex 연결)로 등록.
+
+### Q-2026-10-25-04 — HAEA 프록시 인증 방식: NTLM 지원 필요 여부 (Claude Code)
+
+계약 §1은 `HTTPS_PROXY`(basic/NTLM 인증 포함)를 요구한다. WO-INT-002는 **Basic만** 구현했다(node 내장
+https/tls, 의존성 0, 테스트 통과). NTLM은 같은 CONNECT 소켓에서 3단계 challenge/response를 해야 하고,
+직접 구현하거나 패키지를 반입해야 한다(오프라인 번들에 추가).
+
+- **(A)** HAEA 프록시가 실제로 무엇을 요구하는지 방화벽 양식 회신에서 먼저 확인한다. Basic이거나
+  Collector IP 화이트리스트(무인증)이면 지금 상태로 끝 — 권고.
+- **(B)** NTLM을 지금 구현한다(자체 구현, 테스트용 NTLM 더미 프록시 포함). 1~2 세션.
+- **(C)** 프록시 대신 Collector에서 40.114.79.164:443 직통 허용을 요청한다(방화벽 요청서 v3에 이미 있음).
+
+### Q-2026-10-25-05 — 시리얼 없는 장비의 device_id (Claude Code)
+
+계약 §2: `device_id = sha1(tenant|site_id|serial)[:16]`. 그러나 현재 장비 원장(구 클라우드
+`/v1/probe/devices`)에는 시리얼이 없는 행이 있다(41대 NMC 중 다수가 아직 폴링 불가라 시리얼 미수집).
+지금은 `sha1(tenant|site|"ledger:<원장 id>")`로 **임시 ID**를 만들어 보낸다 — 안정적이지만
+시리얼을 알게 되면 ID가 바뀐다. 계약상 시리얼 변경 시 새 device_id + `replaced_by` 링크가 정답이다.
+
+- **(A)** 임시 ID 유지, 시리얼 확보 시 inventory에 `replaced_by`로 연결 — 권고. Codex(Portal)에 이 규칙 공유 필요.
+- **(B)** 시리얼 없는 장비는 Portal로 보내지 않는다(인벤토리·텔레메트리 모두 보류).
+- **(C)** 계약 v1.1에서 시리얼 없을 때의 규칙을 명시한다(양 팀 동시 반영).
+
+### Q-2026-10-25-06 — 계약 스키마 파일의 위치 (Claude Code)
+
+계약 §7은 스키마를 공용 레포 `cflex-contract`에 두고 두 팀이 서브모듈로 참조한다고 한다. WO-INT-002 지시는
+`docs/spec/schemas/*.json`이라 거기에 8종을 만들었다(Probe는 `CFLEX_SCHEMA_DIR`로 경로 변경 가능).
+Codex(WO-PTL-001)가 같은 파일로 수신 검증을 해야 계약 테스트가 의미가 있다.
+
+- **(A)** 당분간 `docs/spec/schemas`가 정본, Codex 워크트리는 이 경로를 참조. `cflex-contract` 분리는 나중에 — 권고.
+- **(B)** 지금 `cflex-contract` 레포를 만들고 서브모듈로 전환(레포 생성은 Eric 권한).

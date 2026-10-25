@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cflex.fms.support/schemas/v1.0/inventory.schema.json",
+  "title": "PUT /api/v1/inventory — request (contract IFC-CFLEX-2026-1023 v1.0 §3.2)",
+  "x-contract-version": "1.0",
+  "type": "object",
+  "required": ["full", "devices"],
+  "additionalProperties": false,
+  "properties": {
+    "full": { "type": "boolean" },
+    "devices": { "type": "array", "items": { "$ref": "#/$defs/device" } }
+  },
+  "$defs": {
+    "device_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "yyyymm": { "type": "string", "pattern": "^\\d{4}-\\d{2}$" },
+    "device": {
+      "type": "object",
+      "required": ["device_id", "site_id"],
+      "additionalProperties": false,
+      "properties": {
+        "device_id": { "$ref": "#/$defs/device_id" },
+        "replaced_by": { "$ref": "#/$defs/device_id" },
+        "site_id": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9-]{0,31}$" },
+        "label": { "type": "string", "maxLength": 128 },
+        "vendor": { "type": "string", "maxLength": 64 },
+        "model": { "type": "string", "maxLength": 64 },
+        "serial": { "type": "string", "maxLength": 64 },
+        "serial_alt": { "type": "array", "items": { "type": "string", "maxLength": 64 } },
+        "nmc_ip": { "type": "string", "pattern": "^\\d{1,3}(\\.\\d{1,3}){3}$" },
+        "location": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "building": { "type": "string", "maxLength": 64 },
+            "floor": { "type": "string", "maxLength": 32 },
+            "room": { "type": "string", "maxLength": 64 },
+            "rack": { "type": "string", "maxLength": 32 }
+          }
+        },
+        "in_sow": { "type": "boolean" },
+        "mfg_date": { "$ref": "#/$defs/yyyymm" },
+        "mfg_date_source": { "enum": ["serial", "nmc", "manual"] },
+        "firmware": { "type": "string", "maxLength": 128 },
+        "battery": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "installed": { "$ref": "#/$defs/yyyymm" },
+            "due": { "$ref": "#/$defs/yyyymm" },
+            "strings": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "tags": { "type": "array", "items": { "type": "string", "maxLength": 32 } }
+      }
+    },
+    "response": {
+      "type": "object",
+      "required": ["accepted"],
+      "properties": {
+        "accepted": { "type": "integer", "minimum": 0 },
+        "rejected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["device_id", "reason"],
+            "properties": { "device_id": { "type": "string" }, "reason": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}

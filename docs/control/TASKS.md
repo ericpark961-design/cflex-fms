@@ -17,6 +17,7 @@
 | 7 | WO-INT-007 | 대기 | **Node 20 검증 + better-sqlite3 prebuild / `node:sqlite` 폴백 제거** | Node 20.x에서 전체 테스트 통과 로그 |
 | 8 | WO-INT-008 | 대기 | **PostgreSQL 16 전환(Local Console 저장소)** — 월 파티션, 보존, 백업 스크립트. Collector 버퍼는 SQLite 유지 | 마이그레이션 + 통합 테스트, 백업/복구 리허설 문서 |
 | 9 | WO-INT-009 | 대기 | **control-mcp 정식화** (Q-03 채택) — `tools/control-mcp` README에 설치·신분(CFLEX_AGENT) 설정, Codex 워크트리 AGENTS.md에 연결 방법 추가, 왕복 테스트를 CI에 포함. WO-INT-002보다 뒤 | Codex가 같은 서버로 STATUS 보고 1회 성공, 테스트 통과 |
+| 10 | WO-INT-010 | 대기 | **운영 DB 시뮬레이터 장비 4대 삭제** (Q-02 승인) — PDU·NetBotz·CRAC·스위치 시뮬 장비와 그 메트릭/알람 행. 사전 백업(export) → 삭제 스크립트 커밋 → 삭제 전후 행 수 STATUS 기록. `probe-agent/sim/` 코드는 유지. 운영 DB 접근은 이 WO에 한해 허용, 다른 데이터는 건드리지 않음 | 백업 파일 존재, 전후 행 수 보고, S1 '샘플 데이터 제거' 항목 닫힘 |
 
 ## B. Codex — 포털 (WO-PTL)
 

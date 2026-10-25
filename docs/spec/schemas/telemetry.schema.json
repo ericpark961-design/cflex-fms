@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cflex.fms.support/schemas/v1.0/telemetry.schema.json",
+  "title": "POST /api/v1/telemetry — request (contract IFC-CFLEX-2026-1023 v1.0 §3.3, metric dictionary = appendix A)",
+  "x-contract-version": "1.0",
+  "$comment": "Keys outside appendix A are allowed in `m` (the contract says the Portal keeps them in m_ext and warns), but only as snake_case names with scalar or numeric-array values — never objects, so nothing but measurements can travel in them.",
+  "type": "object",
+  "required": ["node_id", "points"],
+  "additionalProperties": false,
+  "properties": {
+    "node_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$" },
+    "points": { "type": "array", "minItems": 1, "maxItems": 500, "items": { "$ref": "#/$defs/point" } }
+  },
+  "$defs": {
+    "ts": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+    "num": { "type": ["number", "null"] },
+    "nums": { "type": "array", "items": { "type": ["number", "null"] } },
+    "point": {
+      "type": "object",
+      "required": ["device_id", "ts", "m"],
+      "additionalProperties": false,
+      "properties": {
+        "device_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+        "ts": { "$ref": "#/$defs/ts" },
+        "m": { "$ref": "#/$defs/metrics" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+      "additionalProperties": { "type": ["number", "string", "boolean", "null", "array"], "items": { "type": ["number", "null"] }, "maxLength": 128 },
+      "properties": {
+        "in_v": { "$ref": "#/$defs/nums" },
+        "in_a": { "$ref": "#/$defs/nums" },
+        "in_hz": { "$ref": "#/$defs/num" },
+        "out_v": { "$ref": "#/$defs/nums" },
+        "out_a": { "$ref": "#/$defs/nums" },
+        "out_hz": { "$ref": "#/$defs/num" },
+        "load_pct": { "$ref": "#/$defs/num" },
+        "load_kva": { "$ref": "#/$defs/num" },
+        "load_kw": { "$ref": "#/$defs/num" },
+        "bat_pct": { "$ref": "#/$defs/num" },
+        "bat_v": { "$ref": "#/$defs/num" },
+        "bat_a": { "$ref": "#/$defs/num" },
+        "bat_temp_c": { "$ref": "#/$defs/num" },
+        "runtime_s": { "$ref": "#/$defs/num" },
+        "status": { "enum": ["online", "on_battery", "bypass", "off", null] },
+        "bypass": { "type": ["boolean", "null"] },
+        "selftest": { "enum": ["ok", "fail", "none", null] },
+        "selftest_ts": { "oneOf": [{ "$ref": "#/$defs/ts" }, { "type": "null" }] },
+        "alarm_bits": { "type": ["string", "null"], "pattern": "^0x[0-9a-fA-F]+$" },
+        "int_temp_c": { "$ref": "#/$defs/num" },
+        "fan_ok": { "type": ["boolean", "null"] },
+        "bat_replace_flag": { "type": ["boolean", "null"] },
+        "bat_installed": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}$" },
+        "bat_due": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}$" },
+        "fw": { "type": ["string", "null"], "maxLength": 128 },
+        "comm_ok": { "type": ["boolean", "null"] },
+        "poll_latency_ms": { "$ref": "#/$defs/num" }
+      }
+    },
+    "response": {
+      "type": "object",
+      "required": ["accepted"],
+      "properties": {
+        "accepted": { "type": "integer", "minimum": 0 },
+        "dropped": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

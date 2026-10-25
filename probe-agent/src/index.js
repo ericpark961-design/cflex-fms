@@ -35,6 +35,11 @@ async function loadDevices() {
     console.log(`[probe] loaded ${objects.length} objects from cflex —`,
       Object.entries(byKind).map(([k, n]) => `${k}:${n}`).join(' '));
   }
+  // Inventory to the Portal (contract §3.2): on change, and in full daily.
+  // This runs every 5 minutes, so the daily resend needs no timer of its own.
+  if (devices.length || objects.length) {
+    await forwarder.syncInventory([...devices.map(d => ({ kind: 'ups', ...d })), ...objects]);
+  }
 }
 
 // The last cycle's outcome, sent with every heartbeat so the cloud can tell a
@@ -127,19 +132,30 @@ async function bootstrap() {
   // First cycle after 5 seconds (let device config settle)
   setTimeout(pollAll, 5000);
 
-  // Heartbeat
-  const beat = (extra = {}) => forwarder.heartbeat({
-    devices_count: devices.length + objects.length,
-    // The cloud records these in probe_status: a probe that is up and failing
-    // every device is not 'online', and nothing could say so before.
-    devices: devices.length + objects.length,
-    poll_ok: lastCycle.ok, poll_fail: lastCycle.fail,
-    metrics_sent: lastCycle.metrics || 0,
-    cycle_ms: lastCycle.took, last_error: lastCycle.error,
-    ...extra,
-  });
+  // Heartbeat (contract §3.1). A probe that is up and failing every device is
+  // not healthy, so the last cycle's outcome rides along as an ok ratio.
+  // The forwarder takes the contract fields for the Portal; the rest is what
+  // the old cloud reads, and only reaches it with CFLEX_LEGACY_FORWARD=1.
+  const beat = (extra = {}) => {
+    const tried = lastCycle.ok + lastCycle.fail;
+    return forwarder.heartbeat({
+      devices_total: devices.length + objects.length,
+      devices_unreachable: lastCycle.fail,
+      last_poll_ok_ratio: tried ? Math.round((lastCycle.ok / tried) * 1000) / 1000 : null,
+      // devices_count is what the old cloud has always read; both names go.
+      devices_count: devices.length + objects.length,
+      devices: devices.length + objects.length,
+      poll_ok: lastCycle.ok, poll_fail: lastCycle.fail,
+      metrics_sent: lastCycle.metrics || 0,
+      cycle_ms: lastCycle.took, last_error: lastCycle.error,
+      ...extra,
+    });
+  };
   setInterval(() => beat(), cfg.heartbeatIntervalMs);
-  beat({ boot: true, devices_count: 0, devices: 0 });
+  beat({ boot: true });
+
+  // Telemetry batch (contract §3.3) — the forwarder also cuts one at 500 points.
+  setInterval(() => forwarder.flushTelemetry(), cfg.telemetryFlushMs);
 
   // Drain buffer every 30s
   setInterval(async () => {
