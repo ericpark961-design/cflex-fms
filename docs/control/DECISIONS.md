@@ -159,3 +159,31 @@ WO-INT-004는 다음처럼 진행했다(되돌리기 쉬운 쪽):
 
 A: **(B)** — 관리자 2026-10-25. 기준 UI는 `apps/twin`이 맞다(Eric이 본 '지금 Claude가 만든 심플한 화면'). 다만 내부 콘솔 빌드에서는 포털 범위 화면(3D, NOC, 파워체인, 지도, Copilot)을 **숨긴다**(코드 삭제 금지 — apps/twin은 WO-PTL-007에서 포털로 이식). 내부에 남는 화면: 로그인, 사이트/장비 현황, 장비 상세·트렌드, 알람(목록·상세·ACK·코멘트), 설정. 빌드 플래그(`CONSOLE_PROFILE=internal`)로 분기. WO-INT-004c.
 
+
+### Q-2026-10-25-10 — 로컬 알림을 보내는 곳이 v3와 다르다 (Claude Code, WO-INT-005)
+
+`netcheck`를 방화벽 요청서 v3(01 §1)와 1:1로 맞추다 발견. v3 FW-8은 **app** → SMTP 릴레이 25/587, → 프록시 → Teams/ServiceNow 443이다.
+그런데 WO-INT-003의 알람 엔진·로컬 알림기(`probe-agent/src/alarms/local-notify.js`)는 **Collector(cap01)** 에서 돈다.
+지금대로 Collector에 알림 채널을 설정하면 cap01 → SMTP/프록시 연결이 생기고, v3에 없으니 HAEA 방화벽에서 막히며
+`netcheck`도 FAIL로 표시한다(의도된 표시로 둠).
+
+- **(A)** 발송을 app으로 옮긴다 — Collector는 이벤트를 콘솔(collector API, FW-7 443)로 보내고, 콘솔이 SMTP/Teams/ServiceNow로
+  보낸다. 01 §2.2(로컬 알림 = Local Console)·v3 그대로. WO-INT-004c(probe-agent↔콘솔 연동)에 같이 넣으면 된다 — 권고.
+- **(B)** v3에 cap01 → SMTP 25/587, cap01 → 프록시 추가를 HAEA에 요청한다(요청서 v4).
+- **(C)** 둘 다(Collector는 콘솔 불통 시 예비 발송).
+
+참고(결정 필요 없음, 기록): 컨테이너 프로파일의 app01↔app02 대체 경로는 v3대로 **443**으로 만들었다(nginx가 로컬 앱 실패 시
+피어 nginx 443으로 한 번만 넘김). WO-INT-004의 베어용 `deploy/console/nginx-cflex-console.conf`는 노드 간 **8080**을 쓰는데
+v3에 없다 — (A)로 가면 같은 WO에서 베어 설정도 443으로 맞추겠다.
+
+### Q-2026-10-25-11 — Redis가 app01에만 있으면 app01 장애 시 app02도 로그인 불가 (Claude Code, WO-INT-005)
+
+01 §2.2: 세션은 Redis, app02는 무상태 Standby. v3 FW-7에 app01↔app02 6379가 있어 Redis를 app01에 두고 app02가 원격으로 쓰게
+설치기를 만들었다(`install.redis_host`, 기본 Active). 그러면 **app01 VM이 죽으면 app02도 세션 저장소가 없어 503**(콘솔이
+의도적으로 그렇게 동작)이고, SAT 6 "app01 중지 → app02 서비스 지속"을 **VM 단위로는** 통과하지 못한다(앱 컨테이너만 죽으면 통과).
+
+- **(A)** 양쪽에 Redis를 두고 app02는 app01의 복제본(replica, 6379 — v3 범위 안). app01 장애 시 app02 Redis를 승격(수동 또는
+  설치기 `promote` 명령). 기존 세션 유지 — 권고.
+- **(B)** 각 노드가 자기 Redis만 쓴다(복제 없음). 전환 시 사용자 재로그인만 필요. 가장 단순.
+- **(C)** Redis를 db01에 둔다 — v3에 app → db 6379가 없어 요청서 변경 필요.
+

@@ -80,6 +80,43 @@
 - 블로커: 없음
 - 다음 세션 계획: PR #3·#4 검토 반영 → probe-agent의 콘솔 연동(장비 pull, telemetry/events 두 번째 목적지, 지시가 있으면) → WO-INT-005
 
+### 2026-10-25 15:36 PDT — Claude Code (5차)
+- WO-INT-005: **검토요청 (일부 미수행)** | 브랜치 `wo/INT-005-rhel-container` (base main `91a2080`, 작업 트리 `../cflex-fms-wt-int005`) | 커밋 `25906b7` | **PR #5** https://github.com/ericpark961-design/cflex-fms/pull/5
+  - 만든 것:
+    - `images/{collector,app,web}/Containerfile`: ubi8/nodejs-20, ubi8/nginx-122, UID 1001, 읽기 전용 루트 전제, HEALTHCHECK
+    - redis/postgres는 rhel8 이미지 참조만(`images/base-images.env`)
+    - Quadlet `.container` 5종 + `.pod`: 전 볼륨 `:Z`, `Pull=never`
+    - `cflex-install`: preflight/install/verify/netcheck/upgrade/rollback/render, 베어 프로파일 포함
+    - `install.sh` RHEL 전용 교체
+    - `build-bundle`: podman save + SHA256SUMS + SBOM 스텁 + MANIFEST.json
+    - 운영 문서 `docs/install/CONTAINER_PROFILE.md`
+  - trap 162 결정: forward(firewalld 162→1162)가 기본이고, firewalld가 없으면 sysctl(`ip_unprivileged_port_start=161`). 문서 §2
+  - netcheck: 01 §1 8행을 `install/netmatrix.json`에 글자 그대로 옮겼다. 정적 테스트가 §1 표와 대조하고, 출력도 같은 표 형식
+  - 설계상 발견:
+    - RHEL 8.10의 Podman 4.9에는 Quadlet `.pod`가 없다 → web이 네트워크 네임스페이스를 소유하는 방식으로 렌더하고, Podman ≥5에서는 `.pod`를 쓴다
+    - 콘솔 노드 간 대체 경로는 v3대로 443으로 만들었다(8080 아님)
+  - 테스트:
+    - `node --test install/test/static.test.js` **11/11**
+    - probe-agent 기존 7파일 + health **52/52**
+    - apps/console **22/22**
+    - `bash -n` 스크립트 4개 OK
+  - **미수행 (추측으로 통과 처리하지 않음)**:
+    - ① `podman build`·컨테이너 기동·`podman healthcheck`: 이 Mac에 Podman 없음
+    - ② RHEL 8.10/UBI8에서 Node 20 테스트: 같은 이유
+    - ③ 설치기 Python 단위 테스트 8파일(`python3 -m unittest discover -s install/test`): 작성만 했다. 이 세션은 Python 실행 권한이 없다. 대신 별도 리뷰 1회로 실제 결함 6건을 찾아 고쳤다(PyYAML 3.12 비호환, /opt/app/cflex 권한, secret 개행, Podman 5 `UserNS`+`Pod`, 예외 처리, 로케일)
+    - ④ `nginx -t`: 실행 승인이 안 됨
+    - ⑤ redis/postgres를 읽기 전용 루트에서 기동하는 것
+    - ⑥ 취약점 스캔과 정식 SBOM(스텁만 있음)
+  - 범위 밖으로 남긴 것: 베어용 SELinux .pp 모듈, DB 마이그레이션 실행기(WO-INT-008), trap 리스너 자체(WO-INT-006)
+  - collector 장비 pull은 아직 구 클라우드 경로다(WO-INT-004c). env에 `CFLEX_URL=https://<active app>`를 넣어 v3 밖으로 나가지 않게만 했다
+- 작업 트리 사고 대응: 이 세션 도중 다른 세션이 메인 트리를 `wo/INT-portal-integration`로 바꿈
+  - 내 미커밋 변경을 새 규칙대로 `../cflex-fms-wt-int005` 워크트리로 옮겨 커밋했다
+  - 메인 트리에서는 내 파일만 되돌리고 지웠다(`git restore`·`git clean`, 경로 지정). 그 세션의 커밋·파일은 건드리지 않음
+- WO-INT-004c: **미착수** (시간 부족 — 005 이전·재검증에 소요)
+- 질문: `Q-2026-10-25-10`(로컬 알림 발송 위치 collector vs v3 FW-8 app) · `Q-2026-10-25-11`(Redis 단일 노드 → app01 VM 장애 시 app02 로그인 불가, SAT 6)
+- 블로커: 없음. 관리자 확인 요청 — Python 실행이 가능한 곳에서 `python3 -m unittest discover -s install/test` 1회
+- 다음 세션 계획: Podman이 있는 RHEL/UBI 호스트가 생기면 ①②⑤ 확인 → WO-INT-004c(Q-10 답에 따라 알림 발송 이전 포함)
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
