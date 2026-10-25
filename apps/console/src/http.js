@@ -70,7 +70,11 @@ const TYPES = {
 /** A file under root, or false. Refuses anything that resolves outside root. */
 function serveFile(res, root, rel, { fallback = null } = {}) {
   const base = path.resolve(root);
-  let file = path.resolve(base, '.' + path.posix.normalize('/' + rel));
+  let name;
+  try { name = decodeURIComponent(rel); } catch { return false; }
+  if (name.includes('\0')) return false;
+  // Decoded first, then normalised and checked: %2e%2e%2f is caught like ../
+  let file = path.resolve(base, '.' + path.posix.normalize('/' + name));
   if (file !== base && !file.startsWith(base + path.sep)) return false;
   let st = null;
   try { st = fs.statSync(file); } catch { /* not there */ }
