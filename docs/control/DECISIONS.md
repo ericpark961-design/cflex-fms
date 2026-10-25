@@ -37,7 +37,7 @@ A: **(A)** — 관리자 2026-10-25. WO-INT-000이 바로 이 작업이다. `fea
 S1 "샘플·시뮬레이션 데이터 제거" 항목이 이것 때문에 닫히지 않는다. 데모 시연용으로 유지인지,
 삭제인지 지시 필요. (운영 DB 변경이므로 지시 없이는 건드리지 않는다.)
 
-A: 관리자 의견 — **삭제 권고, 최종 결정은 Eric.** 운영 DB(fms.runless.co.uk)는 HAEA/KUS/HMA 실자료만 두는 것이 Codex 상업 모델 문서(KMX=DEMO 분리, 실사이트는 실자료만)와 일치한다. 데모가 필요하면 Codex 포털의 DEMO 테넌트/`flagged simulation`으로 옮긴다. Eric 확인 전까지는 건드리지 않는다. (Eric 답 대기)
+A: 관리자 의견 — **삭제 권고, 최종 결정은 Eric.** 운영 DB(fms.runless.co.uk)는 HAEA/KUS/HMA 실자료만 두는 것이 Codex 상업 모델 문서(KMX=DEMO 분리, 실사이트는 실자료만)와 일치한다. 데모가 필요하면 Codex 포털의 DEMO 테넌트/`flagged simulation`으로 옮긴다. Eric 2026-10-25: **삭제 승인**(관리자 제안대로). 실행 조건: 삭제 전 해당 4대의 장비 행·메트릭 행 수를 STATUS에 기록하고 DB 백업(또는 export) 1회 후 삭제, 삭제 SQL/스크립트를 커밋에 남김. 시뮬레이터 코드(probe-agent/sim/)는 유지.
 
 ### Q-2026-10-25-03 — 작업지시판 MCP 서버 채택 여부 (Claude Code)
 
