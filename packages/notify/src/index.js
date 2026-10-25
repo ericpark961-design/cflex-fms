@@ -169,9 +169,19 @@ async function test(channel, target, config = {}, { deliver = false, ...deps } =
   return { ...out.results[0], checked: true, delivered: true };
 }
 
+const { smtpSender } = require('./smtp');
+const servicenow = require('./servicenow');
+
 module.exports = {
   send, plan, test,
   formatMessage, severityAtLeast,
   CHANNELS, SEV_RANK, DEFAULTS,
   httpClient,
+  // For callers that follow an alarm's lifetime rather than fire and forget.
+  smtpSender,
+  servicenow: {
+    create: servicenow.createIncident,
+    update: servicenow.updateIncident,
+    resolve: servicenow.resolveIncident,
+  },
 };

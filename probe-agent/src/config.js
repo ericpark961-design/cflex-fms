@@ -43,6 +43,22 @@ const cfg = {
     enabled: process.env.CFLEX_LEGACY_FORWARD === '1',
   },
 
+  // Local notification (HAEA SMTP relay / Teams / ServiceNow). The file holds
+  // the channel config and, by reference (…File keys), its secrets; 0600.
+  notify: {
+    configPath: process.env.CFLEX_NOTIFY_CONFIG || '',
+    itsmStorePath: process.env.CFLEX_ITSM_STORE || './data/itsm-map.json',
+    idStorePath: process.env.CFLEX_ID_STORE || './data/device-ids.json',
+  },
+
+  // Alarm engine (alarms/engine.js). Defaults are the engine's; only what is set here overrides.
+  alarms: Object.fromEntries(Object.entries({
+    updateEveryMs: process.env.ALARM_UPDATE_EVERY_MS,
+    flapWindowMs: process.env.ALARM_FLAP_WINDOW_MS,
+    flapRaises: process.env.ALARM_FLAP_RAISES,
+    flapQuietMs: process.env.ALARM_FLAP_QUIET_MS,
+  }).filter(([, v]) => v != null && v !== '').map(([k, v]) => [k, parseInt(v, 10)])),
+
   bufferDbPath: process.env.BUFFER_DB_PATH || './data/buffer.db',
   bufferRetentionDays: parseInt(process.env.BUFFER_RETENTION_DAYS || '7', 10),
 

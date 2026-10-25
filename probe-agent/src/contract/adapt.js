@@ -5,11 +5,10 @@
 // is not this work order; translating at the boundary is. What cannot be
 // translated is counted, not guessed.
 //
-// Alarm lifecycle here is deliberately thin: one alarm_id per (device, code),
-// raise then update, cleared when a full cycle passes without the breach.
-// Classification proper — appendix B severities, flapping, maintenance mode —
-// is WO-INT-003.
+// Alarms are not translated here: classification, lifecycle, flapping and
+// maintenance are alarms/engine.js (WO-INT-003).
 const crypto = require('crypto');
+const { classify } = require('../alarms/codes');
 
 const iso = (ms) => new Date(ms ?? Date.now()).toISOString();
 
@@ -39,15 +38,19 @@ const str = (v, n) => (v == null || v === '' ? undefined : String(v).slice(0, n)
 
 /** A ledger device → an inventory entry (§3.2). Only what the ledger actually knows. */
 function inventoryDevice(d, ctx) {
+  const serial = d.serial || d.serial_number;
   const e = {
     device_id: deviceIdFor(d, ctx),
     site_id: siteOf(d, ctx),
     label: str(d.name, 128),
     vendor: str(d.vendor, 64),
     model: str(d.model, 64),
-    serial: str(d.serial || d.serial_number, 64),
+    serial: str(serial, 64),
     nmc_ip: IPV4.test(String(d.ip || '')) ? d.ip : undefined,
     tags: d.kind ? [String(d.kind).toLowerCase().slice(0, 32)] : undefined,
+    // Q-2026-10-25-05: an ID not keyed on a serial says so, so the Portal can
+    // show it as unconfirmed and merge history when the successor arrives.
+    ...(serial ? {} : { provisional: true, id_basis: 'ledger' }),
   };
   for (const k of Object.keys(e)) if (e[k] === undefined) delete e[k];
   return e;
@@ -94,85 +97,7 @@ function collectorPoint(device, p, ctx) {
   return { device_id: deviceIdFor(device, ctx), ts: iso(p.ts), m };
 }
 
-/** Which appendix-B code a legacy threshold alert is. null = no code for it. */
-function codeFor(a) {
-  switch (a.metric) {
-    case 'battery_pct': return 'UPS_LOW_BATTERY';
-    case 'temp_c': return 'UPS_HIGH_TEMP';
-    case 'load_pct': return 'UPS_OVERLOAD';
-    case 'runtime_min': return 'UPS_RUNTIME_LOW_WARN';
-    case 'reachability': return 'UPS_COMM_LOST';
-    case 'output_source':
-      if (a.value === 'onBattery') return 'UPS_ON_BATTERY';
-      if (/bypass/i.test(a.value)) return 'UPS_ON_BYPASS';
-      if (a.value === 'off') return 'UPS_OUTPUT_OFF';
-      return null;
-    case 'battery_status':
-      if (/replace/i.test(a.value)) return 'UPS_BATTERY_REPLACE';
-      if (/low|depleted/i.test(a.value)) return 'UPS_LOW_BATTERY';
-      return null;
-    default: return null;
-  }
-}
+/** Which appendix-B code a poller threshold alert is (alarms/codes.js). null = none. */
+const codeFor = classify;
 
-/** Per-(device, code) alarm identity and the cycle it was last seen in. */
-class AlarmBook {
-  constructor() { this.open = new Map(); this.cycle = new Map(); }
-
-  _detail(a) {
-    const d = {};
-    if (a.metric) d.metric = String(a.metric);
-    if (['number', 'string', 'boolean'].includes(typeof a.value)) d.value = a.value;
-    if (typeof a.threshold === 'number') d.threshold = a.threshold;
-    return d;
-  }
-
-  /** A legacy alert → a contract event, or null when it has no code. */
-  fromAlert(device, a, ctx) {
-    const code = codeFor(a);
-    if (!code) return null;
-    const did = deviceIdFor(device, ctx);
-    const site = siteOf(device, ctx);
-    const key = `${did}|${code}`;
-    const recovered = a.metric === 'reachability' && a.severity === 'P4';
-    const prev = this.open.get(key);
-    if (recovered && !prev) return null;
-    let kind;
-    if (recovered) { kind = 'alarm_clear'; this.open.delete(key); }
-    else if (prev) { kind = 'alarm_update'; prev.seen = this.cycle.get(did) || 0; }
-    else { kind = 'alarm_raise'; this.open.set(key, { alarm_id: crypto.randomUUID(), seen: this.cycle.get(did) || 0, severity: a.severity, device, code }); }
-    const alarm = recovered ? prev : this.open.get(key);
-    return {
-      event_id: crypto.randomUUID(), alarm_id: alarm.alarm_id, device_id: did, site_id: site,
-      ts: iso(a.ts), kind, severity: /^P[1-4]$/.test(a.severity) ? a.severity : (alarm.severity || 'P3'),
-      code, title: String(a.message || code).slice(0, 200), detail: this._detail(a),
-      source: a.metric === 'reachability' ? 'poll' : 'rule',
-    };
-  }
-
-  /**
-   * A successful poll opens a new cycle for its device. Threshold alarms not
-   * re-raised during the cycle before it are over: emit their clears.
-   * (Reachability clears on its own explicit recovery alert.)
-   */
-  onPoll(device, ctx, ts) {
-    const did = deviceIdFor(device, ctx);
-    const n = (this.cycle.get(did) || 0) + 1;
-    this.cycle.set(did, n);
-    const clears = [];
-    for (const [key, al] of this.open) {
-      if (!key.startsWith(`${did}|`) || al.code === 'UPS_COMM_LOST') continue;
-      if (al.seen < n - 1) {
-        this.open.delete(key);
-        clears.push({
-          event_id: crypto.randomUUID(), alarm_id: al.alarm_id, device_id: did,
-          site_id: siteOf(device, ctx), ts: iso(ts), kind: 'alarm_clear',
-          severity: al.severity, code: al.code, title: `${al.code} cleared`, detail: {}, source: 'rule',
-        });
-      }
-    }
-    return clears;
-  }
-}
-
-module.exports = { deviceId, deviceIdFor, siteOf, inventoryDevice, upsPoint, collectorPoint, codeFor, AlarmBook, iso };
+module.exports = { deviceId, deviceIdFor, siteOf, inventoryDevice, upsPoint, collectorPoint, codeFor, iso };

@@ -4,7 +4,7 @@
   "description": "Alarm delivery to Teams, email, SMS, LINE, Slack, Discord, PagerDuty, ServiceNow and generic webhooks. No database, no environment reads, no runtime dependencies.",
   "main": "src/index.js",
   "bin": { "cflex-notify": "bin/cflex-notify.js" },
-  "scripts": { "test": "node test/notify.test.js" },
+  "scripts": { "test": "node test/notify.test.js && node --test test/smtp-servicenow.test.js" },
   "engines": { "node": ">=20" },
   "dependencies": {},
   "license": "UNLICENSED"

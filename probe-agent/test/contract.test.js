@@ -12,6 +12,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const schema = require('../src/contract/schema');
 const adapt = require('../src/contract/adapt');
+const { createAlarmEngine } = require('../src/alarms/engine');
 
 const ctx = { tenant: 'HAEA', siteId: 'HMA-FV' };
 const TS = '2026-10-23T18:05:12.345Z';
@@ -95,6 +96,35 @@ test('§5 whitelist: keys outside the contract are dropped and reported', () => 
   assert.ok(schema.validate('events', value).ok);
 });
 
+test('local_notified (§3.4): every shape the local notifier returns is schema-valid; wrong types are not', async () => {
+  const { createLocalNotifier } = require('../src/alarms/local-notify');
+  const ok = { ok: true, status: 201, json: { result: { sys_id: 'a'.repeat(32), number: 'INC0012345' } } };
+  const http = async () => ok;
+  const n = createLocalNotifier({
+    config: {
+      email: { to: ['noc@x.y'], from: 'f@x.y' }, teams: { webhook: 'https://h.webhook.office.com/webhookb2/x' },
+      servicenow: { instanceUrl: 'https://sn.example', auth: 'Basic x' }, policy: { email_min: 'P4', teams_min: 'P4', itsm_min: 'P4' },
+    },
+    deps: { http, smtpSend: async () => ({ messageId: '<m@x.y>' }) }, log: { warn() {}, error() {}, log() {} },
+  });
+  const base = { event_id: UUID, alarm_id: UUID, device_id: '3f9c0a1b2c3d4e5f', site_id: 'HMA-FV', ts: TS,
+    severity: 'P1', code: 'UPS_ON_BATTERY', title: 'UPS on battery', detail: {}, source: 'rule' };
+  const shapes = [];
+  for (const kind of ['alarm_raise', 'alarm_update', 'alarm_clear', 'info']) {
+    for (const suppressed of [null, 'maintenance']) {
+      shapes.push(await n.handle({ event: { ...base, kind }, suppressed, alarm: { title: 't', label: 'UPS' } }));
+    }
+  }
+  assert.deepStrictEqual(shapes[0], { email: true, teams: true, itsm: 'INC0012345' });
+  for (const ln of shapes) {
+    const v = schema.validate('events', { events: [{ ...base, kind: 'alarm_raise', local_notified: ln }] });
+    assert.ok(v.ok, `${JSON.stringify(ln)}: ${v.errors.join('; ')}`);
+  }
+  for (const bad of [{ email: 'yes' }, { itsm: 12345 }, { itsm: 'I'.repeat(65) }]) {
+    assert.ok(!schema.validate('events', { events: [{ ...base, kind: 'alarm_raise', local_notified: bad }] }).ok, JSON.stringify(bad));
+  }
+});
+
 test('device_id is sha1(tenant|site|serial)[:16]', () => {
   // sha1("HAEA|HMA-FV|AD2248220154")
   const id = adapt.deviceId('HAEA', 'HMA-FV', 'AD2248220154');
@@ -130,22 +160,24 @@ test('adapters turn real poller output into valid contract payloads', () => {
 });
 
 test('alarm lifecycle: raise → update → clear on recovery, and a threshold clears after a quiet cycle', () => {
-  const book = new adapt.AlarmBook();
+  let t = Date.parse(TS);
+  const eng = createAlarmEngine({ ctx, now: () => t, opts: { updateEveryMs: 0 } });
   const d = { id: 1, site_id: 'HMA-FV', serial: 'S1' };
-  const down = { metric: 'reachability', severity: 'P2', message: 'UPS unreachable: timeout', ts: Date.parse(TS) };
-  const e1 = book.fromAlert(d, down, ctx);
-  const e2 = book.fromAlert(d, down, ctx);
-  const e3 = book.fromAlert(d, { metric: 'reachability', severity: 'P4', message: 'UPS reachable again' }, ctx);
+  const ev = (items) => items.map(i => i.event);
+  t += 31 * 60 * 1000;
+  const [e1] = ev(eng.commStatus(d, false, Date.parse(TS)).concat(eng.commStatus(d, false, t)));
+  const [e2] = ev(eng.commStatus(d, false, t));
+  const [e3] = ev(eng.commStatus(d, true, t));
   assert.deepStrictEqual([e1.kind, e2.kind, e3.kind], ['alarm_raise', 'alarm_update', 'alarm_clear']);
   assert.strictEqual(e1.code, 'UPS_COMM_LOST');
   assert.ok(e1.alarm_id === e2.alarm_id && e2.alarm_id === e3.alarm_id);
   assert.notStrictEqual(e1.event_id, e2.event_id);
 
-  assert.deepStrictEqual(book.onPoll(d, ctx), []);
-  const hot = book.fromAlert(d, { metric: 'temp_c', severity: 'P2', value: 40, threshold: 38, message: 'warm' }, ctx);
+  assert.deepStrictEqual(eng.beginCycle(d), []);
+  const [hot] = ev(eng.fromAlert(d, { metric: 'temp_c', severity: 'P2', value: 40, threshold: 38, message: 'warm' }).items);
   assert.strictEqual(hot.code, 'UPS_HIGH_TEMP');
-  assert.deepStrictEqual(book.onPoll(d, ctx), []);           // next cycle starts; not yet known to be quiet
-  const clears = book.onPoll(d, ctx);                           // a whole cycle went by without it
+  assert.deepStrictEqual(eng.beginCycle(d), []);              // next cycle starts; not yet known to be quiet
+  const clears = ev(eng.beginCycle(d));                         // a whole cycle went by without it
   assert.strictEqual(clears.length, 1);
   assert.strictEqual(clears[0].alarm_id, hot.alarm_id);
   assert.strictEqual(clears[0].kind, 'alarm_clear');
@@ -154,5 +186,17 @@ test('alarm lifecycle: raise → update → clear on recovery, and a threshold c
     const v = schema.validate('events', { events: [e] });
     assert.ok(v.ok, v.errors.join('; '));
   }
-  assert.strictEqual(book.fromAlert(d, { metric: 'humidity', severity: 'P3' }, ctx), null);
+  assert.strictEqual(eng.fromAlert(d, { metric: 'humidity', severity: 'P3' }).code, null);
+});
+
+test('Q-05: a device without a serial is inventoried as provisional, keyed on the ledger', () => {
+  const noSerial = adapt.inventoryDevice({ id: 77, name: 'IDF UPS', site_id: 'KUS-IRV', kind: 'ups' }, ctx);
+  assert.strictEqual(noSerial.provisional, true);
+  assert.strictEqual(noSerial.id_basis, 'ledger');
+  assert.strictEqual(noSerial.device_id, adapt.deviceId(ctx.tenant, 'KUS-IRV', 'ledger:77'));
+  const withSerial = adapt.inventoryDevice({ id: 77, name: 'IDF UPS', site_id: 'KUS-IRV', serial: 'AS1234', kind: 'ups' }, ctx);
+  assert.ok(!('provisional' in withSerial) && !('id_basis' in withSerial));
+  const v = schema.validate('inventory', { full: true, devices: [noSerial, withSerial,
+    { device_id: noSerial.device_id, site_id: 'KUS-IRV', replaced_by: withSerial.device_id }] });
+  assert.ok(v.ok, v.errors.join('; '));
 });

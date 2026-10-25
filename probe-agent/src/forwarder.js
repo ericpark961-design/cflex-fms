@@ -22,6 +22,8 @@ const fs = require('fs');
 const transport = require('./portal/transport');
 const schema = require('./contract/schema');
 const adapt = require('./contract/adapt');
+const { createAlarmEngine } = require('./alarms/engine');
+const { jsonStore } = require('./alarms/store');
 
 const MAX_POINTS = 500;
 const BACKOFF_MIN_MS = 1000;
@@ -58,6 +60,9 @@ function retryAfterMs(h, now) {
  * @param {Function} [o.random]   0..1, for jitter
  * @param {object} [o.log]
  * @param {string} [o.version]
+ * @param {object} [o.alarms]     engine options (alarms/engine.js DEFAULTS) + {maintenance}
+ * @param {object} [o.notifier]   alarms/local-notify.js instance; absent = no local notification
+ * @param {object} [o.idStore]    ledger id → last device_id, for replaced_by (alarms/store.js)
  */
 function createForwarder(o) {
   const portal = o.portal;
@@ -69,7 +74,10 @@ function createForwarder(o) {
   const log = o.log || console;
   const version = o.version || '0.0.0';
   const ctx = { tenant: portal.tenant, siteId: portal.siteId };
-  const book = new adapt.AlarmBook();
+  const alarms = o.alarms || {};
+  const engine = createAlarmEngine({ ctx, now, opts: alarms, maintenance: alarms.maintenance });
+  const notifier = o.notifier || null;
+  const idStore = o.idStore || jsonStore(null);
 
   let points = [];
   let attempts = 0;
@@ -79,7 +87,7 @@ function createForwarder(o) {
   let lastReachable = null;
   let commandsPending = 0;
   let drift = null;               // { alarm_id } while the clock is off
-  const stats = { sent: 0, rejected: 0, retried: 0, invalid: 0, blocked_keys: 0, unmapped_alerts: 0, last_error: null };
+  const stats = { sent: 0, rejected: 0, retried: 0, invalid: 0, blocked_keys: 0, unmapped_alerts: 0, notify_errors: 0, last_error: null };
 
   const headers = (key, len) => ({
     'Content-Type': 'application/json',
@@ -223,7 +231,7 @@ function createForwarder(o) {
   }
 
   async function postEvents(events) {
-    if (!events.length) return { queued: 0 };
+    if (!events.length || !portal.enabled) return { queued: 0 };
     const body = prepare('events', { events });
     if (!body) return { queued: 0, invalid: true };
     enqueuePortal('events', 'POST', body);
@@ -252,11 +260,45 @@ function createForwarder(o) {
     for (const d of list) ledger.set(String(d.id), d);
     if (!portal.enabled) return { queued: false };
     const entries = list.map(d => adapt.inventoryDevice(d, ctx));
+    // A device whose ID changed (its serial became known, Q-2026-10-25-05)
+    // sends its old ID once more, linked to the new one (§2 replaced_by).
+    for (let i = 0; i < list.length; i++) {
+      const lid = String(list[i].id);
+      const was = idStore.get(lid);
+      const e = entries[i];
+      if (was && was.device_id !== e.device_id) {
+        entries.push({ device_id: was.device_id, site_id: was.site_id, replaced_by: e.device_id });
+      }
+      if (!was || was.device_id !== e.device_id) idStore.set(lid, { device_id: e.device_id, site_id: e.site_id });
+    }
     const sig = crypto.createHash('sha1').update(JSON.stringify(entries)).digest('hex');
     if (sig === inventorySig && now() - inventoryAt < 24 * 3600 * 1000) return { queued: false, unchanged: true };
     const r = await putInventory(entries, { full: true });
     if (r.queued) { inventorySig = sig; inventoryAt = now(); }
     return r;
+  }
+
+  /**
+   * Engine items → local notification → the Portal. The notification goes
+   * first because its outcome is part of the event (`local_notified`).
+   */
+  async function emit(items) {
+    if (!items.length) return { queued: 0 };
+    const events = [];
+    for (const it of items) {
+      if (notifier) {
+        try {
+          const ln = await notifier.handle(it);
+          if (ln) it.event.local_notified = ln;
+        } catch (e) {
+          // A notifier bug must not cost the Portal its event.
+          stats.notify_errors++;
+          log.error(`[forwarder] local notify failed for ${it.event.code}: ${e.message}`);
+        }
+      }
+      events.push(it.event);
+    }
+    return postEvents(events);
   }
 
   const deviceFor = (p) => ledger.get(String(p.device_id)) || { id: p.device_id, site_id: p.site_id, serial: p.serial };
@@ -267,21 +309,27 @@ function createForwarder(o) {
    */
   async function sendEvent(kind, payload) {
     if (legacy.enabled) queue.enqueue('legacy', { kind, payload });
-    if (portal.enabled) {
+    if (portal.enabled || notifier) {
       const device = deviceFor(payload);
+      const ts = payload.ts ?? now();
       if (kind === 'telemetry') {
-        addPoint(Array.isArray(payload.metrics)
-          ? adapt.collectorPoint(device, payload, ctx)
-          : adapt.upsPoint(device, payload, ctx));
-        if (payload.ok !== false && payload.kind === 'ups') {
-          const clears = book.onPoll(device, ctx, payload.ts);
-          if (clears.length) await postEvents(clears);
+        if (portal.enabled) {
+          addPoint(Array.isArray(payload.metrics)
+            ? adapt.collectorPoint(device, payload, ctx)
+            : adapt.upsPoint(device, payload, ctx));
+        }
+        if (payload.kind === 'ups') {
+          // Comm loss comes from the poll outcome, not from the poller's
+          // reachability alerts: appendix B wants 30 minutes of silence.
+          const items = engine.commStatus(device, payload.ok !== false, ts, payload.error);
+          if (payload.ok !== false) items.push(...engine.beginCycle(device, ts));
+          await emit(items);
         }
       } else if (kind === 'metrics') {
-        addPoint(adapt.collectorPoint(device, payload, ctx));
-      } else if (kind === 'alert') {
-        const ev = book.fromAlert(device, payload, ctx);
-        if (ev) await postEvents([ev]);
+        if (portal.enabled) addPoint(adapt.collectorPoint(device, payload, ctx));
+      } else if (kind === 'alert' && payload.metric !== 'reachability') {
+        const r = engine.fromAlert(device, payload);
+        if (r.code) await emit(r.items);
         else stats.unmapped_alerts++;
       }
     }
@@ -360,7 +408,8 @@ function createForwarder(o) {
     drain: async () => { const r = await flush(); return { drained: r.sent || 0, ...r }; },
     stats: () => ({ ...stats, queued_points: points.length, commands_pending: commandsPending, next_attempt_at: nextAt || null }),
     lastReachable: () => lastReachable,
-    _book: book,
+    alarms: engine,
+    notifier,
   };
 }
 
@@ -370,7 +419,24 @@ let cfg = null;
 function get() {
   if (instance) return instance;
   cfg = require('./config');
+  let notifier = null;
+  let ncfg = null;
+  if (cfg.notify.configPath) {
+    const { createLocalNotifier, loadNotifyConfig } = require('./alarms/local-notify');
+    ncfg = loadNotifyConfig(cfg.notify.configPath);
+    notifier = createLocalNotifier({
+      config: { ...ncfg, itsmStorePath: ncfg.itsmStorePath || cfg.notify.itsmStorePath },
+      request: transport.request, proxy: cfg.portal.proxy, noProxy: cfg.portal.noProxy,
+      ca: transport.loadTls({ caPath: cfg.portal.tls.proxyCaPath }).ca,
+    });
+    console.log(`[forwarder] local notify ${notifier.enabled() ? 'on' : 'configured but no channel usable'} (${cfg.notify.configPath})`);
+  }
   instance = createForwarder({
+    notifier,
+    idStore: jsonStore(cfg.notify.idStorePath),
+    // Maintenance windows live with the notify config until the Local Console
+    // (WO-INT-004) and the set_maintenance command (§3.6) can set them.
+    alarms: { ...cfg.alarms, maintenance: ncfg?.maintenance || [] },
     portal: {
       enabled: cfg.portal.enabled, url: cfg.portal.url, tenant: cfg.tenantId, nodeId: cfg.portal.nodeId,
       role: 'collector', siteId: cfg.portal.siteId, profile: cfg.portal.profile,

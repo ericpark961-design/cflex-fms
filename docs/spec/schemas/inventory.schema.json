@@ -20,6 +20,8 @@
       "properties": {
         "device_id": { "$ref": "#/$defs/device_id" },
         "replaced_by": { "$ref": "#/$defs/device_id" },
+        "provisional": { "type": "boolean", "$comment": "v1.1 (Q-2026-10-25-05): device_id not yet keyed on a serial" },
+        "id_basis": { "enum": ["serial", "ledger"], "$comment": "v1.1 (Q-2026-10-25-05): what device_id was hashed from" },
         "site_id": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9-]{0,31}$" },
         "label": { "type": "string", "maxLength": 128 },
         "vendor": { "type": "string", "maxLength": 64 },
