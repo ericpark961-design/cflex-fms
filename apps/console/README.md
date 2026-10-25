@@ -79,6 +79,71 @@ with AES-256-GCM (`CONSOLE_SECRET_KEY_FILE`). Reading them back returns `{ "set"
 collector's `GET /collector/v1/{devices,config}` returns them opened, because the collector needs them
 to poll and to notify.
 
+## 포털 연동 / Managed service (설정 탭)
+
+포털 연결은 **collector 의 것**이다. cap01 의 forwarder 가 아웃바운드로 걸고, 큐를
+들고, 장치 인증서를 가진다. 이 화면은 그 설정을 저장하고 collector 가
+`GET /collector/v1/config` 로 가져간다 — 계약 00 이 허용하는 유일한 방향이고,
+app 이 collector 를 호출하는 일은 없다.
+
+그래서 "연동이 안 된다"에 cap01 로 ssh 해서 `.env` 를 읽지 않아도 된다.
+
+### 저장되는 것
+
+`url`(https 만) · `ip_pin`(계약 §1, 비우면 검사 안 함) · `proxy` + 비밀번호(봉인) ·
+`heartbeat_ms`(≥30s) · `poll_ms`(**≥10s** — spec 01 §2.1, 그 아래로는 48대 한 주기가
+끝나지 않는다) · `telemetry_flush_ms` · `buffer_days`(1–30) · `enabled` ·
+`legacy_forward`(구 `/v1/probe/event`, 기본 off).
+
+기본값은 계약서 숫자다 — `https://cflex.fms.support`, `40.114.79.164`,
+heartbeat 60s, 버퍼 7일 (계약 §1·§3.1, D-07).
+
+### 장치 인증서 (계약 §6) — 개인키는 움직이지 않는다
+
+CA 와 얘기하는 사람은 이 콘솔 앞의 admin 인데, 키는 collector 에 있어야 한다.
+그래서 셋으로 나눈다:
+
+```
+collector  POST /collector/v1/enroll   { csr, pubkey_sha256 }   ← 키는 그 노드에 남는다
+admin      화면에서 CSR 을 복사 → 포털 CA 서명 → 인증서를 붙여넣는다
+collector  GET  /collector/v1/certs    { cert, ca }             ← 가져간다
+```
+
+인증서와 CSR 은 공개 정보다. **개인키는 이 DB·이 프로세스·이 화면에 없고**,
+테스트가 그걸 강제한다.
+
+붙여넣은 인증서는 거부 조건이 넷이다. 막으려는 실패가 조용하기 때문이다 —
+다른 노드 인증서를 넣으면 collector 가 설치하고, 포털이 모든 호출을 거부하고,
+화면은 정상으로 보인다:
+
+| 거부 | code |
+|---|---|
+| CN 이 `<tenant>.<node-id>` 가 아님 (계약 §1) | `cn_mismatch` |
+| clientAuth EKU 없음 | `no_client_auth` |
+| 이미 만료 | `expired` |
+| **공개키가 등록된 CSR 과 불일치** ← 이게 뒤바뀐 붙여넣기를 잡는다 | `key_mismatch` |
+
+새 CSR 이 올라오면 들고 있던 인증서를 버린다(새 키쌍이므로 죽은 인증서다).
+같은 CSR 재전송은 무효 동작이라 collector 재시작으로 인증서가 날아가지 않는다.
+`인증서 내리기`는 CSR 을 남겨 두므로 키를 다시 만들지 않고 재서명할 수 있다.
+만료 60일 이내면 `renew_due` 로 표시된다 (계약 §1, §6-2).
+
+### 연동 점검
+
+`probe-agent/src/portal/check.js` — `cflex-portal-check` CLI 와 **같은 코드**다.
+둘로 구현하면 갈라지고, 그러면 화면과 CLI 가 연동 여부를 두고 서로 다른 말을 한다.
+
+점검은 **app 노드에서** 실행되므로 app 호스트의 포털 경로를 답한다. 두 호스트는
+같은 egress 규칙을 쓰므로(spec 01 §1) 그게 admin 이 원하는 답이지만, collector 의
+실제 mTLS 접속 성립은 아래 "collector 보고"로 확인한다 — 응답에 그렇게 적혀 온다.
+
+### 아직 아닌 것
+
+**probe-agent 가 콘솔에서 config·인증서를 가져오는 쪽은 미구현이다.** 수신 API 와
+저장·검증은 여기 있고, collector 가 `POST /collector/v1/enroll` ·
+`GET /collector/v1/certs` · `GET /collector/v1/config` 를 호출하도록 바꾸는 작업이
+남아 있다. 그때까지 cap01 은 `.env` 로 동작한다.
+
 ## No external calls
 
 - Every response carries `Content-Security-Policy: default-src 'self'` with no external origin.

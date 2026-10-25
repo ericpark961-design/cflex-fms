@@ -36,6 +36,7 @@
   // ── tabs ─────────────────────────────────────────────────────────────────
   const TABS = [
     ['status', '상태 / Status', status],
+    ['portal', '포털 연동 / Managed service', portalTab, true],
     ['sites', '사이트 / Sites', sites],
     ['devices', '장비 / Devices', devices],
     ['import', '임포트 / Import', importer],
@@ -86,6 +87,151 @@
       const r = await send('POST', `/v1/console/collectors/${encodeURIComponent(node)}/key`).catch(x => msg(x.message));
       if (r) { out.hidden = false; out.textContent = `${r.node_id}: ${r.key}\n(한 번만 표시됩니다 — collector에 0600 파일로 저장)`; }
     } } }, el('h2', {}, 'Collector 키 발급'), el('div', { class: 'row' }, field('node id', 'node', 'cap01', 'text', { pattern: '[a-z0-9][a-z0-9-]{0,31}', required: true })), el('button', {}, '발급 / Issue'), out);
+  }
+
+  // ── portal link (managed service) ────────────────────────────────────────
+  // The connection belongs to the collector, so everything here is "what the
+  // collector will pull" rather than "what this page just did". That matters
+  // for the device certificate: the private key is on the collector and never
+  // reaches this screen.
+  async function portalTab() {
+    const d = await api('/v1/console/portal');
+    const c = d.config;
+    const out = el('pre', { class: 'out' });
+
+    const VERDICT = { PASS: 'ok', WARN: 'warn', FAIL: 'bad', SKIP: 'muted' };
+
+    // ── connection settings ──
+    const form = el('form', { on: { submit: async (e) => {
+      e.preventDefault();
+      const b = formData(e.target);
+      try {
+        const r = await send('PUT', '/v1/console/portal', {
+          enabled: e.target.enabled.checked,
+          legacy_forward: e.target.legacy_forward.checked,
+          url: b.url, ip_pin: b.ip_pin || null, proxy: b.proxy || null,
+          proxy_password: b.proxy_password || (c.proxy_password?.set ? { set: true } : null),
+          heartbeat_ms: b.heartbeat_ms, poll_ms: b.poll_ms,
+          telemetry_flush_ms: b.telemetry_flush_ms, buffer_days: b.buffer_days,
+        });
+        msg(`저장됨 — collector 가 다음 config pull 에서 적용한다 (${r.config.url})`, true);
+        route();
+      } catch (err) { msg(err.message); }
+    } } },
+      el('h2', {}, '연결 설정 / Connection'),
+      el('p', { class: 'muted' }, '여기 값은 collector 가 GET /collector/v1/config 로 가져간다. 이 화면이 포털에 직접 접속하지는 않는다.'),
+      el('div', { class: 'row' },
+        el('label', {}, el('input', { type: 'checkbox', name: 'enabled', checked: c.enabled !== false }), '포털 전송 사용'),
+        field('포털 URL', 'url', c.url, 'text', { required: true, size: 40, pattern: 'https://.+' }),
+        field('IP 핀 (계약 §1)', 'ip_pin', c.ip_pin || '', 'text', { placeholder: '비우면 검사 안 함' })),
+      el('div', { class: 'row' },
+        field('프록시 (HTTPS_PROXY)', 'proxy', c.proxy || '', 'text', { size: 32, placeholder: 'http://proxy:8080' }),
+        field(`프록시 비밀번호${c.proxy_password?.set ? ' (설정됨 — 비우면 유지)' : ''}`, 'proxy_password', '', 'password', { autocomplete: 'off' })),
+      el('div', { class: 'row' },
+        field('heartbeat (ms)', 'heartbeat_ms', c.heartbeat_ms, 'number', { min: 30000, max: 600000, step: 1000 }),
+        field('폴링 (ms)', 'poll_ms', c.poll_ms, 'number', { min: 10000, max: 3600000, step: 1000 }),
+        field('telemetry flush (ms)', 'telemetry_flush_ms', c.telemetry_flush_ms, 'number', { min: 10000, max: 600000, step: 1000 }),
+        field('버퍼 보존 (일)', 'buffer_days', c.buffer_days, 'number', { min: 1, max: 30 })),
+      el('div', { class: 'row' },
+        el('label', {}, el('input', { type: 'checkbox', name: 'legacy_forward', checked: !!c.legacy_forward }),
+          '구 /v1/probe/event 도 전송 (기본 off)')),
+      el('button', {}, '저장 / Save'));
+
+    // ── check ──
+    const nodeSel = el('select', { name: 'node_id' },
+      [el('option', { value: '' }, '(인증서 없이 익명 점검)'),
+        ...d.enrollments.map(e => el('option', { value: e.node_id, selected: e.state === 'signed' }, `${e.node_id} (${e.state})`))]);
+    const checkBox = el('form', { on: { submit: async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button');
+      btn.disabled = true; out.textContent = '점검 중…';
+      try {
+        const r = await send('POST', '/v1/console/portal/check', { node_id: nodeSel.value || null });
+        out.replaceChildren(
+          el('div', {}, `${r.summary.pass} pass · ${r.summary.warn} warn · ${r.summary.fail} fail  —  ${r.linked ? '연동 가능' : '막혀 있음'}`),
+          el('div', { class: 'muted' }, r.note),
+          ...r.checks.map(x => el('div', { class: VERDICT[x.verdict] || '' },
+            `${x.verdict.padEnd(5)} ${x.id}  ${x.title}`,
+            ...x.detail.split('\n').filter(Boolean).map(l => el('div', { class: 'muted' }, `    ${l}`)),
+            x.ref ? el('div', { class: 'muted' }, `    → ${x.ref}`) : null)));
+        msg(r.linked ? '연동 가능' : `막는 것: ${r.blockers.map(b => b.id).join(', ')}`, r.linked);
+      } catch (err) { out.textContent = err.message; msg(err.message); }
+      btn.disabled = false;
+    } } },
+      el('h2', {}, '연동 점검 / Check'),
+      el('p', { class: 'muted' }, 'cflex-portal-check 와 같은 코드다. 이 app 노드에서 실행되므로 collector 의 실제 접속 성립은 아래 "collector 보고"로 확인한다.'),
+      el('div', { class: 'row' }, el('label', {}, '장치 인증서', nodeSel)),
+      el('button', {}, '점검 실행 / Run'));
+
+    // ── enrolment ──
+    const enrolRows = d.enrollments.length ? d.enrollments.map(e => el('tr', {},
+      el('td', {}, e.node_id),
+      el('td', { class: e.state === 'signed' ? 'ok' : 'warn' }, e.state === 'signed' ? '서명됨' : 'CSR 대기'),
+      el('td', {}, e.cert ? e.cert.cn : e.expect_cn),
+      el('td', { class: e.renew_due ? 'warn' : '' }, e.cert ? `${e.cert.to} (${e.cert.days_left}일)` : '—'),
+      el('td', {}, e.pubkey_sha256 || '—'),
+      el('td', {}, when(e.signed_at)),
+      el('td', {},
+        el('button', { on: { click: () => {
+          // The CSR is public; the key is not and is not here to copy.
+          out.textContent = e.csr;
+          msg('CSR 을 복사해 포털 CA 에 등록하고, 서명된 인증서를 아래에 붙여넣는다.', true);
+        } } }, 'CSR 보기'),
+        e.state === 'signed'
+          ? el('button', { on: { click: async () => {
+            if (!confirm(`${e.node_id} 의 인증서를 내린다. collector 는 다음 pull 에서 포털에 붙지 못한다. 계속?`)) return;
+            try { await send('DELETE', `/v1/console/portal/enrollments/${encodeURIComponent(e.node_id)}/cert`); msg('인증서를 내렸다. CSR 은 남아 있어 재서명할 수 있다.', true); route(); }
+            catch (err) { msg(err.message); }
+          } } }, '인증서 내리기')
+          : null))) : [el('tr', {}, el('td', { colspan: 7, class: 'muted' },
+            'collector 가 CSR 을 아직 올리지 않았다. collector 에서: node bin/cflex-csr.js  (키는 그 노드에 남는다)'))];
+
+    const pasteForm = el('form', { on: { submit: async (e) => {
+      e.preventDefault();
+      const b = formData(e.target);
+      if (!b.node_id) { msg('node 를 고르세요'); return; }
+      try {
+        const r = await send('POST', `/v1/console/portal/enrollments/${encodeURIComponent(b.node_id)}/cert`,
+          { cert: e.target.cert.value, ca: e.target.ca.value || null });
+        msg(`${r.enrollment.node_id} 서명 인증서 저장 — CN=${r.enrollment.cert.cn}, 만료 ${r.enrollment.cert.to}. collector 가 다음 pull 에서 가져간다.`, true);
+        route();
+      } catch (err) {
+        // The server's reasons are specific on purpose (CN mismatch, wrong
+        // public key, no clientAuth) — show them rather than "실패".
+        msg(err.body?.extra ? `${err.message} — ${JSON.stringify(err.body.extra)}` : err.message);
+      }
+    } } },
+      el('h2', {}, '서명된 인증서 등록'),
+      el('div', { class: 'row' },
+        el('label', {}, 'node', el('select', { name: 'node_id' },
+          d.enrollments.map(e => el('option', { value: e.node_id }, e.node_id)))) ),
+      el('label', {}, '인증서 (PEM)', el('textarea', { name: 'cert', rows: 6, required: true, placeholder: '-----BEGIN CERTIFICATE-----' })),
+      el('label', {}, 'CA 체인 (PEM, 선택)', el('textarea', { name: 'ca', rows: 4, placeholder: '-----BEGIN CERTIFICATE-----' })),
+      el('button', {}, '등록 / Install'));
+
+    // ── what the collectors themselves report ──
+    const live = d.collectors.length ? d.collectors.map(c2 => el('tr', {},
+      el('td', {}, c2.node_id),
+      el('td', { class: c2.stale ? 'bad' : 'ok' }, c2.stale ? 'stale' : 'live'),
+      el('td', {}, when(c2.last_seen)),
+      el('td', {}, c2.portal?.enabled === false ? 'off' : 'on'),
+      el('td', {}, when(c2.portal?.last_reachable)),
+      el('td', {}, c2.portal?.sent ?? '—'),
+      el('td', {}, c2.portal?.queued ?? '—'),
+      el('td', { class: c2.portal?.last_error ? 'bad' : '' }, c2.portal?.last_error || '—'),
+    )) : [el('tr', {}, el('td', { colspan: 8, class: 'muted' }, 'collector 보고 없음'))];
+
+    return [
+      form,
+      el('h2', {}, '장치 인증서 / Device certificate (계약 §6)'),
+      el('p', { class: 'muted' }, '개인키는 collector 에 남고 이 화면에 오지 않는다. collector 가 CSR 을 올리고, 서명된 인증서를 여기서 등록하면 collector 가 가져간다.'),
+      table(['node', '상태', 'CN', '만료', 'CSR 공개키', '서명 시각', ''], enrolRows),
+      pasteForm,
+      checkBox,
+      el('h2', {}, 'collector 보고 / As the collectors report it'),
+      table(['node', '', 'last seen', '포털', 'last reachable', 'sent', 'queued', 'last error'], live),
+      out,
+    ];
   }
 
   // ── sites ────────────────────────────────────────────────────────────────

@@ -168,3 +168,18 @@ CREATE TABLE IF NOT EXISTS collectors (
   last_seen   INTEGER,
   heartbeat   TEXT
 );
+
+-- Device-certificate enrolment (contract §6). The CSR and the signed
+-- certificate are both public; the private key stays on the collector and is
+-- never in this database. A new CSR clears the certificate, because a new key
+-- pair makes the old one dead.
+CREATE TABLE IF NOT EXISTS enrollments (
+  node_id       TEXT PRIMARY KEY,
+  csr           TEXT NOT NULL,
+  pubkey_sha256 TEXT,
+  requested_at  INTEGER NOT NULL,
+  cert          TEXT,
+  ca            TEXT,
+  signed_at     INTEGER,
+  signed_by     TEXT
+);

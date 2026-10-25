@@ -15,6 +15,7 @@ const auth = require('./auth');
 const { createViews } = require('./views');
 const { createIngest } = require('./ingest');
 const { createSettings } = require('./settings');
+const { createPortal } = require('./portal');
 const { createSealer } = require('./seal');
 
 const COOKIE = 'cflex_sid';
@@ -28,13 +29,14 @@ const COOKIE = 'cflex_sid';
  * @param {object} [o.notifyDeps]  injected into the test-ticket notifier (tests)
  * @param {object} [o.log]
  */
-function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log = console }) {
+function createApp({ config, db, redis, now = Date.now, notifyDeps = null, portalChecker, log = console }) {
   const sessions = auth.createSessions(redis, config.session);
   const lockout = auth.createLockout(redis, config.lockout);
   const views = createViews(db, { staleMs: config.staleMs, now });
   const ingest = createIngest(db, { now });
   const sealer = createSealer(config.secretKey);
   const settings = createSettings(db, { sealer, tenant: config.tenant, now });
+  const portal = createPortal(db, { sealer, tenant: config.tenant, now, ...(portalChecker ? { checker: portalChecker } : {}) });
   const router = createRouter();
   const R = (m, p, role, h) => router.add(m, p, { role }, h);
 
@@ -302,11 +304,66 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
   R('POST', '/collector/v1/telemetry', 'collector', (c) => ingest.telemetry(c.body));
   R('POST', '/collector/v1/events', 'collector', (c) => ingest.events(c.body));
   R('GET', '/collector/v1/devices', 'collector', () => ({ ok: true, devices: settings.collectorDevices() }));
+  // ── 포털 연동 (managed service) ─────────────────────────────────────
+  // The Portal connection belongs to the collector; this page configures it
+  // and the collector pulls the result. See src/portal.js for why enrolment is
+  // split the way it is — the device key never leaves the collector.
+  R('GET', '/v1/console/portal', 'admin', () => ({
+    ok: true,
+    config: portal.get(),
+    defaults: portal.DEFAULTS,
+    enrollments: portal.listEnrollments(),
+    // What the collectors themselves last reported about the link.
+    collectors: settings.listCollectors().map(c => ({
+      node_id: c.node_id, last_seen: c.last_seen,
+      stale: !c.last_seen || now() - c.last_seen > 5 * 60e3,
+      portal: c.heartbeat?.portal || null,
+    })),
+  }));
+
+  R('PUT', '/v1/console/portal', 'admin', (c) => {
+    const cfg = portal.put(c.body || {}, c.session.username);
+    audit(c, 'portal_put', null, { keys: Object.keys(c.body || {}) });
+    return { ok: true, config: cfg };
+  });
+
+  // Runs from THIS node, so it answers "can the app host reach the Portal".
+  // Both hosts carry the same egress rule (spec 01 §1); the report says where
+  // it ran rather than letting a green screen imply the collector.
+  R('POST', '/v1/console/portal/check', 'admin', async (c) => {
+    const r = await portal.check({ node_id: c.body?.node_id });
+    audit(c, 'portal_check', c.body?.node_id || null, { fail: r.summary.fail, linked: r.linked });
+    return { ok: true, ...r };
+  });
+
+  R('POST', '/v1/console/portal/enrollments/:node/cert', 'admin', (c) => {
+    const e = portal.signCert(c.params.node, c.body || {}, c.session.username);
+    audit(c, 'portal_cert_signed', c.params.node, { cn: e?.cert?.cn, to: e?.cert?.to });
+    return { ok: true, enrollment: e };
+  });
+
+  R('DELETE', '/v1/console/portal/enrollments/:node/cert', 'admin', (c) => {
+    const e = portal.revoke(c.params.node, c.session.username);
+    audit(c, 'portal_cert_revoked', c.params.node);
+    return { ok: true, enrollment: e };
+  });
+
+  // ── collector side of enrolment ────────────────────────────────────
+  R('POST', '/collector/v1/enroll', 'collector', (c) => {
+    const r = portal.enroll(c.collector?.node_id || c.body?.node_id, c.body || {});
+    return { ok: true, ...r };
+  });
+  R('GET', '/collector/v1/certs', 'collector', (c) =>
+    ({ ok: true, ...portal.certsFor(c.collector?.node_id || c.query?.node_id) }));
+
   R('GET', '/collector/v1/config', 'collector', () => {
     const t = now();
     const devs = new Map(db.prepare('SELECT device_id, id FROM devices').all().map(d => [d.device_id, d.id]));
     return {
       ok: true, thresholds: settings.getThresholds(), notify: settings.getNotify({ open: true }),
+      // The collector's own Portal settings, so cap01 no longer needs a
+      // hand-edited .env to change the managed-service link.
+      portal: portal.get({ open: true }),
       // In the shape probe-agent's alarm engine takes (setMaintenance).
       maintenance: db.prepare('SELECT * FROM maintenance WHERE ends_at > ?').all(t).map(w => ({
         device_id: w.device_id, ledger_id: w.device_id ? devs.get(w.device_id) ?? null : null, site_id: w.site_id,

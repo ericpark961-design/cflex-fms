@@ -7,6 +7,19 @@ h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 24px 0 8p
 .card { background: var(--card); border: 1px solid var(--line); padding: 24px; }
 .narrow { width: min(380px, 92vw); }
 .muted { color: var(--muted); } .small { font-size: 12px; } .error { color: var(--crit); min-height: 1.4em; } .okmsg { color: var(--ok); }
+/* Verdicts on the 포털 연동 page. Semantic colour, separate from --primary:
+   a status must not read as a link, and a link must not read as a status. */
+.ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--crit); }
+/* Check output and the CSR: monospace, scrolls in its own box so a PEM block
+   cannot push the page sideways. */
+.out { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-size: 12px;
+  white-space: pre-wrap; word-break: break-all; background: var(--bg);
+  border: 1px solid var(--line); padding: 10px; margin-top: 12px;
+  max-height: 22rem; overflow: auto; }
+.out > div { white-space: pre-wrap; }
+textarea { width: 100%; font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  font-size: 12px; background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line); padding: 8px; }
 label { display: block; margin: 10px 0; font-size: 12px; color: var(--muted); }
 input, select, textarea { display: block; width: 100%; margin-top: 4px; padding: 8px; background: #161616; color: var(--ink); border: 1px solid var(--line); font: inherit; }
 textarea { min-height: 120px; font-family: "IBM Plex Mono", Menlo, Consolas, monospace; font-size: 12px; }
