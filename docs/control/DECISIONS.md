@@ -137,3 +137,22 @@ Codex 수신 검증(WO-PTL-001)이 이 파일을 읽으므로 같은 날 반영�
 
 A: 관리자 2026-10-25: 계약서 00을 **v1.1**로 올렸고 스키마 8종의 `x-contract-version`도 1.1로 올렸다(관리자 커밋). Probe 계약 테스트의 버전 검사를 1.1로 맞추고, `X-CFlex-API-Version` 헤더는 1.1(포털은 1.0 요청도 수락). Codex(WO-PTL-001)에도 같은 파일 적용.
 
+
+
+### Q-2026-10-25-09 — Local Console의 "기존 UI"는 어느 것인가, 포털 범위 화면은 어떻게 하나 (Claude Code)
+
+01 §2.2·D-01은 "기존 UI 유지, 기능 추가 금지"라고만 한다. 저장소에서 빌드·실행되는 UI는 **`apps/twin`
+하나뿐**이다(Vite+React, HAEA_CURRENT_STATE §2.4 "로컬 대시보드"). `frontend/src/pages/Fms.jsx`(1.x)는
+package.json이 없어 빌드되지 않는다. 그런데 twin에는 D-01상 포털 범위인 화면도 들어 있다 — 3D 트윈,
+NOC 월, 파워체인, 지도, Copilot, 티켓. 그리고 **설정(Admin) 화면은 없다.**
+
+WO-INT-004는 다음처럼 진행했다(되돌리기 쉬운 쪽):
+- 백엔드 `apps/console`(cflex-app)를 twin이 부르는 `/v1/me`·`/v1/fms/*` 형태 그대로 구현한다. 포털 범위
+  엔드포인트(copilot·power-chain·topology·control·tickets·incidents)는 **빈 응답/404** — twin은 이미
+  "엔드포인트 없음"을 처리한다. 화면을 지우지 않았다.
+- 로그인 페이지와 설정 페이지는 twin에 없어서 콘솔이 정적 HTML로 제공한다(외부 호출 0, CSP `default-src 'self'`).
+- twin을 콘솔용으로 빌드할 때(`vite.console.config.js`)만 Google Fonts·OpenFreeMap 타일을 뺀다. 포털용 빌드는 그대로.
+
+- **(A)** 위대로 — twin이 기존 UI, 포털 범위 화면은 콘솔 빌드에서 그대로 두되 데이터 없음으로 표시 — 권고.
+- **(B)** 콘솔 빌드에서 포털 범위 화면(3D·NOC·파워체인·지도·Copilot)을 메뉴에서 숨긴다(코드 유지, 빌드 플래그).
+- **(C)** 다른 UI(Fms.jsx 1.x 등)를 기준으로 한다.
