@@ -110,4 +110,10 @@ function createConsoleNotify({ db, settings, deps = {}, net = {}, replayMaxAgeMs
 /** Does this event announce its alarm (a raise, or the late raise after a maintenance window)? */
 const announces = (ev) => ev.kind === 'alarm_raise' || (ev.kind === 'alarm_update' && !!ev.detail?.maintenance_ended);
 
-module.exports = { createConsoleNotify, itsmStore, announces };
+/** config.js `notify` → the {proxy, noProxy, ca} createConsoleNotify takes. */
+const netFrom = (nc = {}) => ({
+  proxy: nc.proxy || null, noProxy: nc.noProxy || null,
+  ca: nc.caPath ? transport.loadTls({ proxyCaPath: nc.caPath }).ca : undefined,
+});
+
+module.exports = { createConsoleNotify, itsmStore, announces, netFrom };

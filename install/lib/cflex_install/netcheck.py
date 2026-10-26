@@ -210,7 +210,9 @@ def evaluate(matrix, site, role, me, listeners, established, runner,
         for chk in row["checks"]:
             label = chk.get("label") or ("%s %s/%s" % (chk["type"], chk["proto"], chk.get("port") or chk.get("ports")))
             if not _applies(chk, role, me, site):
-                lines.append({"check": label, "verdict": "N/A", "observed": "이 호스트(%s) 해당 없음" % role})
+                # A row can say why it does not apply to a role (FW-8 on the collector: Q-2026-10-25-10).
+                why = (chk.get("na") or {}).get(role) or "이 호스트(%s) 해당 없음" % role
+                lines.append({"check": label, "verdict": "N/A", "observed": why})
                 continue
             if chk["type"] == "listen":
                 lines.append(_eval_listen(chk, label, public_listeners, used_listen, forward_mode, forward_rules, installed))

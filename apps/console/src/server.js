@@ -17,7 +17,7 @@ const { createViews } = require('./views');
 const { createIngest } = require('./ingest');
 const { createSettings } = require('./settings');
 const { createSealer } = require('./seal');
-const { createConsoleNotify, announces } = require('./notify');
+const { createConsoleNotify, announces, netFrom } = require('./notify');
 
 const COOKIE = 'cflex_sid';
 
@@ -37,10 +37,8 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
   const ingest = createIngest(db, { now });
   const sealer = createSealer(config.secretKey);
   const settings = createSettings(db, { sealer, tenant: config.tenant, now });
-  const nc = config.notify || {};
   const notify = createConsoleNotify({
-    db, settings, deps: notifyDeps || {}, now, log, replayMaxAgeMs: nc.replayMaxMs,
-    net: { proxy: nc.proxy, noProxy: nc.noProxy, ca: nc.caPath ? require('../../../probe-agent/src/portal/transport').loadTls({ proxyCaPath: nc.caPath }).ca : undefined },
+    db, settings, deps: notifyDeps || {}, now, log, replayMaxAgeMs: config.notify?.replayMaxMs, net: netFrom(config.notify),
   });
   const router = createRouter();
   const R = (m, p, role, h) => router.add(m, p, { role }, h);

@@ -32,7 +32,7 @@
         { "type": "out", "roles": ["collector"], "proto": "tcp", "ports": [443], "dest": "app", "label": "collector → app 443" },
         { "type": "listen", "roles": ["db"], "proto": "tcp", "port": 5432, "label": "db 5432 ← app" },
         { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [5432], "dest": "db", "label": "app → db 5432", "optional": true },
-        { "type": "listen", "roles": ["app"], "proto": "tcp", "port": 6379, "redis_host_only": true, "label": "redis 6379 ← peer app" },
+        { "type": "listen", "roles": ["app"], "proto": "tcp", "port": 6379, "label": "redis 6379 ← peer app (세션·복제)" },
         { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [6379], "dest": "redis", "label": "app → redis 6379" },
         { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [443], "dest": "peer_app", "label": "app ↔ peer app 443", "optional": true }
       ]
@@ -40,9 +40,12 @@
     {
       "id": "FW-8", "direction": "app → HAEA SMTP 릴레이 25/587, → 프록시 → Teams 443, → ServiceNow 443, → Satellite/DNS/NTP", "port": "내부/아웃", "purpose": "",
       "checks": [
-        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [25, 587], "dest": "smtp", "label": "app → SMTP 릴레이" },
-        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [443], "dest": "teams", "label": "app → 프록시 → Teams 443" },
-        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [443], "dest": "servicenow", "label": "app → ServiceNow 443" },
+        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [25, 587], "dest": "smtp", "label": "app → SMTP 릴레이",
+          "na": { "collector": "해당 없음 — 로컬 알림은 Local Console(app)이 발송, collector는 알림 채널 없음 (Q-2026-10-25-10)" } },
+        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [443], "dest": "teams", "label": "app → 프록시 → Teams 443",
+          "na": { "collector": "해당 없음 — 로컬 알림은 Local Console(app)이 발송; collector의 프록시 사용은 FW-4(포털)뿐 (Q-2026-10-25-10)" } },
+        { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [443], "dest": "servicenow", "label": "app → ServiceNow 443",
+          "na": { "collector": "해당 없음 — 로컬 알림은 Local Console(app)이 발송; collector의 프록시 사용은 FW-4(포털)뿐 (Q-2026-10-25-10)" } },
         { "type": "out", "roles": ["app", "collector", "db"], "proto": "any", "ports": [443, 53, 123], "dest": "platform", "label": "→ Satellite/DNS/NTP", "system": true }
       ]
     }

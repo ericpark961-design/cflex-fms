@@ -18,9 +18,11 @@ function secretFile(k) {
 
 function load() {
   return {
-    // Behind nginx on 443 (deploy/console/nginx-cflex-console.conf). 0.0.0.0 so
-    // the nginx on the other app node can reach this one too; firewalld only
-    // opens 443 to users, so the API port itself is not reachable from outside.
+    // Behind nginx on 443. The default is every interface (WO-INT-004); the
+    // installer sets 127.0.0.1, because the nginx in front is always on the
+    // same host (or network namespace) and the other node is reached through
+    // its nginx on 443, never on this port (Q-2026-10-25-10). firewalld opens
+    // only 443 either way.
     bind: env('CONSOLE_BIND', '0.0.0.0'),
     port: int('CONSOLE_PORT', 8080),
     nodeId: env('CONSOLE_NODE_ID', require('os').hostname()),

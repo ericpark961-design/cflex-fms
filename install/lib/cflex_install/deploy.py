@@ -194,12 +194,14 @@ def _secrets(c):
         for fn in ("redis.pass", "console.key"):
             if _secret_file(c, BASE + "/secrets/app/" + fn, is_active, "%s:%s/secrets/app/%s" % (active.get("id"), BASE, fn)):
                 made.append(fn)
-        if (siteconf.redis_host(c.site) or {}).get("id") == c.me[1]:
-            pw = (c.runner.read(BASE + "/secrets/app/redis.pass") or "").strip()
-            if c.runner.dry_run and not pw:
-                pw = "dry-run"
-            if c.runner.write(BASE + "/secrets/redis/auth.conf", "requirepass %s\n" % pw, mode=0o600, uid=uid, gid=uid):
-                made.append("redis auth.conf")
+        # Both app nodes run Redis (primary + replica, Q-2026-10-25-11): the same password is the
+        # one clients use and the one the replica authenticates to the primary with — on either
+        # node, since a promotion swaps the roles.
+        pw = (c.runner.read(BASE + "/secrets/app/redis.pass") or "").strip()
+        if c.runner.dry_run and not pw:
+            pw = "dry-run"
+        if c.runner.write(BASE + "/secrets/redis/auth.conf", "requirepass %s\nmasterauth %s\n" % (pw, pw), mode=0o600, uid=uid, gid=uid):
+            made.append("redis auth.conf")
     if c.role == "db":
         for fn, name in (("pg.pass", "cflex-pg-password"), ("pg-admin.pass", "cflex-pg-admin-password")):
             path = BASE + "/secrets/db/" + fn
@@ -287,9 +289,10 @@ def firewall_rules(c):
                     out.append(("rich-rule", (rich % s) + 'port port="443" protocol="tcp" accept'))
         else:
             out.append(("forward-port", "port=443:proto=tcp:toport=8443") if fwd else ("service", "https"))
-        if (siteconf.redis_host(c.site) or {}).get("id") == c.me[1]:
-            for p in peers:
-                out.append(("rich-rule", (rich % p) + 'port port="6379" protocol="tcp" accept'))
+        # 6379 from the peer app node on both nodes: the replica dials the primary, and after a
+        # promotion the roles are the other way round (FW-7 app01↔app02 6379).
+        for p in peers:
+            out.append(("rich-rule", (rich % p) + 'port port="6379" protocol="tcp" accept'))
     if c.role == "db":
         port = (siteconf.get(c.site, "hosts.db") or {}).get("port", 5432)
         for a in siteconf.get(c.site, "hosts.app") or []:
@@ -355,8 +358,7 @@ def _load_images(c):
 
 def _units(c):
     if c.role == "app":
-        redis_here = (siteconf.redis_host(c.site) or {}).get("id") == c.me[1]
-        names = ["cflex-web", "cflex-console"] + (["cflex-redis"] if redis_here else [])
+        names = ["cflex-web", "cflex-console", "cflex-redis"]
         if render.podman_major(c.podman_version) >= 5:
             return ["cflex-app-pod"] + names
         return names
@@ -372,7 +374,7 @@ def _restart(c):
 
 def wait_healthy(c, timeout=HEALTH_TIMEOUT_S, sleep=time.sleep, clock=time.time):
     if c.profile == "container":
-        names = [n for n in CONTAINERS[c.role] if n != "cflex-redis" or (siteconf.redis_host(c.site) or {}).get("id") == c.me[1]]
+        names = list(CONTAINERS[c.role])
     else:
         names = list(BARE_UNITS[c.role])
     if c.runner.dry_run:
@@ -510,7 +512,36 @@ def apply(c, steps):
         c.log("       → %s" % (res if isinstance(res, str) else res))
 
 
+PROMOTION_KEYS = ("redis_primary", "redis_promoted_at", "redis_previous_primary")
+
+
+def check_promotion(c):
+    """A node promoted by hand stays the Redis primary until site.yaml says so too.
+
+    Without this, the next install/upgrade/rollback would render it as a replica of
+    the old primary again — which, once that VM is back, wipes the sessions this
+    node has been serving and copies the stale ones over.
+    """
+    if c.role != "app":
+        return
+    st = read_state(c.runner)
+    rh = siteconf.redis_host(c.site) or {}
+    if st.get("redis_primary") != c.me[1]:
+        return
+    if rh.get("id") == c.me[1]:
+        # site.yaml has caught up: it carries the truth from here on.
+        for k in PROMOTION_KEYS:
+            st.pop(k, None)
+        write_state(c, st)
+        return
+    raise DeployError("this node's Redis was promoted to primary at %s, but site.yaml still names %s "
+                      "(install.redis_host) — set install.redis_host: %s in site.yaml on all four VMs first "
+                      "(docs/install/REDIS_FAILOVER.md §3). If this node is meant to be the replica now, remove "
+                      "redis_primary from %s and re-run." % (st.get("redis_promoted_at"), rh.get("id"), c.me[1], STATE))
+
+
 def install(c):
+    check_promotion(c)
     steps = plan_install(c)
     apply(c, steps)
     healthy, why = wait_healthy(c)
@@ -543,6 +574,7 @@ def run_migrations(c, direction):
 
 
 def upgrade(c, standby_done=False):
+    check_promotion(c)
     check_standby_first(c, standby_done)
     st = read_state(c.runner)
     old = st.get("version")
@@ -585,6 +617,7 @@ def _to_version(c, version):
 
 
 def rollback(c):
+    check_promotion(c)
     st = read_state(c.runner)
     prev, cur = st.get("previous"), st.get("version")
     if not prev:
@@ -597,3 +630,88 @@ def rollback(c):
     if not healthy:
         raise DeployError("rolled back to %s but %s" % (prev, why))
     return "rolled back to %s — %s" % (prev, why)
+
+
+# ── Redis promotion (DECISIONS Q-2026-10-25-11 (A)) ────────────────────────
+#
+# Both app nodes run Redis: install.redis_host is the primary, the other node a
+# replica of it. When the primary's VM is gone, `cflex-install promote --role
+# app` on the other node makes its replica the primary and points its console
+# at it — sessions made before the failure are still there. Manual on purpose:
+# an automatic failover between two nodes with no third vote is how a split
+# brain happens. docs/install/REDIS_FAILOVER.md is the procedure (SAT 6).
+
+REDIS_CLI = ["podman", "exec", "cflex-redis", "/bin/sh", "/opt/app/cflex/config/redis-cli.sh"]
+
+
+def redis_info(as_cflex):
+    """`INFO replication` of this node's Redis → dict, or None if it does not answer."""
+    r = as_cflex(REDIS_CLI + ["INFO", "replication"], mutating=False)
+    if not ok(r):
+        return None
+    info = {}
+    for line in r[1].splitlines():
+        k, sep, v = line.strip().partition(":")
+        if sep and not k.startswith("#"):
+            info[k] = v
+    return info or None
+
+
+def plan_promote(c):
+    rh = siteconf.redis_host(c.site) or {}
+    return [
+        "redis-cli REPLICAOF NO ONE on %s (its replica of %s becomes the primary, data kept)" % (c.me[1], rh.get("id")),
+        "render redis.conf (no replicaof) and app.env (REDIS_URL → 127.0.0.1) as if install.redis_host were %s" % c.me[1],
+        "systemctl --user restart cflex-console (it reconnects to the local Redis)",
+        "record the promotion in %s — install/upgrade refuse to undo it until site.yaml says %s" % (STATE, c.me[1]),
+    ]
+
+
+def promote(c, force=False, probe=None):
+    """Make this app node's Redis the primary. → message; DeployError when refused or failed.
+
+    `probe(host, port) → (ok, detail)` checks whether the old primary still answers (verify.tcp).
+    """
+    if c.role != "app":
+        raise DeployError("promote is for --role app (the Redis of the console's sessions)")
+    if c.profile != "container":
+        raise DeployError("bare profile: cflex-install does not manage Redis there — "
+                          "follow docs/install/REDIS_FAILOVER.md §5 by hand")
+    rh = siteconf.redis_host(c.site) or {}
+    st = read_state(c.runner)
+    if rh.get("id") == c.me[1]:
+        return "%s is already the Redis primary (install.redis_host) — nothing to do" % c.me[1]
+    info = redis_info(c.as_cflex)
+    if info is None:
+        raise DeployError("cflex-redis on %s does not answer — start it first "
+                          "(runuser -u cflex -- systemctl --user start cflex-redis)" % c.me[1])
+    if st.get("redis_primary") == c.me[1] and info.get("role") == "master":
+        return "%s was already promoted at %s — nothing to do" % (c.me[1], st.get("redis_promoted_at"))
+    if probe is not None and not force:
+        up, detail = probe(rh.get("ip"), 6379)
+        if up:
+            raise DeployError("the primary %s still answers on 6379 (%s) — promoting now would leave two primaries. "
+                              "Stop it or isolate its VM first; --force only if it answers but is known broken" % (rh.get("id"), detail))
+    c.log("  %s Redis: role=%s link to %s=%s, last sync %ss ago" % (
+        c.me[1], info.get("role"), rh.get("id"), info.get("master_link_status") or "-", info.get("master_last_io_seconds_ago", "?")))
+
+    c.must(c.as_cflex(REDIS_CLI + ["REPLICAOF", "NO", "ONE"]), "redis-cli REPLICAOF NO ONE")
+    # The files a restart reads: render this node as the primary, write only those two.
+    site2 = json.loads(json.dumps(c.site))
+    site2.setdefault("install", {})["redis_host"] = c.me[1]
+    files = render.render(site2, "app", c.me, st.get("version") or "0.0.0-dev", profile=c.profile,
+                          podman_version=c.podman_version, ports_mode=c.ports_mode, home=c.home())
+    uid = c.uid()
+    for path in (render.CONFIG + "/redis/redis.conf", render.CONFIG + "/app/app.env"):
+        content, mode = files[path]
+        c.runner.write(path, content, mode=mode, uid=uid, gid=uid)
+    c.must(c.as_cflex(["systemctl", "--user", "restart", "cflex-console.service"]), "restart cflex-console")
+    after = redis_info(c.as_cflex) or {}
+    if not c.runner.dry_run and after.get("role") != "master":
+        raise DeployError("Redis on %s still reports role=%s after REPLICAOF NO ONE" % (c.me[1], after.get("role")))
+    st.update({"redis_primary": c.me[1], "redis_previous_primary": rh.get("id"),
+               "redis_promoted_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
+    write_state(c, st)
+    return ("%s is now the Redis primary; its console uses it. Next (docs/install/REDIS_FAILOVER.md §3): "
+            "set install.redis_host: %s in site.yaml on all four VMs, and before %s serves again run "
+            "`cflex-install install --role app --yes` there so it comes back as a replica." % (c.me[1], c.me[1], rh.get("id")))

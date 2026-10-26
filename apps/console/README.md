@@ -17,7 +17,9 @@ node src/cli.js collector-key cap01           # prints the collector key once
 node src/server.js                            # listens on CONSOLE_BIND:CONSOLE_PORT (0.0.0.0:8080)
 ```
 
-nginx: `deploy/console/nginx-cflex-console.conf` (TLS 443 → app01:8080, app02:8080 backup).
+nginx: rendered per node by `cflex-install` (`install/templates/nginx/cflex-console.conf`; bare-profile
+reference copy in `deploy/console/nginx-cflex-console.conf`). TLS 443 → the local app on 127.0.0.1:8080; local
+app down → the peer node's nginx on 443. Nothing between the nodes uses 8080 (firewall request v3, Q-2026-10-25-10).
 
 ## Stateless (app01 / app02)
 

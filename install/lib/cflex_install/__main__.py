@@ -6,6 +6,7 @@
   cflex-install netcheck  --role app --config site.yaml [--format text|json]
   cflex-install upgrade   --role app --config site.yaml --bundle /path/cflex-bundle-<v> [--yes] [--standby-done]
   cflex-install rollback  --role app --config site.yaml [--yes]
+  cflex-install promote   --role app --config site.yaml [--yes] [--force]   (on the Redis replica node)
   cflex-install render    --role app --host-id app01 --config site.yaml --out DIR [--podman 4.9] [--ports forward]
 
 Exit: 0 ok · 1 check failed · 2 refused (no --yes, bad arguments) · 3 install/upgrade failed.
@@ -61,7 +62,7 @@ def _default_bundle():
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="cflex-install", description="C-Flex on-prem installer (spec 01 §3.3)")
-    ap.add_argument("command", choices=["preflight", "install", "verify", "netcheck", "upgrade", "rollback", "render", "version"])
+    ap.add_argument("command", choices=["preflight", "install", "verify", "netcheck", "upgrade", "rollback", "promote", "render", "version"])
     ap.add_argument("--role", choices=siteconf.ROLES)
     ap.add_argument("--profile", choices=["container", "bare"], default=None,
                     help="default: what is deployed here, else container")
@@ -73,6 +74,7 @@ def main(argv=None):
     ap.add_argument("--format", choices=["text", "json"], default="text")
     ap.add_argument("--send-test", action="store_true", help="verify: send a real ServiceNow test ticket")
     ap.add_argument("--standby-done", action="store_true", help="upgrade on the active app node after the standby")
+    ap.add_argument("--force", action="store_true", help="promote: even though the old Redis primary still answers")
     ap.add_argument("--self-signed-console-cert", action="store_true", help="install: staging only, 90-day cert")
     ap.add_argument("--no-resolve", action="store_true", help="netcheck: do not resolve names from site.yaml")
     ap.add_argument("--out", help="render: write files under this directory instead of the host")
@@ -87,7 +89,7 @@ def main(argv=None):
     if not a.role:
         ap.error("--role is required")
 
-    log = _logger(a.command, a.command in ("preflight", "install", "upgrade", "rollback", "verify", "netcheck"))
+    log = _logger(a.command, a.command in ("preflight", "install", "upgrade", "rollback", "promote", "verify", "netcheck"))
     runner = Runner(log=lambda m: log(m, echo=False), dry_run=a.dry_run)
 
     try:
@@ -170,6 +172,26 @@ def main(argv=None):
         res = verify.run(site, a.role, me, profile, runner, as_cflex=c.as_cflex, send_test=a.send_test)
         log(verify.format_text(res, a.role, me))
         return 1 if any(r.verdict == "FAIL" for r in res) else 0
+
+    if a.command == "promote":
+        # Redis replica → primary on this app node (DECISIONS Q-2026-10-25-11 (A), docs/install/REDIS_FAILOVER.md).
+        c = _ctx(site, a, me, profile, runner, None, {"podman": None, "ports_mode": state.get("ports_mode")}, log)
+        rh = siteconf.redis_host(site) or {}
+        log("promote: role=%s profile=%s host=%s — Redis primary %s → %s" % (a.role, profile, me[1], rh.get("id"), me[1]))
+        for line in deploy.plan_promote(c):
+            log("  - " + line)
+        if not a.yes:
+            log("nothing changed — re-run with --yes to apply")
+            return 2
+        try:
+            msg = deploy.promote(c, force=a.force, probe=verify.tcp)
+        except deploy.DeployError as e:
+            log("FAILED: %s" % e)
+            return 3
+        log("OK: %s" % msg)
+        if log.path:
+            log("log: %s" % log.path)
+        return 0
 
     # install / upgrade / rollback
     if a.command in ("install", "upgrade") and not bundle:

@@ -513,6 +513,41 @@ test('profile internal (Q-09 B): the deployed twin console build has no route to
   assert.deepStrictEqual(hits, [], 'built with CONSOLE_PROFILE=portal? rebuild with `npm run build:console`');
 });
 
+test('cli test-ticket (installer `verify --send-test`): the Settings channels, create → update → resolve, audited', async () => {
+  const { startDummyServiceNow } = require('../../../packages/notify/test/support/dummy-servicenow');
+  const { execFile } = require('node:child_process');
+  const sn = await startDummyServiceNow();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cflex-cli-'));
+  try {
+    const keyFile = path.join(dir, 'console.key');
+    fs.writeFileSync(keyFile, KEY, { mode: 0o600 });
+    const db = dbmod.open(path.join(dir, 'console.db'));
+    const { createSettings } = require('../src/settings');
+    const { createSealer } = require('../src/seal');
+    createSettings(db, { sealer: createSealer(KEY), tenant: 'HAEA' })
+      .putNotify({ servicenow: { instanceUrl: sn.url, user: 'svc', pass: 'secret' } }, 'test');
+    db.close();
+    const run = () => new Promise((resolve) => execFile(process.execPath, [path.join(ROOT, 'src/cli.js'), 'test-ticket'], {
+      cwd: dir, env: { PATH: process.env.PATH, CONSOLE_DB: path.join(dir, 'console.db'), CONSOLE_SECRET_KEY_FILE: keyFile, CONSOLE_NODE_ID: 'app01' },
+    }, (err, stdout) => resolve({ code: err ? err.code : 0, out: stdout })));
+    const ok = await run();
+    assert.strictEqual(ok.code, 0, ok.out);
+    assert.match(ok.out, /^OK {2}ServiceNow test ticket INC\d+ created, updated and resolved/);
+    assert.strictEqual([...sn.state.incidents.values()][0].state, '6');
+    sn.state.faults.push({ status: 503 });
+    const bad = await run();
+    assert.strictEqual(bad.code, 1);
+    assert.match(bad.out, /^FAIL ServiceNow test ticket at create/);
+    const { DatabaseSync } = require('node:sqlite');
+    const ro = new DatabaseSync(path.join(dir, 'console.db'), { readOnly: true });
+    assert.deepStrictEqual(ro.prepare(`SELECT actor LIKE 'cli:%' AS cli, json_extract(detail, '$.ok') AS ok FROM audit_log WHERE action = 'test_ticket' ORDER BY id`).all().map(r => [r.cli, r.ok]), [[1, 1], [1, 0]]);
+    ro.close();
+  } finally {
+    await sn.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('SAT 6: app01 stops — app02 keeps serving the same logged-in user', async () => {
   await new Promise(r => A.app.server.close(r));
   const onB = client(urlB);

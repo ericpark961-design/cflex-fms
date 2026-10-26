@@ -199,10 +199,8 @@ def _ports_for(role, mode, site, me):
     if role == "collector":
         return [("udp", hp[0])]
     if role == "app":
-        out = [("tcp", hp[1])]
-        if (siteconf.redis_host(site) or {}).get("id") == me[1]:
-            out.append(("tcp", 6379))
-        return out
+        # Redis on both app nodes: primary and replica (Q-2026-10-25-11 (A)).
+        return [("tcp", hp[1]), ("tcp", 6379)]
     return [("tcp", int((siteconf.get(site, "hosts.db") or {}).get("port", 5432)))]
 
 

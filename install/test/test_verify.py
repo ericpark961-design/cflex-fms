@@ -58,9 +58,27 @@ class Verify(unittest.TestCase):
         self.assertIn("collector → app01 443", names)
         self.assertIn("collector → portal cflex.fms.support", names)
         self.assertIn(("tls", "cflex.fms.support", 443), calls)
-        # Placeholders in the example (<relay>, <endpoint>) are reported, not dialled.
         self.assertFalse(any(h.startswith("<") for _, h, _ in calls if h))
+        # Q-2026-10-25-10 (A): the collector does not notify — no SMTP/ServiceNow/Teams check, said so.
+        self.assertFalse(any(n in r.name for r in res for n in ("SMTP relay", "ServiceNow", "Teams")))
+        na = [r for r in res if "알림" in r.name]
+        self.assertEqual(len(na), 1)
+        self.assertIn("해당 없음", na[0].detail)
+
+    def test_app_checks_notification_paths_and_sends_the_test_ticket_from_the_console(self):
+        site = example_site()
+        fake = {"tcp": lambda h, p, **k: (True, "ok"), "tls": lambda h, p=443, **k: (True, "ok")}
+        ran = []
+        res = verify.run(site, "app", me(site, "app", "app01"), "container", FakeRunner(),
+                         as_cflex=lambda argv, mutating=True: (ran.append(argv) or (0, "OK  ServiceNow test ticket INC0010001", "")),
+                         send_test=True, connect=fake)
+        # Placeholders in the example (<relay>, <endpoint>) are reported, not dialled.
         self.assertEqual({r.verdict for r in res if "SMTP" in r.name}, {"WARN"})
+        self.assertIn(["podman", "exec", "cflex-console", "node", "/opt/cflex/apps/console/src/cli.js", "test-ticket"], ran)
+        self.assertEqual([r.verdict for r in res if r.name.startswith("send-test")], ["PASS"])
+        col = verify.run(site, "collector", me(site, "collector", "cap01"), "container", FakeRunner(),
+                         as_cflex=lambda argv, mutating=True: (0, "", ""), send_test=True, connect=fake)
+        self.assertEqual([r.verdict for r in col if r.name == "send-test"], ["WARN"], "the collector has no test ticket to send")
 
 
 if __name__ == "__main__":

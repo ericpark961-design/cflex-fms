@@ -8,8 +8,8 @@
 | 호스트 | 컨테이너 (rootless, 사용자 `cflex`) | 호스트에 열리는 포트 |
 |---|---|---|
 | cap01 (Collector) | `cflex-collector` (cflex/collector) | UDP 162 (trap, FW-2) |
-| app01 (Active) | `cflex-web` (nginx) + `cflex-console` (API) + `cflex-redis` | TCP 443 (FW-5), TCP 6379 (app02에서만, FW-7) |
-| app02 (Standby) | `cflex-web` + `cflex-console` | TCP 443 |
+| app01 (Active) | `cflex-web` (nginx) + `cflex-console` (API) + `cflex-redis` (primary) | TCP 443 (FW-5), TCP 6379 (app02에서만, FW-7) |
+| app02 (Standby) | `cflex-web` + `cflex-console` + `cflex-redis` (app01의 replica) | TCP 443, TCP 6379 (app01에서만, FW-7) |
 | db01 | `cflex-postgres` | TCP 5432 (app01/02에서만, FW-7) |
 
 - 이미지 5개, 전부 Red Hat 베이스: `cflex/collector`·`cflex/app`(ubi8/nodejs-20), `cflex/web`(ubi8/nginx-122),
@@ -20,7 +20,13 @@
 - 볼륨(전부 `:Z`): `/opt/app/cflex/{config,certs,secrets,queue,data,redis}` 하위 디렉터리를 컨테이너별로 나눠 마운트한다.
   `:Z`는 컨테이너 전용 라벨이므로 **한 디렉터리를 두 컨테이너가 공유하지 않게** 나눴다. DB: `/opt/data/pgsql`, `/opt/data/backup`.
 - 앱 노드의 web·console·redis는 **하나의 네트워크 네임스페이스**를 쓴다. console은 그 안의 `127.0.0.1:8080`에만 붙고,
-  nginx만 그것을 부른다. 그래서 호스트 방화벽을 넘는 것은 443(과 Redis 노드의 6379)뿐이다.
+  nginx만 그것을 부른다. 그래서 호스트 방화벽을 넘는 것은 443과 피어 앱 노드와의 6379뿐이다.
+- Redis는 두 앱 노드에 다 있다(Q-2026-10-25-11 (A)). `install.redis_host`(기본 app01)가 primary이고 두 콘솔이 모두 그것을 쓴다.
+  다른 노드는 replica로 복제만 한다. primary의 VM이 죽으면 `cflex-install promote --role app`으로 replica를 승격한다
+  (수동 — 자동 failover 없음). 절차: `docs/install/REDIS_FAILOVER.md`.
+- Collector는 장비 목록을 Local Console에서 받고 telemetry·이벤트를 콘솔로 보낸다(FW-7 cap01 → app 443). `collector.env`의
+  `CFLEX_CONSOLE_URL`에 두 앱 노드가 Active 먼저 들어가며, 한쪽에 접속이 안 되면 다른 쪽으로 넘어간다.
+  로컬 알림(SMTP·Teams·ServiceNow)은 **콘솔이 보낸다**(Q-2026-10-25-10 (A)). Collector에는 알림 채널이 없다.
 
 ### 1.1 Podman 4.9(RHEL 8.10) vs 5.x
 Quadlet `.pod` 유닛은 **Podman 5.0부터**다. RHEL 8.10 AppStream의 Podman은 4.9이므로 설치기가 버전을 보고 고른다.
@@ -63,14 +69,18 @@ rootless 컨테이너는 1024 미만 포트를 직접 열 수 없다. 두 방법
 | 역할 | 규칙 (forward 모드) |
 |---|---|
 | collector | `forward-port port=162:proto=udp:toport=1162` |
-| app | `forward-port port=443:proto=tcp:toport=8443` (출발지 지정 시 출발지별 rich rule, 피어 앱 /32 포함) · Redis 노드: 피어 /32 → 6379 |
+| app | `forward-port port=443:proto=tcp:toport=8443` (출발지 지정 시 출발지별 rich rule, 피어 앱 /32 포함) · 두 노드 모두: 피어 /32 → 6379 (복제, 승격 후 역방향) |
 | db | app01/32, app02/32 → 5432 |
 
 ## 5. 비밀정보
 `/opt/app/cflex/secrets/<역할>/` (0700 디렉터리, 0600 파일, 소유 cflex). 값은 설치기 출력·로그에 나오지 않는다.
 - `app/redis.pass`, `app/console.key`: Active 노드에서 설치기가 생성. **Standby에는 같은 값을 복사해야 한다**(없으면 설치 중단).
   메일·메신저로 옮기지 말 것.
-- `redis/auth.conf`: `requirepass`. Redis는 이 파일을 `include`한다(argv·환경변수에 비밀번호 없음).
+- `redis/auth.conf`: `requirepass` + `masterauth`(같은 값 — replica가 primary에 인증할 때 쓰고, 승격 후에는 반대쪽이 쓴다).
+  Redis는 이 파일을 `include`한다(argv·환경변수에 비밀번호 없음). 두 앱 노드 모두에 생긴다.
+- `collector/collector.key`: Local Console의 collector 키. 콘솔에서 `node src/cli.js collector-key cap01`로 발급(한 번만 출력)하고,
+  cap01의 `/opt/app/cflex/secrets/collector/collector.key`(0600, cflex)로 옮긴다. 없으면 `verify --role collector`가 FAIL.
+  컨테이너: `podman exec -i cflex-console node /opt/cflex/apps/console/src/cli.js collector-key cap01` (app 노드, cflex 사용자).
 - `db/pg.pass`, `db/pg-admin.pass`: Podman secret(`type=env`)으로 컨테이너에 전달.
 - 인증서: `certs/console.crt|key`(HAEA 내부 CA — 없으면 설치 중단, 스테이징만 `--self-signed-console-cert`),
   `certs/console-ca.pem`(피어 443 검증), `certs/device.pem|key` + `portal-ca.pem`(포털 mTLS, 키는 노드 밖으로 나가지 않음).
@@ -88,7 +98,7 @@ sudo install/cflex-install preflight --role app
 sudo install/cflex-install install   --role app            # 계획만 출력, 변경 없음
 sudo install/cflex-install install   --role app --yes      # 적용 (멱등)
 # 3) 확인
-sudo install/cflex-install verify    --role app [--send-test]
+sudo install/cflex-install verify    --role app [--send-test]    # --send-test: 콘솔의 ServiceNow 테스트 티켓 (app 노드에서만)
 sudo install/cflex-install netcheck  --role app [--format json]
 ```
 순서: db01 → app01(Active, Redis) → app02 → cap01. 로그: `/opt/app/cflex/log/install-<ts>-<명령>.log`.
@@ -112,6 +122,8 @@ EXTRA WARN listen tcp 0.0.0.0:9090 systemd  C-Flex 외 서비스(HAEA 기본 이
 - 리스너: `ss -lntup`의 비-loopback 소켓. 아웃바운드: `ss -nt state established` + `site.yaml`의 목적지.
 - v3에 없는 것: C-Flex 프로세스(podman/slirp4netns/pasta/node/nginx/redis/postgres)면 **FAIL**, 그 밖(HAEA 기본 서비스)은 **WARN**(기록용).
 - UDP 161 폴링은 연결이 없는 소켓이라 관측되지 않는다 → FW-1은 `nmc-targets.txt`의 대수(41)로 판정한다.
+- cap01에서 FW-8(SMTP 릴레이, 프록시 → Teams/ServiceNow)은 **N/A "해당 없음 — 로컬 알림은 Local Console(app)이 발송"** 으로 나온다.
+  cap01의 프록시 사용은 FW-4(포털)뿐이다. cap01에서 SMTP·ServiceNow 연결이 관측되면 v3 밖(EXTRA FAIL)이다.
 
 ## 8. 업그레이드 / 롤백 (§3.3)
 ```
@@ -141,11 +153,9 @@ RingOn 월 1회 + CVE 발생 시: 베이스 다이제스트 갱신 → `build-bu
 
 ## 11. 알려진 한계 (이 버전)
 - 이 저장소의 Mac에는 Podman이 없어 **`podman build`·컨테이너 기동·`podman healthcheck`는 수행하지 않았다**. 첫 UBI8/RHEL 빌드 호스트에서 확인 필요.
-- 설치기(Python) 단위 테스트(`python3 -m unittest discover -s install/test`)는 작성 세션에서 Python 실행 권한이 없어 **실행하지 못했다**.
-  Node 정적 테스트(`node --test install/test/static.test.js`)만 실행했다.
+- 설치기(Python) 단위 테스트(`python3 -m unittest discover -s install/test`)는 관리자 재실행(WO-INT-005)과 WO-INT-004c에서 통과.
 - 읽기 전용 루트에서 rhel8/redis-6·rhel8/postgresql-16의 기동은 미확인(redis는 이미지의 실행 스크립트 대신 `redis-server <conf>`로 띄운다).
-- Collector의 장비 목록 pull은 아직 구 클라우드 경로다(WO-INT-004c). 온프레미스에서는 `CFLEX_URL=https://<active app>`으로 두어 v3 밖으로 나가지 않게만 했다.
+  Redis 복제(`replicaof`)·`promote`의 실제 동작도 Podman이 있는 호스트에서 확인 필요(단위 테스트는 명령·파일·상태만 검사).
 - trap 리스너 자체는 WO-INT-006. 포트·방화벽·전달은 이 WO에서 준비했다.
-- 로컬 알림(SMTP/ServiceNow)은 현재 Collector의 알람 엔진이 보낸다(WO-INT-003). v3 FW-8은 app에서 나가는 것으로 되어 있어,
-  Collector에 알림 채널을 설정하면 `netcheck`가 Collector의 SMTP/ServiceNow 연결을 **v3 밖(FAIL)** 으로 표시한다 — 의도된 표시다(Q-2026-10-25-10).
-- Redis가 app01에만 있으므로 app01 VM 장애 시 app02도 로그인을 처리하지 못한다(Q-2026-10-25-11).
+- 베어 프로파일의 Redis는 설치기가 설정하지 않는다(AppStream 패키지만 설치). replica·승격은 `REDIS_FAILOVER.md` §5대로 손으로 한다.
+- (해결) Collector 장비 목록 pull·로컬 알림 위치·Redis 단일 노드는 WO-INT-004c에서 바뀌었다(위 §1, Q-2026-10-25-10/11).

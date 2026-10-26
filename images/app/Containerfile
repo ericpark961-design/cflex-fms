@@ -5,13 +5,14 @@
 ARG BASE_IMAGE=registry.access.redhat.com/ubi8/nodejs-20:1
 
 # ── twin: the existing UI, console build (no Google Fonts, no map tiles — WO-INT-004) ──
+# Internal profile: no 3D twin / NOC wall / power chain / map / Copilot (DECISIONS Q-2026-10-25-09 (B)).
 FROM ${BASE_IMAGE} AS twin
 USER 1001
 WORKDIR /opt/app-root/src
 COPY --chown=1001:0 apps/twin/package.json apps/twin/package-lock.json apps/twin/
 RUN cd apps/twin && npm ci --no-audit --no-fund
 COPY --chown=1001:0 apps/twin apps/twin
-RUN cd apps/twin && npm run build:console
+RUN cd apps/twin && CONSOLE_PROFILE=internal npm run build:console
 
 # ── deps: console runtime (better-sqlite3 — Node 20 has no node:sqlite) ──
 FROM ${BASE_IMAGE} AS deps

@@ -103,11 +103,19 @@ def common_values(site, role, me, version, profile):
     }
 
 
+def console_urls(site):
+    """The Local Console as the collector reaches it: every app node's nginx on 443, active first."""
+    apps = sorted(siteconf.get(site, "hosts.app") or [], key=lambda a: a.get("role") != "active")
+    return ",".join("https://%s" % (a.get("hostname") or a.get("ip")) for a in apps if a.get("hostname") or a.get("ip"))
+
+
 def _collector_env(site, me, v, profile):
     x = me[3] or {}
     sites = x.get("sites") or []
     vals = dict(v)
     vals.update({
+        "CONSOLE_URLS": console_urls(site),
+        "COLLECTOR_SECRETS": C_SECRETS if profile == "container" else SECRETS + "/collector",
         "SITE_ID": sites[0] if sites else siteconf.get(site, "tenant.code"),
         "POLL_MS": int(siteconf.get(site, "snmp.poll_interval_sec", 60)) * 1000,
         "BUFFER_DAYS": siteconf.get(site, "portal.buffer_days", 7),
@@ -205,13 +213,33 @@ def _in_pod(unit):
     return re.sub(r"(?m)^UserNS=.*\n", "", unit)
 
 
+def redis_replication(site, me):
+    """redis.conf lines for this app node (DECISIONS Q-2026-10-25-11 (A)).
+
+    Every app node runs Redis. install.redis_host is the primary — the consoles on
+    both nodes use it — and the other node keeps a replica (6379 between the app
+    nodes, v3 FW-7), so its sessions survive the primary's VM. Promotion is manual
+    (`cflex-install promote --role app`): no automatic failover, no split brain.
+    """
+    rh = siteconf.redis_host(site) or {}
+    if rh.get("id") == me[1]:
+        return "# Primary (install.redis_host = %s). The other app node replicates from here." % me[1]
+    return "\n".join([
+        "# Replica of the primary %s (install.redis_host). Read-only until promoted:" % rh.get("id"),
+        "#   cflex-install promote --role app   (docs/install/REDIS_FAILOVER.md)",
+        "replicaof %s 6379" % rh.get("ip"),
+        "replica-read-only yes",
+        "# Keep serving the last copy while the link is down; the console only reads it after promotion.",
+        "replica-serve-stale-data yes",
+    ])
+
+
 def _render_app_container(site, me, v, podman_version, qd):
     files = {}
-    rh = siteconf.redis_host(site) or {}
-    redis_here = rh.get("id") == me[1]
     pod = podman_major(podman_version) >= 5
-    redis_pub = "PublishPort=%s:6379:6379/tcp" % me[2] if redis_here else "# Redis runs on %s; nothing else to publish here." % rh.get("id")
-    sidecars = ["cflex-console"] + (["cflex-redis"] if redis_here else [])
+    # Redis on both app nodes: the primary, and a replica on the other (Q-2026-10-25-11 (A)).
+    redis_pub = "PublishPort=%s:6379:6379/tcp" % me[2]
+    sidecars = ["cflex-console", "cflex-redis"]
     vv = dict(v)
     if pod:
         vv.update({
@@ -225,9 +253,7 @@ def _render_app_container(site, me, v, podman_version, qd):
     else:
         # Podman 4.x: no .pod units. cflex-web owns the network namespace and its ports;
         # the others join it. BindsTo stops them with it; Wants starts them again with it.
-        pubs = ["PublishPort=%s:%s:8443/tcp" % (me[2], v["HTTPS_HOST_PORT"])]
-        if redis_here:
-            pubs.append(redis_pub)
+        pubs = ["PublishPort=%s:%s:8443/tcp" % (me[2], v["HTTPS_HOST_PORT"]), redis_pub]
         vv.update({
             "WEB_NETWORK": "Network=%s\n%s" % (v["NETWORK"], "\n".join(pubs)),
             "WEB_UNIT_DEPS": "Wants=%s" % " ".join(s + ".service" for s in sidecars),
@@ -237,10 +263,12 @@ def _render_app_container(site, me, v, podman_version, qd):
     member = _in_pod if pod else (lambda u: u)
     files[os.path.join(qd, "cflex-web.container")] = (member(fill(template("quadlet/cflex-web.container"), vv, "web")), 0o644)
     files[os.path.join(qd, "cflex-console.container")] = (member(fill(template("quadlet/cflex-console.container"), vv, "console")), 0o644)
-    if redis_here:
-        files[os.path.join(qd, "cflex-redis.container")] = (member(fill(template("quadlet/cflex-redis.container"), vv, "redis")), 0o644)
-        files[CONFIG + "/redis/redis.conf"] = (fill(template("redis/redis.conf"), v, "redis.conf"), 0o644)
-        files[CONFIG + "/redis/healthcheck.sh"] = (template("redis/healthcheck.sh"), 0o755)
+    files[os.path.join(qd, "cflex-redis.container")] = (member(fill(template("quadlet/cflex-redis.container"), vv, "redis")), 0o644)
+    rv = dict(v)
+    rv["REDIS_REPLICATION"] = redis_replication(site, me)
+    files[CONFIG + "/redis/redis.conf"] = (fill(template("redis/redis.conf"), rv, "redis.conf"), 0o644)
+    files[CONFIG + "/redis/healthcheck.sh"] = (template("redis/healthcheck.sh"), 0o755)
+    files[CONFIG + "/redis/redis-cli.sh"] = (template("redis/redis-cli.sh"), 0o755)
     files[CONFIG + "/app/app.env"] = (_app_env(site, me, v, "container"), 0o600)
     files[CONFIG + "/nginx/cflex-console.conf"] = (_nginx(site, me, v, UNPRIV["https"]), 0o644)
     return files

@@ -114,6 +114,27 @@ test('console rejects a payload (4xx): dropped, not queued or retried forever', 
   assert.strictEqual(link.stats().rejected, 1);
 });
 
+test('two app nodes (SAT 6): app01 unreachable → the same call goes to app02, and stays there; an HTTP error does not switch', async () => {
+  const hits = [];
+  let app01Up = false;
+  const request = async ({ url }) => {
+    const u = new URL(url);
+    hits.push(u.host);
+    if (u.host === 'app01.haea' && !app01Up) throw Object.assign(new Error('connect EHOSTUNREACH'), { code: 'EHOSTUNREACH' });
+    if (u.pathname === '/collector/v1/heartbeat' && u.host === 'app02.haea') return { status: 503, headers: {}, json: { error: 'session_store_unavailable' } };
+    return { status: 200, headers: {}, json: { ok: true, local_notified: {} } };
+  };
+  const link = createConsoleClient({ url: 'https://app01.haea, https://app02.haea/', nodeId: 'cap01', key: 'k', queue: memQueue(), request, log: quiet });
+  assert.deepStrictEqual(await link.events([{ event_id: crypto.randomUUID() }]), {});
+  assert.deepStrictEqual(hits, ['app01.haea', 'app02.haea']);
+  assert.strictEqual(link.stats().url, 'https://app02.haea');
+  assert.strictEqual(link.stats().failovers, 1);
+  app01Up = true;
+  hits.length = 0;
+  assert.deepStrictEqual(await link.heartbeat({}), { ok: false, error: 'POST /collector/v1/heartbeat → HTTP 503 session_store_unavailable' });
+  assert.deepStrictEqual(hits, ['app02.haea'], 'an answer, even an error, is not a reason to switch');
+});
+
 test('inventory: config then devices; maintenance windows and thresholds come along; unreachable → null (keep the old list)', async () => {
   const calls = [];
   const request = async ({ url }) => {

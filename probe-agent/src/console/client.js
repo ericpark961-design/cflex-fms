@@ -56,7 +56,7 @@ function pollerDevice(d, { thresholds = null, snmpPort = null } = {}) {
 
 /**
  * @param {object} o
- * @param {string} o.url        https://<console> (nginx 443)
+ * @param {string|string[]} o.url  https://<console> (nginx 443); several, comma-separated = app01, app02
  * @param {string} o.nodeId     this collector's node id (cap01)
  * @param {string} o.key        collector key
  * @param {object} [o.tls]      transport.loadTls({caPath}) — the console's CA
@@ -69,14 +69,18 @@ function pollerDevice(d, { thresholds = null, snmpPort = null } = {}) {
  * @param {string} [o.version]
  */
 function createConsoleClient(o) {
-  const base = String(o.url).replace(/\/+$/, '');
+  // Both app nodes, active first (CFLEX_CONSOLE_URL=https://app01,https://app02). Each serves
+  // the same console (stateless, spec 01 §2.2); with no VIP yet (spec §6-2) the collector
+  // moves to the next when one cannot be reached at all — SAT 6, app01's VM stopped.
+  const bases = [].concat(o.url).flatMap(u => String(u).split(',')).map(u => u.trim().replace(/\/+$/, '')).filter(Boolean);
+  let cur = 0;
   const request = o.request || transport.request;
   const queue = o.queue;
   const now = o.now || Date.now;
   const random = o.random || Math.random;
   const log = o.log || console;
   const timeoutMs = o.timeoutMs || 20000;
-  const stats = { sent: 0, rejected: 0, retried: 0, notified: 0, last_error: null, last_ok: null };
+  const stats = { sent: 0, rejected: 0, retried: 0, notified: 0, failovers: 0, last_error: null, last_ok: null };
   let points = [];
   let attempts = 0;
   let nextAt = 0;
@@ -84,7 +88,7 @@ function createConsoleClient(o) {
 
   async function call(method, path, body, extra = {}) {
     const buf = body === undefined ? null : Buffer.from(JSON.stringify(body));
-    const r = await request({
+    const once = (base) => request({
       method, url: base + path, body: buf, timeoutMs,
       headers: {
         'X-CFlex-Node': o.nodeId,
@@ -97,6 +101,20 @@ function createConsoleClient(o) {
       // never with the Portal's client certificate.
       tls: { ca: o.tls?.ca }, proxy: null,
     });
+    let r;
+    for (let tried = 0; ; tried++) {
+      try {
+        r = await once(bases[cur]);
+        break;
+      } catch (e) {
+        // Unreachable (not an HTTP answer): the other node, once per call.
+        if (tried + 1 >= bases.length) throw e;
+        const was = bases[cur];
+        cur = (cur + 1) % bases.length;
+        stats.failovers++;
+        log.warn(`[console] ${was} unreachable (${e.code || e.message}); trying ${bases[cur]}`);
+      }
+    }
     if (r.status >= 200 && r.status < 300) { stats.last_ok = now(); return r; }
     const e = new Error(`${method} ${path} → HTTP ${r.status}${r.json?.error ? ` ${r.json.error}` : ''}`);
     e.status = r.status;
@@ -225,7 +243,7 @@ function createConsoleClient(o) {
 
   return {
     events, addPoint, flushTelemetry, flush, inventory, heartbeat,
-    stats: () => ({ ...stats, queued: queue.stats().pending, queued_points: points.length, next_attempt_at: nextAt || null }),
+    stats: () => ({ ...stats, url: bases[cur], queued: queue.stats().pending, queued_points: points.length, next_attempt_at: nextAt || null }),
   };
 }
 
