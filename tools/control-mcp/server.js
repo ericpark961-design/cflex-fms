@@ -89,6 +89,33 @@ const TOOLS = [
     }, ['title', 'body']),
   },
   {
+    name: 'interface_threads',
+    description: 'Probe ↔ Portal 직접 채널(INTERFACE.md)을 읽는다. 상대가 내 질문에 답했는지, 내가 답해야 할 스레드가 있는지. 세션 시작 시 control_answers 와 함께 본다.',
+    inputSchema: S('', { open_only: { type: 'boolean', description: '기본 true' } }),
+  },
+  {
+    name: 'interface_ask',
+    description: '상대 구현에게 직접 묻는다 — DECISIONS 와 달리 관리자를 기다리지 않는다. 계약서 docs/spec/00 의 버전·스키마를 바꿔야 하는 건 여기가 아니라 control_ask 로 올린다. 질문만 적지 말고 자기 권고를 같이 적는다.',
+    inputSchema: S('', {
+      title: str('한 줄 제목'),
+      body: str('본문. 선택지는 (A)/(B) 로, 권고를 밝힌다'),
+      to: str('claude-code | codex (기본: 상대편)'),
+    }, ['title', 'body']),
+  },
+  {
+    name: 'interface_reply',
+    description: '스레드에 내 이름으로 답을 덧붙인다. 남의 블록은 건드리지 않는다.',
+    inputSchema: S('', { id: str('I-날짜-번호'), body: str('답') }, ['id', 'body']),
+  },
+  {
+    name: 'interface_settle',
+    description: '스레드를 합의로 내린다. **양쪽이 답한 스레드만** 가능하다 — 한쪽만 적힌 것은 합의가 아니다. 코드에 반영됐으면 커밋 해시를 적는다.',
+    inputSchema: S('', {
+      id: str('I-날짜-번호'), resolution: str('합의 내용 한 줄'),
+      commit: str('반영 커밋 해시 (있으면)'),
+    }, ['id', 'resolution']),
+  },
+  {
     name: 'control_answers',
     description: '내가 올린 질문에 답이 달렸는지 확인한다. 세션 시작 시 control_board 다음으로 호출.',
     inputSchema: S('', { mine_only: { type: 'boolean', description: '기본 true' } }),
@@ -276,6 +303,104 @@ function hAnswers({ mine_only = true }) {
   };
 }
 
+
+// ── the direct Probe ↔ Portal channel ──────────────────────────────
+
+const PEER = { 'claude-code': 'codex', codex: 'claude-code' };
+
+function requireInterface(b) {
+  if (!b.hasInterface) {
+    return { error: 'docs/control/INTERFACE.md 가 없다 — 이 체크아웃에는 직접 채널이 아직 없다' };
+  }
+  return null;
+}
+
+function hInterfaceThreads({ open_only = true }) {
+  const b = C.load(ROOT);
+  const miss = requireInterface(b); if (miss) return miss;
+  const me = C.AGENTS[AGENT] || '관리자';
+  const open = b.interface.open.filter(t => t.id).map((t) => {
+    const by = C.repliedBy(t);
+    return {
+      id: t.id, title: t.title, ask: t.ask,
+      replied_by: by,
+      // The two things an agent actually needs to know on waking up.
+      awaiting_me: !by.includes(me),
+      both_answered: by.filter(n => n !== '관리자').length >= 2,
+      body: t.body.join('\n').trim(),
+    };
+  });
+  return {
+    agent: AGENT, peer: PEER[AGENT] || null,
+    open,
+    mine_to_answer: open.filter(t => t.awaiting_me).map(t => t.id),
+    ready_to_settle: open.filter(t => t.both_answered).map(t => t.id),
+    settled: open_only ? undefined : b.interface.settled.filter(c => c.id).map(c => `${c.id} ${c.text}`),
+  };
+}
+
+function hInterfaceAsk({ title, body, to }) {
+  const b = C.load(ROOT);
+  const miss = requireInterface(b); if (miss) return miss;
+  if (b.interface.openHead === null) return { error: 'INTERFACE.md has no 열린 스레드 section' };
+  const me = C.AGENTS[AGENT] || '관리자';
+  const peerKey = to && C.AGENTS[to] ? to : PEER[AGENT];
+  const peer = C.AGENTS[peerKey] || 'Codex';
+  const id = C.nextInterfaceId(b);
+
+  b.interface.open = b.interface.open.filter(t => t.id || !/^\(없음\)$/.test((t.raw || '').trim()));
+  b.interface.open.push({
+    id, title, ask: `${me} → ${peer}`,
+    body: ['', ...String(body).split('\n'), ''],
+  });
+  return { id, to: peerKey, written: C.save(b, ['interface']), note: '관리자를 기다리지 않는다 — 상대가 답하면 interface_settle' };
+}
+
+function hInterfaceReply({ id, body }) {
+  const b = C.load(ROOT);
+  const miss = requireInterface(b); if (miss) return miss;
+  const t = b.interface.open.find(x => x.id === id);
+  if (!t) return { error: `no such thread: ${id}` };
+  const me = C.AGENTS[AGENT] || '관리자';
+
+  // Append only. Another agent's block is not ours to touch, and this is the
+  // one place two agents write the same file.
+  while (t.body.length && t.body[t.body.length - 1].trim() === '') t.body.pop();
+  t.body.push('', `**${me}** ${C.todayISO()}`, ...String(body).split('\n'), '');
+  const by = C.repliedBy(t);
+  return {
+    id, by: me, replied_by: by,
+    both_answered: by.filter(n => n !== '관리자').length >= 2,
+    written: C.save(b, ['interface']),
+  };
+}
+
+function hInterfaceSettle({ id, resolution, commit }) {
+  const b = C.load(ROOT);
+  const miss = requireInterface(b); if (miss) return miss;
+  const i = b.interface.open.findIndex(x => x.id === id);
+  if (i < 0) return { error: `no such thread: ${id}` };
+  const t = b.interface.open[i];
+  const by = C.repliedBy(t).filter(n => n !== '관리자');
+
+  // One side writing a conclusion is not an agreement. The manager may close a
+  // thread unilaterally — that is an intervention, and it is theirs to make.
+  if (by.length < 2 && !IS_MANAGER) {
+    return {
+      error: `한쪽만 답한 스레드는 합의가 아니다 — 답한 쪽: ${by.join(', ') || '없음'}`,
+      replied_by: by, need: '상대의 interface_reply',
+    };
+  }
+
+  b.interface.open.splice(i, 1);
+  const line = `- ${id} ${esc(t.title)} → ${esc(resolution)}${commit ? ` (${esc(commit)})` : ''}`;
+  b.interface.settled = b.interface.settled.filter(c => c.id || !/^\(없음\)$/.test((c.raw || '').trim()));
+  let at = b.interface.settled.length;
+  while (at > 0 && (b.interface.settled[at - 1].raw || '').trim() === '') at--;
+  b.interface.settled.splice(at, 0, { id, text: `${t.title} → ${resolution}`, raw: line });
+  return { id, settled: true, by, commit: commit || null, written: C.save(b, ['interface']) };
+}
+
 // ── manager-only ──
 
 function hSetStatus({ id, status, priority, note }) {
@@ -332,6 +457,8 @@ function hAnswer({ id, answer, promote_as }) {
 const HANDLERS = {
   control_board: hBoard, control_task: hTask, control_claim: hClaim,
   control_report: hReport, control_ask: hAsk, control_answers: hAnswers,
+  interface_threads: hInterfaceThreads, interface_ask: hInterfaceAsk,
+  interface_reply: hInterfaceReply, interface_settle: hInterfaceSettle,
   control_set_status: hSetStatus, control_assign: hAssign, control_answer: hAnswer,
 };
 
@@ -354,8 +481,11 @@ function dispatch(msg) {
       capabilities: { tools: {} },
       serverInfo: { name: 'cflex-control', version: '1.0.0' },
       instructions: `C-Flex 작업지시판. 이 서버는 "${AGENT}"로 동작한다.\n`
-        + '세션 시작: control_board → control_answers. 작업 집을 때: control_claim.\n'
-        + '모호하면 control_ask (추측 금지). 세션 종료: control_report (필수).\n'
+        + '세션 시작: control_board → control_answers → interface_threads.\n'
+        + '작업 집을 때: control_claim. 세션 종료: control_report (필수).\n'
+        + '관리자 판단이 필요하면 control_ask. 상대 구현(Probe↔Portal)에게 직접\n'
+        + '물을 일이면 interface_ask — 그쪽은 관리자를 기다리지 않는다. 다만 계약서\n'
+        + 'docs/spec/00 의 버전·스키마를 바꾸는 건 control_ask 로 올린다.\n'
         + '완료 처리는 관리자만 한다 — 에이전트는 검토요청까지.',
     });
   }

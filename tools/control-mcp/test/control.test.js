@@ -20,8 +20,9 @@ const t = (name, fn) => {
   try {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cflex-control-'));
     fs.mkdirSync(path.join(tmp, 'docs', 'control'), { recursive: true });
-    for (const f of ['TASKS.md', 'STATUS.md', 'DECISIONS.md']) {
-      fs.copyFileSync(path.join(SRC, f), path.join(tmp, 'docs', 'control', f));
+    for (const f of ['TASKS.md', 'STATUS.md', 'DECISIONS.md', 'INTERFACE.md']) {
+      const from = path.join(SRC, f);
+      if (fs.existsSync(from)) fs.copyFileSync(from, path.join(tmp, 'docs', 'control', f));
     }
     fn(tmp);
     pass++;
@@ -357,6 +358,104 @@ t('answers_only-mine filters by owner', (root) => {
     `codex saw someone else's questions: ${r.questions.map(q => q.owner).join(',')}`);
 });
 
+// ── the direct Probe ↔ Portal channel ──────────────────────────────
+// DECISIONS is the manager's queue; this is the one file two agents both
+// write. So the assertions are about not trampling each other, and about the
+// thing that makes it a channel rather than a noticeboard: one side writing a
+// conclusion is not an agreement.
+
+t('INTERFACE.md round-trips, and a sentence in bold is not a reply', (root) => {
+  const C = require('../control');
+  const b = C.load(root);
+  assert.ok(b.hasInterface, 'INTERFACE.md should be present');
+  assert.strictEqual(C.serializeInterface(b.interface), b.raw.interface, 'INTERFACE.md drifted');
+
+  // The first repliedBy matched any line opening with bold text, so a sentence
+  // like "**Probe 쪽에서는 증명할 수 없다.** …" read as a reply from an agent
+  // of that name — and a one-sided thread looked settleable.
+  for (const th of b.interface.open.filter(x => x.id)) {
+    for (const name of C.repliedBy(th)) {
+      assert.ok(['Claude Code', 'Codex', '관리자'].includes(name), `bogus replier "${name}" in ${th.id}`);
+    }
+  }
+  delete require.cache[require.resolve('../control')];
+});
+
+t('a thread only one side answered cannot be settled', (root) => {
+  const a = serverAs('claude-code', root);
+  const threads = a.call('interface_threads', {});
+  const mine = threads.open.find(x => x.replied_by.length === 1);
+  assert.ok(mine, 'expected a thread with exactly one reply');
+  const r = a.call('interface_settle', { id: mine.id, resolution: '내가 정했다' });
+  a.restore();
+  assert.match(String(r.error), /한쪽만 답한 스레드/);
+  assert.ok(!read(root, 'INTERFACE.md').includes('내가 정했다'), 'a refused settle must not land');
+});
+
+t('the peer replies, then either side may settle', (root) => {
+  const a = serverAs('claude-code', root);
+  const id = a.call('interface_threads', {}).open[0].id;
+  a.restore();
+
+  const c = serverAs('codex', root);
+  const rep = c.call('interface_reply', { id, body: '(A) 로 갑니다. 노드 3개 등록 가능합니다.' });
+  assert.deepStrictEqual(rep.replied_by.sort(), ['Claude Code', 'Codex']);
+  assert.strictEqual(rep.both_answered, true);
+  const set = c.call('interface_settle', { id, resolution: '(A) 사이트별 노드 분리', commit: 'abc1234' });
+  c.restore();
+
+  assert.strictEqual(set.settled, true);
+  const txt = read(root, 'INTERFACE.md');
+  assert.match(txt, new RegExp(`- ${id} .* → \\(A\\) 사이트별 노드 분리 \\(abc1234\\)`));
+  assert.ok(txt.indexOf(`- ${id}`) < txt.indexOf('## 열린 스레드'), '합의가 열린 스레드 밖에 놓였다');
+  assert.ok(!txt.includes(`### ${id} —`), 'settled thread left open');
+
+  const C = require('../control');
+  const b = C.load(root);
+  assert.strictEqual(C.serializeInterface(b.interface), b.raw.interface, 'settle broke the round trip');
+  delete require.cache[require.resolve('../control')];
+});
+
+t('a reply appends and never rewrites the other side', (root) => {
+  const before = read(root, 'INTERFACE.md');
+  const c = serverAs('codex', root);
+  const id = c.call('interface_threads', {}).open[0].id;
+  c.call('interface_reply', { id, body: '첫 답' });
+  c.call('interface_reply', { id, body: '두번째 답' });
+  c.restore();
+  const after = read(root, 'INTERFACE.md');
+  assert.ok(after.includes('첫 답') && after.includes('두번째 답'), 'a reply was lost');
+  // Everything that was there is still there, verbatim.
+  for (const line of before.split('\n')) {
+    if (line.trim()) assert.ok(after.includes(line), `existing line dropped: ${line.slice(0, 50)}`);
+  }
+});
+
+t('asking allocates an id and addresses the peer', (root) => {
+  const a = serverAs('claude-code', root);
+  const q = a.call('interface_ask', { title: '멱등키 보존 기간', body: '24시간 맞나요?\n\n- (A) …' });
+  a.restore();
+  assert.match(q.id, /^I-\d{4}-\d{2}-\d{2}-\d{2}$/);
+  assert.strictEqual(q.to, 'codex');
+
+  const c = serverAs('codex', root);
+  const seen = c.call('interface_threads', {});
+  c.restore();
+  const th = seen.open.find(x => x.id === q.id);
+  assert.strictEqual(th.ask, 'Claude Code → Codex');
+  assert.strictEqual(th.awaiting_me, true, 'codex should see it as its turn');
+  assert.ok(seen.mine_to_answer.includes(q.id));
+});
+
+t('the manager may close a thread the two have not agreed on', (root) => {
+  // An intervention, and it is the manager's to make — but an agent cannot.
+  const m = serverAs('manager', root);
+  const id = m.call('interface_threads', {}).open[0].id;
+  const r = m.call('interface_settle', { id, resolution: '관리자 판단으로 (B)' });
+  m.restore();
+  assert.strictEqual(r.settled, true);
+});
+
 // ── manager writes ──────────────────────────────────────────────────
 
 t('assigning allocates the next id in the right section', (root) => {
@@ -458,7 +557,9 @@ t('every tool schema is well-formed', (root) => {
   const a = serverAs('claude-code', root);
   const tools = [...a.srv.TOOLS, ...a.srv.MANAGER_TOOLS];
   for (const tool of tools) {
-    assert.match(tool.name, /^control_[a-z_]+$/, `bad name ${tool.name}`);
+    // Two families: control_* is the manager's board, interface_* is the
+    // direct Probe ↔ Portal channel. Nothing else.
+    assert.match(tool.name, /^(control|interface)_[a-z_]+$/, `bad name ${tool.name}`);
     assert.ok(tool.description && tool.description.length > 20, `${tool.name}: thin description`);
     assert.strictEqual(tool.inputSchema.type, 'object', `${tool.name}: schema not an object`);
     for (const req of tool.inputSchema.required || []) {

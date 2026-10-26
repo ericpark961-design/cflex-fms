@@ -206,6 +206,80 @@ function answerOf(q) {
   return all || null;
 }
 
+
+// ─── INTERFACE.md ───────────────────────────────────────────────────
+// The direct Probe ↔ Portal channel. DECISIONS.md is the manager's queue, so a
+// technical question between the two implementations used to wait on the PM —
+// a question one exchange would settle costing a day. Here the two agents
+// answer each other and the manager reads.
+//
+// Same shape as DECISIONS on purpose: a settled list and open threads, so the
+// parser and the habit carry over.
+
+function parseInterface(text) {
+  const lines = text.split('\n');
+  const out = { preamble: [], settledHead: null, settled: [], openHead: null, open: [] };
+  let where = 'pre';
+  let t = null;
+
+  for (const line of lines) {
+    if (/^## +합의된 것/.test(line)) { out.settledHead = line; where = 'settled'; continue; }
+    if (/^## +열린 스레드/.test(line)) { out.openHead = line; where = 'open'; continue; }
+    if (where === 'pre') { out.preamble.push(line); continue; }
+    if (where === 'settled') {
+      const m = /^- +(I-\d{4}-\d{2}-\d{2}-\d+) +([\s\S]*)$/.exec(line);
+      out.settled.push(m ? { id: m[1], text: m[2], raw: line } : { id: null, text: null, raw: line });
+      continue;
+    }
+    const h = /^### +(I-\d{4}-\d{2}-\d{2}-\d+) +— +(.+?)(?: +\(물음: *([^)]+)\))? *$/.exec(line);
+    if (h) { t = { id: h[1], title: h[2], ask: h[3] || null, body: [] }; out.open.push(t); continue; }
+    if (t) t.body.push(line);
+    else out.open.push({ id: null, raw: line });
+  }
+  return out;
+}
+
+function serializeInterface(d) {
+  const parts = [...d.preamble];
+  if (d.settledHead !== null) { parts.push(d.settledHead); for (const c of d.settled) parts.push(c.raw); }
+  if (d.openHead !== null) {
+    parts.push(d.openHead);
+    for (const t of d.open) {
+      if (!t.id) { parts.push(t.raw); continue; }
+      parts.push(`### ${t.id} — ${t.title}${t.ask ? ` (물음: ${t.ask})` : ''}`);
+      parts.push(...t.body);
+    }
+  }
+  return parts.join('\n');
+}
+
+/**
+ * Who has posted a reply block in this thread.
+ *
+ * A reply header is `**Name** YYYY-MM-DD` ALONE on its line, and the name has
+ * to be one we know. The first version matched any line starting with bold
+ * text, so a sentence that opened with emphasis — "**Probe 쪽에서는 증명할 수
+ * 없다.** …" — was read as a reply from an agent called that, and a
+ * one-sided thread looked like an agreement.
+ */
+const REPLY_NAMES = new Set([...Object.values(AGENTS), '관리자']);
+function repliedBy(thread) {
+  const names = new Set();
+  for (const l of thread.body || []) {
+    const m = /^\*\*([^*]+)\*\*\s+\d{4}-\d{2}-\d{2}\s*$/.exec(l.trim());
+    if (m && REPLY_NAMES.has(m[1].trim())) names.add(m[1].trim());
+  }
+  return [...names];
+}
+
+function nextInterfaceId(board, day = todayISO()) {
+  const seen = [
+    ...board.interface.open.filter(t => t.id).map(t => t.id),
+    ...board.interface.settled.filter(c => c.id).map(c => c.id),
+  ].filter(id => id.startsWith(`I-${day}-`)).map(id => parseInt(id.slice(-2), 10)).filter(Number.isFinite);
+  return `I-${day}-${String((seen.length ? Math.max(...seen) : 0) + 1).padStart(2, '0')}`;
+}
+
 // ─── the whole board ────────────────────────────────────────────────
 
 function load(root) {
@@ -214,18 +288,24 @@ function load(root) {
     tasks: path.join(dir, 'TASKS.md'),
     status: path.join(dir, 'STATUS.md'),
     decisions: path.join(dir, 'DECISIONS.md'),
+    interface: path.join(dir, 'INTERFACE.md'),
   };
   for (const [k, p] of Object.entries(files)) {
-    if (!fs.existsSync(p)) throw new Error(`missing ${k}: ${p}`);
+    // INTERFACE.md is newer than the other three; a checkout without it still
+    // works, it just has no direct channel.
+    if (k !== 'interface' && !fs.existsSync(p)) throw new Error(`missing ${k}: ${p}`);
   }
+  const hasInterface = fs.existsSync(files.interface);
   const raw = {
     tasks: read(files.tasks), status: read(files.status), decisions: read(files.decisions),
+    ...(hasInterface ? { interface: read(files.interface) } : {}),
   };
   const board = {
-    dir, files, raw,
+    dir, files, raw, hasInterface,
     tasks: parseTasks(raw.tasks),
     status: parseStatus(raw.status),
     decisions: parseDecisions(raw.decisions),
+    interface: hasInterface ? parseInterface(raw.interface) : { preamble: [], settledHead: null, settled: [], openHead: null, open: [] },
   };
 
   // Fidelity, checked here and not only in save(). save() used to verify that
@@ -236,8 +316,8 @@ function load(root) {
   // So: if parse → serialize cannot reproduce the file byte for byte, the
   // parser does not understand it, and nothing may be read or written through
   // it. Loud, with the first differing line, beats a quietly shortened board.
-  const ser = { tasks: serializeTasks, status: serializeStatus, decisions: serializeDecisions };
-  for (const k of ['tasks', 'status', 'decisions']) {
+  const ser = { tasks: serializeTasks, status: serializeStatus, decisions: serializeDecisions, interface: serializeInterface };
+  for (const k of ['tasks', 'status', 'decisions', ...(hasInterface ? ['interface'] : [])]) {
     const back = ser[k](board[k]);
     if (back === raw[k]) continue;
     const a = raw[k].split('\n');
@@ -260,12 +340,12 @@ function load(root) {
  * that does not round-trip. A parser bug must not be able to flatten the board.
  */
 function save(board, which) {
-  const ser = { tasks: serializeTasks, status: serializeStatus, decisions: serializeDecisions };
+  const ser = { tasks: serializeTasks, status: serializeStatus, decisions: serializeDecisions, interface: serializeInterface };
   return withLock(board.dir, () => {
     const written = [];
     for (const k of which) {
       const text = ser[k](board[k]);
-      const reparsed = { tasks: parseTasks, status: parseStatus, decisions: parseDecisions }[k](text);
+      const reparsed = { tasks: parseTasks, status: parseStatus, decisions: parseDecisions, interface: parseInterface }[k](text);
       // Defence in depth. The load-time fidelity check is the one that
       // catches a lossy parse; this catches a serialiser that emits something
       // it cannot itself read back.
@@ -304,6 +384,8 @@ function nextQuestionId(board, day = todayISO()) {
 module.exports = {
   STATUSES, AGENTS,
   load, save, findTask, answerOf, nextQuestionId, todayISO, controlDir,
+  repliedBy, nextInterfaceId,
   parseTasks, serializeTasks, parseStatus, serializeStatus, parseDecisions, serializeDecisions,
+  parseInterface, serializeInterface,
   withLock,
 };
