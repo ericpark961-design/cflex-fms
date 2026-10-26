@@ -130,13 +130,13 @@ const t = async (name, fn) => {
 
   await t('the heartbeat carries the cycle, not just liveness', async () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.js'), 'utf8');
-    for (const field of ['poll_ok', 'poll_fail', 'cycle_ms', 'last_error']) {
-      assert.match(src, new RegExp(field), `the heartbeat sends ${field}`);
+    // The contract fields (§3.1) the FMS keeps and relays to the Portal as this
+    // collector's (D-13). The old cloud's extra names (poll_ok, devices_count …)
+    // went with the old-cloud path.
+    for (const field of ['devices_total', 'devices_unreachable: lastCycle.fail', 'last_poll_ok_ratio']) {
+      assert.match(src, new RegExp(field.replace('.', '\\.')), `the heartbeat sends ${field}`);
     }
-    // devices_count is what the cloud has always received; both names are sent,
-    // because reading only the new one pinned every probe's count at 0.
-    assert.match(src, /devices_count: devices\.length/);
-    assert.match(src, /devices: devices\.length/);
+    assert.match(src, /devices_total: devices\.length \+ objects\.length/);
   });
 
   console.log(fail ? `\nFAIL: ${fail} check(s)` : '\nok - the collector reports what actually happened');

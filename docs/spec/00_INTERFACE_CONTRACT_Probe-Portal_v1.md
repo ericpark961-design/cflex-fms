@@ -1,6 +1,6 @@
-# C-Flex FMS 2.x — Probe ↔ Managed Service Portal 인터페이스 계약 v1.1
+# C-Flex FMS 2.x — Probe ↔ Managed Service Portal 인터페이스 계약 v1.2
 
-- 문서번호: IFC-CFLEX-2026-1023 **v1.1** (2026-10-25: inventory `provisional`/`id_basis` 추가, 알람 코드 `UPS_BATTERY_CAPACITY_LOW`(P3) 추가 — 하위호환 minor) — **양쪽 팀(Claude Code = 내부 Probe/On-Prem, Codex = 외부 Portal)이 공유하는 유일한 계약서.** 변경은 반드시 이 문서의 버전을 올리고 양쪽에 동시에 반영한다.
+- 문서번호: IFC-CFLEX-2026-1023 **v1.2** (2026-10-26, D-13: heartbeat·telemetry point·event에 수집 노드 `collector_id`(선택) 추가 — 하위호환 minor. 부록 A 키·부록 B 코드 변경 없음) · v1.1 (2026-10-25: inventory `provisional`/`id_basis` 추가, 알람 코드 `UPS_BATTERY_CAPACITY_LOW`(P3) 추가 — 하위호환 minor) — **양쪽 팀(Claude Code = 내부 Probe/On-Prem, Codex = 외부 Portal)이 공유하는 유일한 계약서.** 변경은 반드시 이 문서의 버전을 올리고 양쪽에 동시에 반영한다.
 - 원칙: **Probe가 항상 먼저 연결한다(아웃바운드 전용).** Portal은 Probe로 인바운드 연결을 열지 않는다. Portal → Probe 방향의 요청은 Probe가 폴링하는 "command queue"로만 전달한다.
 
 ---
@@ -16,14 +16,15 @@
 | 멱등성 | 모든 POST는 `Idempotency-Key`(UUIDv4) 헤더 필수. Portal은 24시간 내 동일 키 재수신 시 200 + 동일 응답 |
 | 재시도 | 5xx/네트워크 오류: 지수 백오프 1s→2s→…→최대 5분, 지터 ±20%. 4xx는 재시도 금지(409 제외). Probe 로컬 큐 보존 기본 7일 |
 | 레이트 | 노드당 60 req/min. 초과 시 429 + `Retry-After` |
-| 버전 | 경로 `/api/v1`; 응답 헤더 `X-CFlex-API-Version: 1.1`(1.0 요청도 수락). 하위호환 변경은 minor, 비호환은 `/api/v2` |
+| 버전 | 경로 `/api/v1`; 응답 헤더 `X-CFlex-API-Version: 1.2`(1.1·1.0 요청도 수락). 하위호환 변경은 minor, 비호환은 `/api/v2` |
 | 응답 포맷 | JSON. 오류: `{ "error": { "code": "string", "message": "string", "details": {} } }` |
 
 ## 2. 공통 식별자
 - `tenant` : 고객 코드 (`HAEA`). Portal 발급, 불변.
 - `site_id` : 테넌트 내 사이트 코드 (`HMA-FV`, `KUS-IRV`, `HAEA-HQ`).
 - `device_id` : **Probe가 생성하는 안정 ID** = `sha1(tenant|site_id|serial)[:16]`. 시리얼 미확인 장비는 `sha1(tenant|site_id|"ledger:<원장id>")`로 **임시 ID**를 쓰고 inventory에 `provisional:true`, `id_basis:"ledger"`를 표시한다(v1.1). 시리얼 확인 시 새 device_id로 inventory를 보내고 구 ID에 `replaced_by`를 단다. Portal은 provisional 장비를 '시리얼 미확인'으로 표시하고 승계 시 이력을 합친다.
-- `node_id` : Probe/App 노드 (`cap01`, `app01`).
+- `node_id` : **요청을 보낸 노드**(`app01`, `app02`). 헤더 `X-CFlex-Node`·인증서 CN과 같다. D-13(분산 구조)에서 포털로 보내는 노드는 FMS(app)뿐이다.
+- `collector_id` (v1.2, 선택) : 그 데이터를 **수집한 컬렉터 노드**(`cap01`, `cap02` …). heartbeat·telemetry point·event에 붙는다. 없으면 `node_id`가 직접 수집한 것으로 본다(v1.1 송신자와 같음). 같은 장비를 여러 컬렉터가 보면 FMS가 `device_id`로 합치고, 알람은 하나의 `alarm_id`로 보낸다.
 - `alarm_id` : Probe 생성 UUID, 알람 생애(raise→update→clear) 동안 불변.
 
 ## 3. 엔드포인트 (Probe → Portal)
@@ -35,6 +36,7 @@
   "clock":"2026-10-23T18:05:12.345Z","profile":"container|bare","os":"RHEL 8.10" }
 ```
 응답 200 `{ "ack":true, "commands_pending": 2, "config_version": 17 }`
+- v1.2: FMS(app)는 자기 heartbeat(`role:"app"`, `collector_id` 없음)와 함께, 최근 5분 안에 보고한 컬렉터마다 하나씩 대신 보낸다 — `node_id`=송신 app, `role:"collector"`, `collector_id`=그 컬렉터. 컬렉터 생존 판정(PROBE_OFFLINE·COLLECTOR_DOWN)은 `collector_id` 기준.
 
 ### 3.2 `PUT /api/v1/inventory`  (변경 시 + 일 1회 전체)
 ```json
@@ -53,6 +55,7 @@
          "bat_pct":100,"runtime_s":1500,"bat_temp_c":21.0,"bat_v":138,"status":"online|on_battery|bypass|off",
          "selftest":"ok|fail|none","alarm_bits":"0x0000" } } ] }
 ```
+- v1.2: 각 point에 `collector_id`(선택)를 붙일 수 있다. 예: `{ "device_id":"3f9c…","ts":"…","collector_id":"cap02","m":{…} }`.
 - 메트릭 키는 **부록 A 메트릭 사전**에 등록된 것만. 미등록 키는 Portal이 `m_ext`로 보관하고 경고.
 - 응답 200 `{ "accepted":500, "dropped":0 }`
 
@@ -64,6 +67,7 @@
    "detail":{"runtime_s":420,"bat_pct":62},"source":"trap|poll|rule|system",
    "local_notified":{"email":true,"teams":false,"itsm":"INC0012345"} } ] }
 ```
+- v1.2: 각 event에 `collector_id`(선택). 컬렉터 여러 대가 같은 장비의 같은 코드를 올리면 FMS는 먼저 연 알람의 `alarm_id` 하나로 보내고, 마지막 컬렉터가 해제할 때 `alarm_clear`를 보낸다.
 - `code`는 **부록 B 알람 코드 사전**(Probe 룰엔진이 분류). Portal은 코드 기준으로 라우팅/에스컬레이션.
 - `local_notified`: Probe가 HAEA 내부(SMTP/Teams/ServiceNow)로 이미 보낸 알림 — Portal의 **중복 발송 억제** 입력.
 - 응답 200 `{ "accepted":1, "routing":[{"alarm_id":"uuid","policy":"HAEA-P1","notified":3}] }`

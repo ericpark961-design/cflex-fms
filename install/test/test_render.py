@@ -1,3 +1,4 @@
+import copy
 import re
 import unittest
 
@@ -110,9 +111,10 @@ class Render(unittest.TestCase):
         env = f["/opt/app/cflex/config/collector/collector.env"][0]
         self.assertIn("CFLEX_NODE_ID=cap01", env)
         self.assertIn("CFLEX_SITE_ID=HMA-FV", env)
-        self.assertIn("CFLEX_TLS_KEY=/opt/app/cflex/certs/device.key", env)
-        self.assertIn("HTTPS_PROXY=\n", env, "placeholder proxy from the example must not be written")
-        self.assertIn("CFLEX_URL=https://10.138.14.67", env)
+        # D-13 (WO-INT-012): no Portal URL, device key, proxy or old-cloud URL on a collector.
+        for k in ("CFLEX_PORTAL", "CFLEX_TLS_", "HTTPS_PROXY", "NO_PROXY", "CFLEX_URL", "device.key", "fms.support"):
+            self.assertNotIn(k, env.replace("No Portal, device key or proxy", ""), k)
+        self.assertIn("CFLEX_COLLECTOR_SITES=\n", env, "one collector in site.yaml: it polls every site")
         self.assertIn("CFLEX_TRAP_PORT=1162", env)
         # WO-INT-004c: the Local Console, both app nodes active first; key and CA by path; no notify channel.
         self.assertIn("CFLEX_CONSOLE_URL=https://10.138.14.67,https://10.138.14.68\n", env)
@@ -121,6 +123,25 @@ class Render(unittest.TestCase):
         self.assertNotIn("CFLEX_NOTIFY_CONFIG", env)
         bare = render.render(self.site, "collector", me(self.site, "collector", "cap01"), "2.0.0", profile="bare")
         self.assertIn("CFLEX_CONSOLE_KEY_FILE=/opt/app/cflex/secrets/collector/collector.key\n", bare["/opt/app/cflex/config/collector/collector.env"][0])
+
+    def test_two_collectors_get_their_site_scope(self):
+        site = copy.deepcopy(self.site)
+        site["hosts"]["collectors"] = [{"id": "cap01", "ip": "10.138.14.66", "sites": ["HMA-FV"]},
+                                       {"id": "cap02", "ip": "192.0.2.70", "sites": ["KUS-IRV", "HAEA-HQ"]}]
+        env = lambda n: render.render(site, "collector", me(site, "collector", n), "2.0.0")["/opt/app/cflex/config/collector/collector.env"][0]
+        self.assertIn("CFLEX_COLLECTOR_SITES=HMA-FV\n", env("cap01"))
+        self.assertIn("CFLEX_COLLECTOR_SITES=KUS-IRV,HAEA-HQ\n", env("cap02"))
+
+    def test_app_env_carries_the_portal_link(self):
+        # D-13: the Portal sender is the app node's — its device certificate, the proxy, the 7-day outbox.
+        f = render.render(self.site, "app", me(self.site, "app", "app01"), "2.0.0")
+        env = f["/opt/app/cflex/config/app/app.env"][0]
+        for line in ("CFLEX_PORTAL_ENABLED=1", "CFLEX_PORTAL_URL=https://cflex.fms.support", "CFLEX_TLS_CERT=/opt/app/cflex/certs/device.pem",
+                     "CFLEX_TLS_KEY=/opt/app/cflex/certs/device.key", "CFLEX_TLS_CA=/opt/app/cflex/certs/portal-ca.pem",
+                     "CFLEX_PORTAL_BUFFER_DAYS=7", "HTTPS_PROXY=\n"):
+            self.assertIn(line, env)
+        self.assertIn("CONSOLE_NODE_ID=app01", env)
+        self.assertIn("Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,Z", f[QD + "cflex-console.container"][0])
 
     def test_bare_profile(self):
         f = render.render(self.site, "collector", me(self.site, "collector", "cap01"), "2.0.0", profile="bare")

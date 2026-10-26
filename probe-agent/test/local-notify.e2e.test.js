@@ -1,54 +1,49 @@
 // node --test probe-agent/test/local-notify.e2e.test.js
 //
 // WO-INT-003 end to end: a poller alert goes through the alarm engine, out to
-// a dummy SMTP relay and a dummy ServiceNow, and arrives at the mock Portal
-// (mTLS) carrying `local_notified` — which must say what was delivered, not
-// what was configured. Plus the SOW test ticket, as a function and as the CLI.
+// a dummy SMTP relay and a dummy ServiceNow, and the event comes out carrying
+// `local_notified` — which must say what was delivered, not what was
+// configured. Plus the SOW test ticket, as a function and as the CLI.
 // Everything on 127.0.0.1.
+//
+// The notifier (alarms/local-notify.js) runs on the Local Console since
+// Q-2026-10-25-10, and the Portal sender on the FMS since D-13 (WO-INT-012):
+// the collector itself has neither. These tests drive the same engine →
+// notifier pair the console runs, without the Portal (apps/console/test/portal.test.js).
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
-const { createForwarder } = require('../src/forwarder');
+const { createAlarmEngine } = require('../src/alarms/engine');
 const { createLocalNotifier, httpVia } = require('../src/alarms/local-notify');
 const { jsonStore } = require('../src/alarms/store');
-const transport = require('../src/portal/transport');
 const schema = require('../src/contract/schema');
-const { startMockPortal } = require('./support/mock-portal');
-const { memQueue } = require('./support/memqueue');
-const { makeCerts, hasOpenssl } = require('./support/certs');
 const { startDummySmtp, decode } = require('../../packages/notify/test/support/dummy-smtp');
 const { startDummyServiceNow } = require('../../packages/notify/test/support/dummy-servicenow');
 
-const skip = hasOpenssl() ? false : 'openssl CLI not available';
+const skip = false;
 const quiet = { log() {}, warn() {}, error() {} };
 const MIN = 60 * 1000;
 const TEAMS = 'https://haea.webhook.office.com/webhookb2/test';
 
-let certs, portal, relay, sn, tmp;
+let relay, sn, tmp;
+let sent = [];
 test.before(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cflex-notify-'));
   relay = await startDummySmtp({ user: 'fms', pass: 'relay-pw' });
   sn = await startDummyServiceNow();
-  if (skip) return;
-  certs = makeCerts();
-  portal = await startMockPortal({ server: certs.server, tenant: 'TEST' });
 });
 test.after(async () => {
   await relay.close(); await sn.close();
   fs.rmSync(tmp, { recursive: true, force: true });
-  if (skip) return;
-  await portal.close(); certs.cleanup();
 });
 test.beforeEach(() => {
   relay.state.messages.length = 0; relay.state.rejectRcpt = false;
   sn.state.incidents.clear(); sn.state.requests.length = 0; sn.state.faults.length = 0;
   teamsPosts.length = 0;
-  if (skip) return;
-  Object.assign(portal.state, { received: [], requests: [], faults: [], legacy: [], dateOffsetMs: 0 });
-  portal.state.idem.clear();
+  sent = [];
 });
 
 // Teams needs a *.webhook.office.com URL, which cannot be a local server; its
@@ -78,23 +73,39 @@ function rig({ config = notifyConfig(), store, alarms = {}, notifier } = {}) {
   let t = Date.now();
   const clock = { now: () => t, advance: (ms) => { t += ms; } };
   const n = notifier === null ? null : notifier || createLocalNotifier({ config, store: store || jsonStore(null), deps: { http }, log: quiet });
-  const f = createForwarder({
-    portal: {
-      enabled: true, url: portal.url, tenant: 'TEST', nodeId: 'cap01', role: 'collector', siteId: 'HAEA-HQ',
-      tls: transport.loadTls(certs.client), timeoutMs: 5000,
+  const engine = createAlarmEngine({ ctx: { tenant: 'TEST', siteId: 'HAEA-HQ' }, now: clock.now, opts: alarms, maintenance: alarms.maintenance, log: quiet });
+  const ledger = new Map();
+  // Each engine item → the notifier → the event, with what was delivered (as the console does it).
+  const emit = async (items) => {
+    for (const it of items) {
+      if (n) { const ln = await n.handle(it); if (ln) it.event.local_notified = ln; }
+      sent.push(it.event);
+    }
+  };
+  // The collector's way into the engine (forwarder.js sendEvent), for the two kinds used here.
+  const f = {
+    syncInventory: async (list) => { for (const d of list) ledger.set(String(d.id), d); },
+    sendEvent: async (kind, p) => {
+      const d = ledger.get(String(p.device_id));
+      if (kind === 'telemetry' && p.kind === 'ups') {
+        const items = engine.commStatus(d, p.ok !== false, p.ts, p.error);
+        if (p.ok !== false) items.push(...engine.beginCycle(d, p.ts));
+        await emit(items);
+      } else if (kind === 'alert') {
+        const r = engine.fromAlert(d, p);
+        if (r.code) await emit(r.items);
+      }
     },
-    queue: memQueue(), now: clock.now, random: () => 0.5, log: quiet, version: '2.1.0',
-    alarms, notifier: n,
-  });
+  };
   return { f, n, clock };
 }
 
 const UPS = { id: 41, name: 'MPOE UPS 1E-A', site_id: 'HMA-FV', serial: 'AD2248220154', kind: 'ups' };
 const onBattery = (ts) => ({ device_id: 41, severity: 'P2', metric: 'output_source', value: 'onBattery', message: 'Output source: onBattery', ts });
 const okPoll = (ts) => ({ device_id: 41, kind: 'ups', ts, ok: true, took_ms: 500, metrics: { battery_pct: 90, output_source: 'onLine' } });
-const events = () => portal.of('POST /api/v1/events').flatMap(b => b.events);
+const events = () => sent;
 
-test('E2E: raise → SMTP + Teams + ServiceNow INC, and the Portal event says so in local_notified', { skip }, async () => {
+test('E2E: raise → SMTP + Teams + ServiceNow INC, and the event says so in local_notified', { skip }, async () => {
   const store = jsonStore(path.join(tmp, 'itsm-a.json'));
   const { f, clock } = rig({ store, alarms: { updateEveryMs: 0 } });
   await f.syncInventory([UPS]);
@@ -145,17 +156,17 @@ test('E2E: raise → SMTP + Teams + ServiceNow INC, and the Portal event says so
   assert.match(decode(relay.state.messages[1].raw).subject, /^\[P1\] CLEARED MPOE UPS 1E-A/);
   assert.strictEqual(teamsPosts.length, 2);
   assert.deepStrictEqual(clr.local_notified, { email: true, teams: true, itsm: inc.number });
-  for (const r of portal.state.received) assert.ok(schema.validate(r.route.split('/').pop(), r.body).ok, r.route);
+  for (const e of sent) assert.ok(schema.validate('events', { events: [e] }).ok, e.kind);
 });
 
-test('E2E: a refused mail and a failing ServiceNow report false/null — the Portal must not think HAEA was told', { skip }, async () => {
+test('E2E: a refused mail and a failing ServiceNow report false/null — the Portal must not be told HAEA was', { skip }, async () => {
   const { f, clock } = rig();
   await f.syncInventory([UPS]);
   relay.state.rejectRcpt = true;
   sn.state.faults.push({ status: 503, message: 'instance hibernating' });
   await f.sendEvent('alert', onBattery(clock.now()));
   const [ev] = events();
-  assert.strictEqual(ev.kind, 'alarm_raise', 'the event still reached the Portal');
+  assert.strictEqual(ev.kind, 'alarm_raise', 'the event still goes on');
   assert.deepStrictEqual(ev.local_notified, { email: false, teams: true, itsm: null });
   assert.strictEqual(sn.state.incidents.size, 0);
 });
@@ -173,7 +184,7 @@ test('E2E: severity floors — a P3 comm loss mails nobody and opens no INC unde
   assert.strictEqual(relay.state.messages.length + sn.state.requests.length + teamsPosts.length, 0);
 });
 
-test('E2E: maintenance window — the Portal sees the alarm (marked), nothing is sent locally', { skip }, async () => {
+test('E2E: maintenance window — the alarm goes on (marked), nothing is sent locally', { skip }, async () => {
   const { f, clock } = rig({ alarms: { maintenance: [{ ledger_id: 41, until: Date.now() + 60 * MIN }] } });
   await f.syncInventory([UPS]);
   await f.sendEvent('alert', onBattery(clock.now()));

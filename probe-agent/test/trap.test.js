@@ -7,6 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { createAlarmEngine } = require('../src/alarms/engine');
 const { createForwarder } = require('../src/forwarder');
+const { createConsoleClient } = require('../src/console/client');
 const codes = require('../src/alarms/codes');
 const schema = require('../src/contract/schema');
 const apc = require('../src/trap/apc-mib');
@@ -212,21 +213,19 @@ test('trap-only alarms are latched: a poll cycle does not clear UPS_SELFTEST_FAI
   assert.strictEqual(out.at(-1).event.code, 'UPS_SELFTEST_FAIL');
 });
 
-/** A forwarder whose Portal is a stub that records every event body. */
+/** A forwarder whose console (its only destination, D-13) is a stub that records every event body. */
 function forwarder(c) {
   const posted = [];
   const request = async ({ url, body }) => {
-    if (url.endsWith('/api/v1/events')) posted.push(...JSON.parse(body).events);
-    return { status: 200, headers: {}, json: { accepted: 1 } };
+    if (url.endsWith('/collector/v1/events')) posted.push(...JSON.parse(body).events);
+    return { status: 200, headers: {}, json: { accepted: 1, local_notified: {} } };
   };
-  const f = createForwarder({
-    portal: { enabled: true, url: 'https://portal.test', tenant: 'HAEA', nodeId: 'cap01', role: 'collector', siteId: 'HMA-FV', tls: {}, timeoutMs: 1000 },
-    queue: memQueue(), request, now: c.now, random: () => 0.5, log: quiet, version: '0.1.0',
-  });
+  const link = createConsoleClient({ url: 'https://app01.test', nodeId: 'cap01', key: 'k', queue: memQueue(), request, now: c.now, random: () => 0.5, log: quiet });
+  const f = createForwarder({ node: { tenant: 'HAEA', nodeId: 'cap01', siteId: 'HMA-FV' }, console: link, now: c.now, log: quiet, version: '0.1.0' });
   return { f, posted };
 }
 
-test('poll and trap see the same fault: one alarm, one alarm_id, one raise to the Portal (poll first)', async () => {
+test('poll and trap see the same fault: one alarm, one alarm_id, one raise to the FMS (poll first)', async () => {
   const c = clock();
   const { f, posted } = forwarder(c);
   await f.syncInventory([UPS]);

@@ -38,7 +38,7 @@ function startMockPortal({ server: tlsMaterial, tenant = 'TEST', dateOffsetMs = 
       const raw = Buffer.concat(chunks).toString('utf8');
       const send = (status, body, headers = {}) => {
         res.writeHead(status, {
-          'Content-Type': 'application/json', 'X-CFlex-API-Version': '1.1',
+          'Content-Type': 'application/json', 'X-CFlex-API-Version': '1.2',
           Date: new Date(Date.now() + state.dateOffsetMs).toUTCString(), ...headers,
         });
         res.end(JSON.stringify(body));
@@ -92,7 +92,7 @@ if (require.main === module) {
   const c = makeCerts();
   startMockPortal({ server: c.server }).then(m => {
     console.log(`mock portal on ${m.url} (tenant TEST)`);
-    console.log(`  CFLEX_PORTAL_URL=${m.url} TENANT_ID=TEST CFLEX_NODE_ID=cap01`);
+    console.log(`  (apps/console) CFLEX_PORTAL_URL=${m.url} CFLEX_TENANT=TEST CONSOLE_NODE_ID=app01`);
     console.log(`  CFLEX_TLS_CA=${c.client.caPath} CFLEX_TLS_CERT=${c.client.certPath} CFLEX_TLS_KEY=${c.client.keyPath}`);
     process.on('SIGINT', () => { c.cleanup(); process.exit(0); });
     setInterval(() => console.log(`received: ${m.state.received.length}`), 60000);

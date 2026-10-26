@@ -1,9 +1,10 @@
 // index.js — cflex-probe main entry
 // Responsibilities:
-//   1. Fetch device config from the Local Console (or, without one, cflex) on boot + periodically
+//   1. Fetch device config (this collector's sites) from the Local Console on boot + periodically
 //   2. Poll all UPS devices on POLL_INTERVAL_MS schedule
-//   3. Forward telemetry + alarm events to the Local Console and the Portal
-//   4. Drain local buffer when cflex reachable
+//   3. Forward telemetry + alarm events to the Local Console — the only destination;
+//      the FMS merges collectors and sends to the Portal (D-13, WO-INT-012)
+//   4. Drain local buffer when the console is reachable
 //   5. Send heartbeat every HEARTBEAT_INTERVAL_MS
 //   6. Purge old buffered events daily
 //   7. Receive SNMP traps (UDP CFLEX_TRAP_PORT) into the same alarm engine
@@ -26,11 +27,11 @@ async function loadDevices() {
   // The Local Console's answer is the inventory, even when it is empty (every
   // device removed or polling disabled). null = unreachable: keep the last list.
   const fromConsole = forwarder.consoleConfigured();
-  if (remote && (remote.length || fromConsole)) {
+  if (remote && fromConsole) {
     devices = remote;
-    console.log(`[probe] loaded ${devices.length} UPS from ${fromConsole ? 'the Local Console' : 'cflex'}`);
+    console.log(`[probe] loaded ${devices.length} UPS from the Local Console`);
   } else if (!devices.length) {
-    console.log(`[probe] no devices from ${fromConsole ? 'the Local Console' : 'cflex'} yet — polling disabled`);
+    console.log(`[probe] no devices from ${fromConsole ? 'the Local Console' : 'anywhere (no CFLEX_CONSOLE_URL)'} yet — polling disabled`);
   }
   // The rest of the room: PDUs, NetBotz, CRACs, switches. A separate feed
   // because they live in a separate table and have separate collectors; a
@@ -40,20 +41,17 @@ async function loadDevices() {
     objects = net;
     const byKind = {};
     for (const d of objects) byKind[d.kind || '?'] = (byKind[d.kind || '?'] || 0) + 1;
-    console.log(`[probe] loaded ${objects.length} objects from cflex —`,
+    console.log(`[probe] loaded ${objects.length} objects —`,
       Object.entries(byKind).map(([k, n]) => `${k}:${n}`).join(' '));
   }
   // The trap listener knows senders by these rows, and accepts their credentials.
   if (traps) traps.setInventory([...devices.map(d => ({ kind: 'ups', ...d })), ...objects]);
-  // Inventory to the Portal (contract §3.2): on change, and in full daily.
-  // This runs every 5 minutes, so the daily resend needs no timer of its own.
-  if (devices.length || objects.length) {
-    await forwarder.syncInventory([...devices.map(d => ({ kind: 'ups', ...d })), ...objects]);
-  }
+  // The ledger for the contract device_id. The FMS sends the inventory to the Portal (D-13).
+  await forwarder.syncInventory([...devices.map(d => ({ kind: 'ups', ...d })), ...objects]);
 }
 
-// The last cycle's outcome, sent with every heartbeat so the cloud can tell a
-// collector that is working from one that is merely running.
+// The last cycle's outcome, sent with every heartbeat so the FMS (and through
+// it the Portal) can tell a collector that is working from one that is merely running.
 let lastCycle = { ok: 0, fail: 0, took: null, error: null, at: null };
 
 /**
@@ -130,8 +128,8 @@ async function pollAll() {
 
 async function bootstrap() {
   console.log(`[probe] starting cflex-probe v${require('../package.json').version}`);
-  console.log(`[probe] tenant=${cfg.tenantId} probe_id=${cfg.probeId}`);
-  console.log(cfg.console.url ? `[probe] console=${cfg.console.url}` : `[probe] cflex=${cfg.cflexUrl}`);
+  console.log(`[probe] tenant=${cfg.tenantId} node=${cfg.node.nodeId} sites=${cfg.node.sites.join(',') || '*'}`);
+  console.log(`[probe] console=${cfg.console.url || '(not set)'}`);
 
   // Traps go into the forwarder's alarm engine, so a trap and a poll seeing
   // the same fault are one alarm (same alarm_id), and out the same way.
@@ -154,29 +152,21 @@ async function bootstrap() {
   // First cycle after 5 seconds (let device config settle)
   setTimeout(pollAll, 5000);
 
-  // Heartbeat (contract §3.1). A probe that is up and failing every device is
-  // not healthy, so the last cycle's outcome rides along as an ok ratio.
-  // The forwarder takes the contract fields for the Portal; the rest is what
-  // the old cloud reads, and only reaches it with CFLEX_LEGACY_FORWARD=1.
-  const beat = (extra = {}) => {
+  // Heartbeat to the FMS (relayed to the Portal, contract §3.1). A probe that
+  // is up and failing every device is not healthy, so the last cycle's
+  // outcome rides along as an ok ratio.
+  const beat = () => {
     const tried = lastCycle.ok + lastCycle.fail;
     return forwarder.heartbeat({
       devices_total: devices.length + objects.length,
       devices_unreachable: lastCycle.fail,
       last_poll_ok_ratio: tried ? Math.round((lastCycle.ok / tried) * 1000) / 1000 : null,
-      // devices_count is what the old cloud has always read; both names go.
-      devices_count: devices.length + objects.length,
-      devices: devices.length + objects.length,
-      poll_ok: lastCycle.ok, poll_fail: lastCycle.fail,
-      metrics_sent: lastCycle.metrics || 0,
-      cycle_ms: lastCycle.took, last_error: lastCycle.error,
-      ...extra,
     });
   };
   setInterval(() => beat(), cfg.heartbeatIntervalMs);
-  beat({ boot: true });
+  beat();
 
-  // Telemetry batch (contract §3.3) — the forwarder also cuts one at 500 points.
+  // Telemetry batch to the FMS (contract §3.3 shape) — the console client also cuts one at 500 points.
   setInterval(() => forwarder.flushTelemetry(), cfg.telemetryFlushMs);
 
   // Drain buffer every 30s

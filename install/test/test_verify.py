@@ -56,8 +56,9 @@ class Verify(unittest.TestCase):
         names = [r.name for r in res]
         self.assertIn("service cflex-collector", names)
         self.assertIn("collector → app01 443", names)
-        self.assertIn("collector → portal cflex.fms.support", names)
-        self.assertIn(("tls", "cflex.fms.support", 443), calls)
+        # D-13: a collector has no Portal path — not checked, not dialled.
+        self.assertFalse(any("portal" in n for n in names), names)
+        self.assertNotIn(("tls", "cflex.fms.support", 443), calls)
         self.assertFalse(any(h.startswith("<") for _, h, _ in calls if h))
         # Q-2026-10-25-10 (A): the collector does not notify — no SMTP/ServiceNow/Teams check, said so.
         self.assertFalse(any(n in r.name for r in res for n in ("SMTP relay", "ServiceNow", "Teams")))
@@ -76,6 +77,7 @@ class Verify(unittest.TestCase):
         self.assertEqual({r.verdict for r in res if "SMTP" in r.name}, {"WARN"})
         self.assertIn(["podman", "exec", "cflex-console", "node", "/opt/cflex/apps/console/src/cli.js", "test-ticket"], ran)
         self.assertEqual([r.verdict for r in res if r.name.startswith("send-test")], ["PASS"])
+        self.assertIn("app → portal cflex.fms.support", [r.name for r in res], "D-13: the app node reaches the Portal")
         col = verify.run(site, "collector", me(site, "collector", "cap01"), "container", FakeRunner(),
                          as_cflex=lambda argv, mutating=True: (0, "", ""), send_test=True, connect=fake)
         self.assertEqual([r.verdict for r in col if r.name == "send-test"], ["WARN"], "the collector has no test ticket to send")

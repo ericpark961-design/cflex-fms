@@ -9,7 +9,10 @@
 //   UPS sim  ◀── SNMP get (community from the console) ─────────── collector
 //   collector ── telemetry, UPS_ON_BATTERY raise/clear ──────────▶ console   (push, collector key)
 //   console  ── e-mail ▶ SMTP relay, incident ▶ ServiceNow;  answers local_notified
-//   collector ── events carrying that local_notified ────────────▶ Portal    (mTLS)
+//   console  ── inventory, telemetry, events carrying that local_notified ──▶ Portal (mTLS, as app01)
+//
+// Since D-13 (WO-INT-012) the Portal link is the console's: the collector
+// process has no Portal setting at all (distributed.e2e.test.js checks that).
 //
 // Stand-ins, each for something this Mac cannot have: a TLS front for nginx
 // (443, HAEA CA), mini-redis for Redis 6, embedded-postgres for PostgreSQL 16
@@ -118,6 +121,9 @@ test.before(async () => {
     CFLEX_DB_URL: dbConn.url, CFLEX_DB_PASSWORD_FILE: dbConn.passwordFile,
     REDIS_URL: redis.url, CONSOLE_SECRET_KEY_FILE: secretKey, CFLEX_TENANT: 'TEST', CONSOLE_COOKIE_SECURE: '0',
     CONSOLE_TWIN_DIR: tmp,
+    // The Portal link (D-13): this node's certificate, CN TEST.app01.
+    CFLEX_PORTAL_URL: portal.url, CFLEX_TLS_CERT: certs.client.certPath, CFLEX_TLS_KEY: certs.client.keyPath, CFLEX_TLS_CA: certs.caPath,
+    CFLEX_PORTAL_HEARTBEAT_MS: '1000', CFLEX_PORTAL_FLUSH_MS: '300', CFLEX_PORTAL_INVENTORY_MS: '2000',
   });
   await waitFor('console /healthz', () => fetch(`http://127.0.0.1:${consolePort}/healthz`).then(r => r.ok));
   // A second connection to read what the console stored (the console process has its own pool).
@@ -142,8 +148,7 @@ test.before(async () => {
     TENANT_ID: 'TEST', CFLEX_NODE_ID: 'cap01', CFLEX_SITE_ID: 'HMA-FV',
     CFLEX_CONSOLE_URL: `https://localhost:${front.address().port}`,
     CFLEX_CONSOLE_KEY_FILE: path.join(tmp, 'collector.key'), CFLEX_CONSOLE_CA: certs.caPath,
-    CFLEX_PORTAL_URL: portal.url, CFLEX_TLS_CERT: certs.client.certPath, CFLEX_TLS_KEY: certs.client.keyPath, CFLEX_TLS_CA: certs.caPath,
-    BUFFER_DB_PATH: path.join(tmp, 'buffer.db'), CFLEX_ID_STORE: path.join(tmp, 'ids.json'), CFLEX_ITSM_STORE: path.join(tmp, 'itsm.json'),
+    BUFFER_DB_PATH: path.join(tmp, 'buffer.db'),
     POLL_INTERVAL_MS: '1500', HEARTBEAT_INTERVAL_MS: '1000', TELEMETRY_FLUSH_MS: '1000', CONFIG_RELOAD_MS: '3000',
     SNMP_PORT: String(snmpPort), SNMP_TIMEOUT_MS: '1000', SNMP_RETRIES: '0',
   });
@@ -209,13 +214,18 @@ test('clear: back on line, the alarm clears in the console, the ServiceNow incid
   assert.deepStrictEqual(hist.map(h => h.kind), ['alarm_raise', 'alarm_clear']);
 });
 
-test('heartbeat: the console sees the collector and its Portal link', { skip }, async () => {
+test('heartbeat: the console sees the collector; the Portal link is the console\'s, and it relays the collector', { skip }, async () => {
   const c = await waitFor('collector heartbeat', async () => {
     const r = await one(`SELECT * FROM collectors WHERE node_id = 'cap01'`);
-    return r?.last_seen && json(r.heartbeat)?.portal?.last_reachable && r;
+    return r?.last_seen && json(r.heartbeat)?.devices_total === 1 && r;
   });
-  const hb = json(c.heartbeat);
-  assert.strictEqual(hb.portal.enabled, true);
-  assert.strictEqual(hb.devices_total, 1);
-  assert.ok(!logs.probe.some(l => /local notify on the Collector/.test(l)), 'the collector does not notify by itself');
+  assert.ok(!('portal' in json(c.heartbeat)), 'a collector has no Portal link (D-13)');
+  const link = await waitFor('the console\'s Portal link up', async () => {
+    const v = json((await one(`SELECT value FROM settings WHERE key = 'portal.link.app01'`))?.value);
+    return v?.last_reachable && v;
+  });
+  assert.deepStrictEqual([link.enabled, link.sender], [true, true]);
+  await waitFor('collector heartbeat relayed to the Portal', () => portal.of('POST /api/v1/heartbeat').some(b => b.role === 'collector' && b.collector_id === 'cap01'));
+  assert.ok(portal.of('POST /api/v1/heartbeat').some(b => b.role === 'app' && b.node_id === 'app01'));
+  assert.ok(portal.state.requests.every(r => r.peerCN === 'TEST.app01'), 'only the app node talks to the Portal');
 });

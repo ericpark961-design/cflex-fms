@@ -1,10 +1,12 @@
-// portal/transport.js — one HTTPS request to the Portal: mTLS, through a proxy if any.
+// net/transport.js — one HTTPS request: TLS with a given trust store, a client
+// certificate when one is given (mTLS), through a proxy if one is given.
 //
-// Contract §1: the Probe always dials out, presents its device certificate,
-// and must work behind HAEA's proxy (HTTPS_PROXY, with credentials, possibly
-// re-signing TLS with its own CA). axios cannot do all of that without two
-// more packages; node's https and tls can, so the forwarder talks through this
-// instead and the offline bundle carries nothing extra.
+// Two users since D-13 (WO-INT-012): the Collector's link to the Local Console
+// (console/client.js — HAEA CA, no client certificate, never a proxy), and on
+// the FMS the Portal sender (apps/console/src/portal.js — contract §1: device
+// certificate, HAEA's proxy with credentials, possibly re-signing TLS with its
+// own CA) and the local notifier. axios cannot do all of that without two more
+// packages; node's https and tls can, so the offline bundle carries nothing extra.
 //
 // Proxy auth: Basic is implemented. NTLM needs a challenge/response handshake
 // over the same CONNECT socket and is not — see DECISIONS Q-2026-10-25-04.

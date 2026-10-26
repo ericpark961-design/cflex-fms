@@ -176,7 +176,8 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
         key = "/opt/app/cflex/secrets/collector/collector.key"
         add("collector key (Local Console)", runner.exists(key),
             "present" if runner.exists(key) else "%s missing — issue it on the console: node src/cli.js collector-key %s" % (key, me[1]))
-    if role in ("collector", "app") and siteconf.get(site, "portal.enabled", True):
+    # D-13: only the app nodes reach the Portal; a collector has no external path.
+    if role == "app" and siteconf.get(site, "portal.enabled", True):
         h, p = _host(siteconf.get(site, "portal.url"))
         good, d = tls_f(h, p or 443, proxy=proxy)
         add("%s → portal %s" % (role, h), good, d + (" proxy %s" % redact(siteconf.get(site, "portal.proxy")) if proxy else ""))

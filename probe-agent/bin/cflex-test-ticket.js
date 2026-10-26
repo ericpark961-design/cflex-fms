@@ -11,7 +11,7 @@
 // Credentials come from the config file (…File keys preferred); never from argv.
 const path = require('path');
 const { createLocalNotifier, loadNotifyConfig } = require('../src/alarms/local-notify');
-const transport = require('../src/portal/transport');
+const transport = require('../src/net/transport');
 
 function args(argv) {
   const a = { json: false, keepOpen: false, config: process.env.CFLEX_NOTIFY_CONFIG || '' };

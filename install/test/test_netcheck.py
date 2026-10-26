@@ -69,8 +69,11 @@ class NetCheck(unittest.TestCase):
         by = {r["id"]: r for r in rep["rows"]}
         self.assertEqual(by["FW-2"]["verdict"], "PASS")
         self.assertIn("162→1162", by["FW-2"]["checks"][0]["observed"])
-        self.assertEqual(by["FW-4"]["verdict"], "PASS")
-        self.assertIn("연결 1건", by["FW-4"]["checks"][0]["observed"])
+        # D-13 (WO-INT-012): the Portal row is the app's; on a collector it is N/A, said why —
+        # and a collector connection to the Portal is then a C-Flex flow outside v3 (an extra, FAIL).
+        self.assertEqual(by["FW-4"]["verdict"], "N/A")
+        self.assertIn("해당 없음 (D-13)", by["FW-4"]["checks"][0]["observed"])
+        self.assertEqual(by["FW-4"]["direction"], "collector/app → cflex.fms.support (40.114.79.164)", "v3 text kept verbatim")
         self.assertEqual(by["FW-5"]["verdict"], "N/A")
         fw7 = by["FW-7"]["checks"]
         self.assertEqual(fw7[0]["verdict"], "PASS")  # collector → app 443, live
@@ -86,8 +89,19 @@ class NetCheck(unittest.TestCase):
         extras = {(e["addr"], e["verdict"]) for e in rep["extras"]}
         self.assertIn(("0.0.0.0:9090", "WARN"), extras)            # cockpit: not ours, recorded
         self.assertIn(("104.16.1.1:443", "FAIL"), extras)          # ours, not in v3
+        self.assertIn(("40.114.79.164:443", "FAIL"), extras)       # a collector reaching the Portal (D-13: it must not)
         self.assertFalse(any(e["addr"].endswith(":22") for e in rep["extras"]))
         self.assertFalse(rep["ok"])
+
+    def test_app_portal_row_fw4(self):
+        # D-13: app01/app02 → Portal 443 is the required FW-4 path.
+        est = netcheck.parse_ss("0      0      10.138.14.67:51514   40.114.79.164:443   users:((\"conmon\",pid=2201,fd=20))\n", "tcp")
+        rep = netcheck.evaluate(self.matrix, self.site, "app", me(self.site, "app", "app01"), [], est, FakeRunner(files=FILES))
+        fw4 = [r for r in rep["rows"] if r["id"] == "FW-4"][0]
+        self.assertEqual(fw4["verdict"], "PASS", fw4)
+        self.assertIn("연결 1건", fw4["checks"][0]["observed"])
+        none = netcheck.evaluate(self.matrix, self.site, "app", me(self.site, "app", "app01"), [], [], FakeRunner(files=FILES))
+        self.assertNotEqual([r for r in none["rows"] if r["id"] == "FW-4"][0]["verdict"], "N/A", "required on app, not skipped")
 
     def test_forward_rule_missing_fails_fw2(self):
         rep = self.evaluate(forward_rules=frozenset())

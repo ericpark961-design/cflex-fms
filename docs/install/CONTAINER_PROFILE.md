@@ -109,6 +109,8 @@ rootless 컨테이너는 1024 미만 포트를 직접 열 수 없다. 두 방법
   없으면 app 설치가 멈춘다. 그래서 순서는 db01 → (복사) → app01 → app02이다(WO-INT-008).
 - 인증서: `certs/console.crt|key`(HAEA 내부 CA — 없으면 설치 중단, 스테이징만 `--self-signed-console-cert`),
   `certs/console-ca.pem`(피어 443 검증), `certs/device.pem|key` + `portal-ca.pem`(포털 mTLS, 키는 노드 밖으로 나가지 않음).
+  **D-13(WO-INT-012)부터 포털 장치 인증서는 app01·app02에 각 1장**(CN `<tenant>.app01`/`.app02`, 노드에서 CSR 생성)이다.
+  컬렉터(cap01…)에는 포털 인증서·프록시 설정이 없다 — `console-ca.pem`과 `collector/collector.key`만 둔다.
 
 ## 6. 설치 절차 (요약 MOP)
 ```
@@ -139,16 +141,19 @@ rootless `podman load`는 `cflex`가 읽을 수 있어야 하므로 설치기가
 | FW-2 | NMC → collector | UDP 162 | trap | PASS |
 ...
 FW-2  PASS listen udp/162   firewalld udp 162→1162, 10.138.14.66:1162 (slirp4netns) 리스닝
-FW-4  PASS out tcp/[443]    cflex.fms.support (40.114.79.164) — 연결 1건 (40.114.79.164:443)
+FW-4  N/A  out tcp/[443]    해당 없음 (D-13) — 포털 송신은 FMS(app01/app02)가 한다; collector는 외부 경로 없음, collector → app 443(FW-7)만
 ## v3에 없는 리스너/연결
 EXTRA WARN listen tcp 0.0.0.0:9090 systemd  C-Flex 외 서비스(HAEA 기본 이미지) — 기록용
-결과: PASS — PASS 6 · FAIL 0 · WARN 1 · N/A 1
+결과: PASS — PASS 5 · FAIL 0 · WARN 1 · N/A 2
 ```
 - 리스너: `ss -lntup`의 비-loopback 소켓. 아웃바운드: `ss -nt state established` + `site.yaml`의 목적지.
 - v3에 없는 것: C-Flex 프로세스(podman/slirp4netns/pasta/node/nginx/redis/postgres)면 **FAIL**, 그 밖(HAEA 기본 서비스)은 **WARN**(기록용).
 - UDP 161 폴링은 연결이 없는 소켓이라 관측되지 않는다 → FW-1은 `nmc-targets.txt`의 대수(41)로 판정한다.
 - cap01에서 FW-8(SMTP 릴레이, 프록시 → Teams/ServiceNow)은 **N/A "해당 없음 — 로컬 알림은 Local Console(app)이 발송"** 으로 나온다.
-  cap01의 프록시 사용은 FW-4(포털)뿐이다. cap01에서 SMTP·ServiceNow 연결이 관측되면 v3 밖(EXTRA FAIL)이다.
+  cap01에서 SMTP·ServiceNow 연결이 관측되면 v3 밖(EXTRA FAIL)이다.
+- **D-13(WO-INT-012):** FW-4(→ cflex.fms.support 443)는 **app01·app02에서 필수**(PASS여야 함)이고 cap01에서는 **N/A "해당 없음 (D-13)"** 이다.
+  cap01에서 포털(40.114.79.164:443)이나 프록시로 가는 연결이 관측되면 v3 밖(EXTRA FAIL)이다. 컬렉터의 아웃바운드는 FW-1·FW-3(NMC)과 FW-7(collector → app 443)뿐이다.
+  방향·포트·용도 열은 v3 원문 그대로다(**방화벽 요청서 v3 자체는 바꾸지 않았다** — HAEA 제출본). 컬렉터를 사이트별로 늘리면 방화벽 v4에서 FW-4 행을 app만으로 고쳐 요청한다(D-13).
 
 ## 8. 업그레이드 / 롤백 (§3.3)
 ```

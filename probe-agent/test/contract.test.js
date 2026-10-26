@@ -18,12 +18,12 @@ const ctx = { tenant: 'HAEA', siteId: 'HMA-FV' };
 const TS = '2026-10-23T18:05:12.345Z';
 const UUID = '0b8a3f62-5d1e-4c2a-9f7b-1e2d3c4b5a69';
 
-test('all eight appendix-C schema files exist, parse, and carry version 1.1', () => {
+test('all eight appendix-C schema files exist, parse, and carry version 1.2', () => {
   assert.deepStrictEqual(schema.NAMES.length, 8);
   for (const n of schema.NAMES) {
     const s = schema.load(n);
     assert.strictEqual(s.$schema, 'https://json-schema.org/draft/2020-12/schema', n);
-    assert.strictEqual(s['x-contract-version'], '1.1', n);
+    assert.strictEqual(s['x-contract-version'], '1.2', n);
   }
   assert.deepStrictEqual(
     fs.readdirSync(schema.SCHEMA_DIR).filter(f => f.endsWith('.schema.json')).sort(),
@@ -56,6 +56,59 @@ test('the contract document examples validate', () => {
     const v = schema.validate(name, body);
     assert.ok(v.ok, `${name}: ${v.errors.join('; ')}`);
   }
+});
+
+// v1.2 (D-13, WO-INT-012): collector_id — and nothing else — is new.
+const V11 = {
+  heartbeat: { node_id: 'cap01', role: 'collector', version: '2.1.0', uptime_s: 86400, queue_depth: 0,
+    last_poll_ok_ratio: 0.998, devices_total: 48, devices_unreachable: 1, clock: TS, profile: 'container', os: 'RHEL 8.10' },
+  telemetry: { node_id: 'cap01', points: [{ device_id: '3f9c0a1b2c3d4e5f', ts: TS, m: { bat_pct: 100, status: 'online' } }] },
+  events: { events: [{ event_id: UUID, alarm_id: UUID, device_id: '3f9c0a1b2c3d4e5f', site_id: 'HMA-FV', ts: TS,
+    kind: 'alarm_raise', severity: 'P1', code: 'UPS_ON_BATTERY', title: 'UPS on battery', source: 'trap' }] },
+};
+
+test('v1.2: collector_id on a heartbeat, a telemetry point and an event validates, and survives the §5 whitelist', () => {
+  const v12 = {
+    heartbeat: { ...V11.heartbeat, node_id: 'app01', collector_id: 'cap02' },
+    telemetry: { node_id: 'app01', points: [{ ...V11.telemetry.points[0], collector_id: 'cap02' }] },
+    events: { events: [{ ...V11.events.events[0], collector_id: 'cap02' }] },
+  };
+  for (const [name, body] of Object.entries(v12)) {
+    const v = schema.validate(name, body);
+    assert.ok(v.ok, `${name}: ${v.errors.join('; ')}`);
+    const { value, blocked } = schema.prune(name, body);
+    assert.deepStrictEqual(blocked, [], name);
+    assert.ok(JSON.stringify(value).includes('"collector_id":"cap02"'), name);
+  }
+  // The app's own heartbeat: role app, no collector_id.
+  assert.ok(schema.validate('heartbeat', { ...V11.heartbeat, node_id: 'app01', role: 'app' }).ok);
+});
+
+test('v1.1 → v1.2 is backward compatible: every v1.1 payload (no collector_id) still validates, unchanged by the whitelist', () => {
+  for (const [name, body] of Object.entries(V11)) {
+    const v = schema.validate(name, body);
+    assert.ok(v.ok, `${name}: ${v.errors.join('; ')}`);
+    const { value, blocked } = schema.prune(name, body);
+    assert.deepStrictEqual([value, blocked], [body, []], name);
+  }
+});
+
+test('v1.2 adds collector_id only: a bad collector_id is refused, and appendix A keys / appendix B codes are as in v1.1', () => {
+  for (const bad of ['CAP01', '', 'cap 01', 'c'.repeat(33), 7]) {
+    assert.ok(!schema.validate('events', { events: [{ ...V11.events.events[0], collector_id: bad }] }).ok, JSON.stringify(bad));
+    assert.ok(!schema.validate('telemetry', { node_id: 'app01', points: [{ ...V11.telemetry.points[0], collector_id: bad }] }).ok, JSON.stringify(bad));
+  }
+  // The fields each schema names: v1.1's plus collector_id where the contract adds it.
+  const props = (name, at) => Object.keys(at(schema.load(name))).sort();
+  assert.deepStrictEqual(props('heartbeat', s => s.properties), ['clock', 'collector_id', 'devices_total', 'devices_unreachable',
+    'last_poll_ok_ratio', 'node_id', 'os', 'profile', 'queue_depth', 'role', 'uptime_s', 'version']);
+  assert.deepStrictEqual(props('telemetry', s => s.$defs.point.properties), ['collector_id', 'device_id', 'm', 'ts']);
+  assert.deepStrictEqual(props('events', s => s.$defs.event.properties), ['alarm_id', 'code', 'collector_id', 'detail', 'device_id',
+    'event_id', 'kind', 'local_notified', 'severity', 'site_id', 'source', 'title', 'ts']);
+  // Appendix A (27 keys) and appendix B (22 codes) unchanged (Q-2026-10-26-05/14: decided with the HAEA scope, not here).
+  assert.strictEqual(Object.keys(schema.load('telemetry').$defs.metrics.properties).length, 27);
+  assert.strictEqual(schema.load('events').$defs.code.enum.length, 22);
+  assert.deepStrictEqual([...schema.load('events').$defs.code.enum].sort(), Object.keys(require('../src/alarms/codes').SEVERITY).sort());
 });
 
 test('schemas refuse what the contract forbids', () => {

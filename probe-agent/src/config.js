@@ -1,11 +1,14 @@
 // config.js — load + validate env
 require('dotenv').config();
 
+// D-13 (WO-INT-012): a collector sends only to the FMS (the Local Console).
+// It has no Portal URL, no device certificate or key, no proxy and no old-cloud
+// path — those settings live on the app nodes (apps/console/src/config.js).
+const csv = (v) => String(v || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+
 const cfg = {
-  cflexUrl: process.env.CFLEX_URL || 'https://cflex.runless.co.uk',
-  cflexToken: process.env.CFLEX_TOKEN || '',
   tenantId: process.env.TENANT_ID || 'HAEA',
-  probeId: process.env.PROBE_ID || 'probe-haea-vm1',
+  probeId: process.env.PROBE_ID || process.env.CFLEX_NODE_ID || 'cap01',
 
   pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS || '60000', 10),
   // How many devices to poll at once. Serial polling could not finish a cycle
@@ -19,28 +22,16 @@ const cfg = {
   // Contract §3.3: a telemetry batch every 60 s (or at 500 points, whichever first).
   telemetryFlushMs: parseInt(process.env.TELEMETRY_FLUSH_MS || '60000', 10),
 
-  // The Portal, per contract IFC-CFLEX-2026-1023 v1.0. Only paths go in env —
-  // the key file stays on the node (0600) and is never read into a log.
-  portal: {
-    enabled: process.env.CFLEX_PORTAL_ENABLED !== '0',
-    url: process.env.CFLEX_PORTAL_URL || 'https://cflex.fms.support',
+  // This collector. node_id (cap01, cap02 …) is how the FMS knows it (its key)
+  // and becomes collector_id at the Portal (contract 00 v1.2). siteId is the
+  // fallback site for a device row without one. sites is the scope: the FMS
+  // hands this collector only those sites' devices (empty = every site, the
+  // HAEA first deployment with one collector).
+  node: {
     nodeId: process.env.CFLEX_NODE_ID || 'cap01',
     siteId: process.env.CFLEX_SITE_ID || 'HAEA-HQ',
+    sites: csv(process.env.CFLEX_COLLECTOR_SITES),
     profile: process.env.CFLEX_PROFILE || 'bare',
-    tls: {
-      certPath: process.env.CFLEX_TLS_CERT || '',
-      keyPath: process.env.CFLEX_TLS_KEY || '',
-      caPath: process.env.CFLEX_TLS_CA || '',
-      proxyCaPath: process.env.CFLEX_PROXY_CA || '',
-    },
-    proxy: process.env.HTTPS_PROXY || process.env.https_proxy || '',
-    noProxy: process.env.NO_PROXY || process.env.no_proxy || '',
-  },
-
-  // The old cloud path (/v1/probe/event with X-Probe-Key). Kept only so a site
-  // still on it can be switched back; off unless asked for.
-  legacy: {
-    enabled: process.env.CFLEX_LEGACY_FORWARD === '1',
   },
 
   // The Local Console (spec 01 §2.1): the inventory comes from it, telemetry
@@ -57,18 +48,6 @@ const cfg = {
   },
   // How often the inventory and config (thresholds, maintenance windows) are pulled again.
   configReloadMs: parseInt(process.env.CONFIG_RELOAD_MS || String(5 * 60 * 1000), 10),
-
-  // Local notification from the Collector itself — off. The Local Console
-  // notifies (Q-2026-10-25-10 (A)); cap01 has no route to the SMTP relay or
-  // the proxy in firewall request v3. CFLEX_COLLECTOR_NOTIFY=1 brings the old
-  // path back for a site without a console; CFLEX_NOTIFY_CONFIG alone is
-  // ignored with a warning.
-  notify: {
-    collectorNotify: process.env.CFLEX_COLLECTOR_NOTIFY === '1',
-    configPath: process.env.CFLEX_NOTIFY_CONFIG || '',
-    itsmStorePath: process.env.CFLEX_ITSM_STORE || './data/itsm-map.json',
-    idStorePath: process.env.CFLEX_ID_STORE || './data/device-ids.json',
-  },
 
   // Alarm engine (alarms/engine.js). Defaults are the engine's; only what is set here overrides.
   alarms: Object.fromEntries(Object.entries({
@@ -104,14 +83,8 @@ const cfg = {
   },
 };
 
-if (cfg.legacy.enabled && !cfg.cflexToken) {
-  console.warn('[config] WARN: CFLEX_LEGACY_FORWARD=1 but CFLEX_TOKEN not set — legacy events will fail and buffer');
-}
 if (cfg.console.url && !cfg.console.keyPath) {
   console.warn('[config] WARN: CFLEX_CONSOLE_URL set but CFLEX_CONSOLE_KEY_FILE not — the Local Console will refuse this node');
-}
-if (cfg.portal.enabled && !(cfg.portal.tls.certPath && cfg.portal.tls.keyPath)) {
-  console.warn('[config] WARN: CFLEX_TLS_CERT/CFLEX_TLS_KEY not set — the Portal will refuse this node (mTLS, contract §1)');
 }
 
 module.exports = cfg;

@@ -407,3 +407,49 @@ D-12a 동결 유지. 미구현 10개는 사전에 `미구현` 표기. `COLLECTOR
 
 ### 답 Q-2026-10-26-16 → **(A)** (관리자, 2026-10-26)
 버그 후보 5건은 기록만(코드 변경 0). SAT 실장비(HAEA NMC)에서 1·2·3(배터리 교체 trap 조기 해제, `bat_replace_flag` 항상 false, 출력 상태 9·10 unknown)을 확인한 뒤 반 세션 버그 수정 WO로 처리. 4(UPS-MIB 전압 ÷10)는 RFC 1628 단위 대조를 같은 WO에 포함, 5(폴 타임아웃 고정)는 `SNMP_TIMEOUT_MS`·`SNMP_RETRIES` 반영으로 함께 수정. WO-INT-012 범위에 넣지 않는다.
+
+### Q-2026-10-26-17 — 포털 송신기의 실행 위치와 "1노드만 송신" 방식 (Claude Code, WO-INT-012)
+- **(A)** app 프로세스 안(`apps/console/src/portal.js`)에서 돈다. 두 app 노드 모두 컬렉터에게서 받은 것을 db01 `portal_outbox`에 넣는다(컬렉터는 어느 노드로든 보낸다). **비우기·인벤토리 동기화·컬렉터 heartbeat 대리 송신은 PostgreSQL 세션 advisory lock(`LOCKS.portal=4`, 전용 연결로 계속 쥔다)을 잡은 노드 1대만** 한다. 그 노드나 연결이 죽으면 잠금도 풀리고, 다른 노드가 다음 주기(5초)에 이어받는다. heartbeat(`role:"app"`)는 **각 노드가 자기 것을** 보낸다(app02 생존도 포털이 본다). 노드 간 8080 0, 새 서비스·포트 0 — **권고, 이대로 진행했다.**
+- **(B)** 별도 서비스(`cflex-forwarder` 유닛)로 분리한다. Quadlet·베어 유닛·방화벽 설명이 하나씩 늘고, 같은 잠금이 여전히 필요하다.
+
+### Q-2026-10-26-18 — FMS 버퍼(7일)와 병합 표 설계 (Claude Code, WO-INT-012)
+추가형 마이그레이션 `0002_portal_outbox.sql`(Q-12 원칙: 표·열 추가만):
+- `portal_outbox` — 이름·메서드·`Idempotency-Key`(넣을 때 고정)·본문(화이트리스트·스키마 검증을 거친 계약 payload)·`not_before`·시도 수. id 순서로 보낸다. `CFLEX_PORTAL_BUFFER_DAYS`(기본 7) 지난 행은 매일 지운다. 재시도 규칙은 컬렉터 forwarder와 같다(1 s…5 min ±20 %, 429 Retry-After, 409 재시도, 그 밖 4xx 버림).
+- 이벤트는 콘솔 통보가 끝날 때까지 최대 30초 `not_before`로 묶였다가 `local_notified`를 채워 풀린다(통보 기본 비활성이면 곧바로 풀린다). 그 사이 프로세스가 죽으면 30초 뒤 `local_notified` 없이 나간다(= "로컬 통보 안 됨", 계약 §3.4 의미 그대로).
+- `alarm_sources`(컬렉터 alarm_id → FMS alarm_id, 컬렉터별 open/cleared), `alarm_events.collector_id` 열, `device_replaced`(serial 확인으로 device_id가 바뀐 장비 — 다음 인벤토리에 `replaced_by` 1회).
+- 컬렉터의 SQLite `buffer.js`는 컬렉터 → FMS 구간(`q_console`)용으로 그대로 둔다. 업그레이드 전에 컬렉터가 포털용으로 쌓아 둔 `events` 표 행은 **보내지 않는다**(같은 데이터가 콘솔 경로로 FMS에 있다). 기동 시 경고 1줄, 보존 기간 뒤 삭제.
+- **(A)** 이대로 — **권고, 이대로 진행했다.** **(B)** outbox를 월 파티션으로(7일 보존이라 이득이 작다).
+
+### Q-2026-10-26-19 — `collector_id`의 위치·기본값과 컬렉터 heartbeat (Claude Code, WO-INT-012)
+- 위치: telemetry는 **point마다**, events는 **event마다**, heartbeat는 최상위. 패턴은 `node_id`와 같다(`^[a-z0-9][a-z0-9_-]{0,31}$`). 선택 필드이며 없으면 "`node_id`가 직접 수집"(v1.1 송신자)으로 본다.
+- 값: FMS가 **인증된 컬렉터 키의 node id**(`X-CFlex-Node` + Bearer)로 붙인다. 컬렉터가 본문에 쓴 값은 쓰지 않는다. FMS 자신의 노드 이벤트(`CLOCK_DRIFT`)에는 붙이지 않는다.
+- heartbeat: FMS는 자기 것(`role:"app"`, `collector_id` 없음)과, 최근 5분 안에 보고한 컬렉터마다 1건(`node_id`=송신 app, `role:"collector"`, `collector_id`, 컬렉터가 보고한 계약 필드 그대로)을 보낸다. 컬렉터가 멈추면 대리 heartbeat가 끊기므로 포털은 Q-15 답대로 heartbeat 부재(5분)로 `COLLECTOR_DOWN`/PROBE_OFFLINE을 **`collector_id` 기준**으로 판정할 수 있다.
+- **(A)** 이대로 — **권고, 이대로 진행했다.** **(B)** telemetry 배치 최상위에 1개만(배치를 컬렉터별로 나눠야 한다).
+
+### Q-2026-10-26-20 — 여러 컬렉터의 같은 알람을 하나로 합치는 규칙 (Claude Code, WO-INT-012)
+분류 엔진은 컬렉터에 그대로 있다(지시대로). 그래서 같은 장비·같은 고장을 컬렉터 두 대가 보면 alarm_id가 둘 생긴다. FMS(`ingest.js`)에서:
+- **다른 컬렉터가 이미 연** 같은 `device_id`·같은 `code`의 open 알람이 있으면 새 alarm_id를 그 알람에 매핑한다(먼저 연 alarm_id가 정본). 같은 컬렉터의 알람끼리는 합치지 않는다 — 단일 컬렉터(HAEA 1차) 동작은 전과 같다(통합 테스트 그대로 통과).
+- 병합된 raise는 이력에만 남고 포털·통보로 가지 않는다. update는 정본 alarm_id로 간다. clear는 **마지막으로 열려 있던 컬렉터가 해제할 때만** 알람을 닫고 포털에 보낸다.
+- 컬렉터에 돌려주는 응답 모양(`accepted`, `duplicate`, `local_notified`)은 바꾸지 않았다.
+- **(A)** 이대로 — **권고, 이대로 진행했다.** **(B)** 첫 컬렉터가 해제하면 바로 닫는다(다른 컬렉터가 아직 보고 있으면 다시 raise되어 깜빡인다).
+
+### Q-2026-10-26-21 — 컬렉터에서 함께 없앤 외부 경로 (Claude Code, WO-INT-012)
+D-13 "컬렉터는 외부 경로를 갖지 않는다"와 완료 기준 "컬렉터 프로세스에 포털 설정/호출 0"을 지키려고 포털 송신 말고도 다음을 컬렉터에서 뺐다(기능 추가 아님, D-12a 범위):
+1. 구 클라우드 경로 — `CFLEX_LEGACY_FORWARD`(/v1/probe/event·heartbeat, 기본 꺼짐), 콘솔이 없을 때의 `/v1/probe/devices`·`/objects` 인벤토리 당겨오기, `CFLEX_URL`·`CFLEX_TOKEN`. 컬렉터는 이제 `CFLEX_CONSOLE_URL`이 없으면 보낼 곳이 없다고 경고하고 폴링하지 않는다.
+2. 컬렉터 자체 통보 — `CFLEX_COLLECTOR_NOTIFY`·`CFLEX_NOTIFY_CONFIG`(콘솔 없는 사이트용, 기본 꺼짐). 통보 모듈(`alarms/local-notify.js`)은 콘솔이 쓰므로 남겼다. 수동 CLI `bin/cflex-test-ticket.js`(컬렉터 프로세스 아님)도 남겼다.
+3. `CLOCK_DRIFT`(포털 Date 헤더 기준)와 `replaced_by` 장부(`CFLEX_ID_STORE`) — 포털 응답·인벤토리와 함께 FMS로 옮겼다.
+4. heartbeat의 구 클라우드 전용 필드(`poll_ok`·`devices_count` 등) — 콘솔은 계약 필드만 저장하던 것이라 영향 없음.
+5. `portal/transport.js` → `net/transport.js`로 이름만 옮겼다(컬렉터 → 콘솔 HTTPS와 FMS 포털 송신이 함께 쓴다; 내용 동일).
+- **(A)** 이대로 — **권고, 이대로 진행했다.** **(B)** 1·2를 플래그 뒤에 남긴다(그러면 컬렉터 코드에 외부 URL·프록시 설정이 남아 grep 검사 0을 만족하지 못한다).
+
+### Q-2026-10-26-22 — 사이트 스코프 렌더 규칙 (Claude Code, WO-INT-012)
+`site.yaml`에는 이미 `hosts.collectors[].sites`가 있다(예: cap01 `[HMA-FV, KUS-IRV, HAEA-HQ]`). 컬렉터 설정 `CFLEX_COLLECTOR_SITES`(쉼표 목록, 비면 전체)를 새로 두고 FMS가 `GET /collector/v1/devices?sites=`로 거른다.
+- **(A)** 컬렉터가 **1대면 비워 둔다(전체 사이트)**, 2대 이상이면 각자의 `sites`를 렌더한다. HAEA 1차(cap01v 1대)는 지금과 똑같이 콘솔의 모든 장비를 폴링한다 — `sites`에 빠진 사이트의 장비가 조용히 빠지는 일이 없다 — **권고, 이대로 진행했다.**
+- **(B)** 1대여도 `sites`를 그대로 렌더한다(목록에 없는 사이트의 장비는 폴링하지 않는다).
+
+### Q-2026-10-26-23 — 포털(Codex) 쪽에 전할 것: 계약 v1.2와 장치 인증서 (Claude Code, WO-INT-012) — 질문이 아니라 조율 요청
+포털 코드는 손대지 않았다. 스키마 정본(D-08)은 이미 v1.2다. 포털 쪽에서 필요한 것:
+1. `X-CFlex-API-Version: 1.2` 수락(1.1·1.0도 계속), `collector_id`(heartbeat·point·event) 수락·저장.
+2. 노드 생존: `role:"collector"` heartbeat를 `collector_id`별로 본다(`node_id`는 app01/app02 — 보내는 쪽이 바뀌면 바뀐다).
+3. **장치 인증서는 app01·app02에 1장씩**(CN `HAEA.app01`·`HAEA.app02`). cap01용 인증서는 필요 없다(D-13). CSR은 app 노드에서 만든다.
+- 권고: 관리자가 Codex TASKS(WO-PTL-001 수신·mTLS, WO-PTL-003 PROBE_OFFLINE)에 위 3줄을 반영한다.

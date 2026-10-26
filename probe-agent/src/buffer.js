@@ -1,10 +1,13 @@
-// buffer.js — local sqlite buffer for events when cflex is unreachable
-// Drained as soon as cflex returns 200. Retention enforced on insert.
+// buffer.js — the collector's local SQLite store-and-forward, for the
+// collector → FMS leg (D-13, WO-INT-012): channel('console') holds telemetry
+// and events while the Local Console is unreachable, drained in order when it
+// answers; retention BUFFER_RETENTION_DAYS (purgeOld, daily).
 //
-// Two queues in the one file: `events` for the Portal (and the old cloud),
-// and a channel per further destination — today the Local Console
-// (channel('console')). Each drains in its own order, so an outage of one
-// destination never holds up the other.
+// The FMS → Portal buffer (7 days, contract §1) is the FMS's portal_outbox
+// table in PostgreSQL. The `events` table here is what a pre-D-13 collector
+// queued for the Portal itself; nothing writes to it any more, and what is
+// left in it after an upgrade is purged with the rest. The alarm engine's
+// open alarms live in the same file (state()).
 const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');

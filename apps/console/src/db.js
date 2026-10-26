@@ -31,7 +31,8 @@ const MIGRATIONS = path.resolve(__dirname, '../migrations');
 
 // pg_advisory_lock(LOCK_NS, <key>): one namespace for everything the console serialises.
 const LOCK_NS = 0x43464c58;   // 'CFLX'
-const LOCKS = Object.freeze({ migrate: 1, partitions: 2, events: 3 });
+// portal: held for as long as a node is the Portal sender (portal.js, WO-INT-012).
+const LOCKS = Object.freeze({ migrate: 1, partitions: 2, events: 3, portal: 4 });
 
 /** `?` → `$n`, leaving quoted strings, quoted identifiers and comments alone. */
 const converted = new Map();

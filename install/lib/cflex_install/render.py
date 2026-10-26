@@ -117,6 +117,9 @@ def _collector_env(site, me, v, profile):
         "CONSOLE_URLS": console_urls(site),
         "COLLECTOR_SECRETS": C_SECRETS if profile == "container" else SECRETS + "/collector",
         "SITE_ID": sites[0] if sites else siteconf.get(site, "tenant.code"),
+        # D-13 site scope. One collector polls every site (HAEA's first deployment, cap01v); with
+        # several, each polls the sites site.yaml gives it (hosts.collectors[].sites).
+        "COLLECTOR_SITES": ",".join(sites) if len(siteconf.get(site, "hosts.collectors") or []) > 1 else "",
         "POLL_MS": int(siteconf.get(site, "snmp.poll_interval_sec", 60)) * 1000,
         "BUFFER_DAYS": siteconf.get(site, "portal.buffer_days", 7),
         "QUEUE_DIR": C_QUEUE if profile == "container" else BASE + "/queue",
@@ -152,6 +155,8 @@ def _app_env(site, me, v, profile):
         "REDIS_ADDR": "127.0.0.1" if local_redis else rh.get("ip"),
         "DB_HOST": db.get("ip"),
         "DB_PORT": db.get("port", 5432),
+        # The Portal outbox (contract §1, 7 days) is on this side since D-13.
+        "BUFFER_DAYS": siteconf.get(site, "portal.buffer_days", 7),
     })
     vals.update(retention(site))
     return fill(template("env/app.env"), vals, "app.env")

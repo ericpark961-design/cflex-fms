@@ -1,323 +1,87 @@
-// forwarder.js — outbound to the Portal per contract IFC-CFLEX-2026-1023 v1.1.
+// forwarder.js — the Collector's outbound side: everything goes to the FMS
+// (the Local Console, app01/app02 443) and nowhere else.
 //
-//   POST /api/v1/heartbeat   every 60 s, direct (a stale heartbeat is noise)
-//   PUT  /api/v1/inventory   on change + daily full
-//   POST /api/v1/telemetry   batched: every 60 s or 500 points
-//   POST /api/v1/events      immediately
+// D-13 (WO-INT-012): collectors N → FMS → Portal. The Portal sender
+// (contract 00, mTLS, proxy, 7-day buffer) moved to the FMS
+// (apps/console/src/portal.js); a collector has no external path at all —
+// no Portal URL, no device key, no proxy. What it does here is what it did
+// before, minus the Portal:
 //
-// Everything except the heartbeat goes through the local queue first, in
-// order, with its Idempotency-Key fixed at enqueue time — so a retry after a
-// lost response is the same request, and the Portal answers it from its
-// 24-hour cache instead of storing it twice.
+//   pollers' readings  → contract telemetry points (contract/adapt.js)
+//   alerts, traps, comm loss → the alarm engine (alarms/engine.js, unchanged:
+//                        classification stays on the collector) → events
+//   both               → console/client.js: POST /collector/v1/telemetry|events,
+//                        queued in buffer.db (channel 'console') while the FMS
+//                        is unreachable, re-sent in order
+//   heartbeat          → POST /collector/v1/heartbeat (the FMS relays it to the
+//                        Portal as this collector's, collector_id = node id)
 //
-// Retry (§1): 5xx / network → exponential 1 s … 5 min, ±20 % jitter, queue
-// halts behind the failed item. 429 → wait Retry-After. 409 → retry. Other
-// 4xx → drop it (retrying cannot fix it) and count.
-//
-// The old cloud path (/v1/probe/event, X-Probe-Key) survives behind
-// CFLEX_LEGACY_FORWARD=1, off by default.
-const crypto = require('crypto');
-const os = require('os');
+// The FMS merges what several collectors report by device_id; this collector
+// polls only the sites it is given (CFLEX_COLLECTOR_SITES, console/client.js).
 const fs = require('fs');
-const transport = require('./portal/transport');
-const schema = require('./contract/schema');
+const os = require('os');
 const adapt = require('./contract/adapt');
 const { createAlarmEngine } = require('./alarms/engine');
-const { jsonStore } = require('./alarms/store');
-
-// Contract minor this Probe speaks (§0, D-10); the Portal also accepts 1.0.
-const API_VERSION = '1.1';
-const MAX_POINTS = 500;
-const BACKOFF_MIN_MS = 1000;
-const BACKOFF_MAX_MS = 5 * 60 * 1000;
-const CLOCK_DRIFT_MS = 60 * 1000;
-
-const PATHS = {
-  heartbeat: '/api/v1/heartbeat',
-  inventory: '/api/v1/inventory',
-  telemetry: '/api/v1/telemetry',
-  events: '/api/v1/events',
-};
 
 function osName() {
   try { return fs.readFileSync('/etc/redhat-release', 'utf8').replace(/release /, '').replace(/\s*\(.*\)\s*$/, '').trim().slice(0, 64); }
   catch { return `${os.type()} ${os.release()}`.slice(0, 64); }
 }
 
-function retryAfterMs(h, now) {
-  if (!h) return null;
-  const s = Number(h);
-  if (Number.isFinite(s)) return Math.max(0, s * 1000);
-  const t = Date.parse(h);
-  return Number.isFinite(t) ? Math.max(0, t - now) : null;
-}
-
 /**
  * @param {object} o
- * @param {object} o.portal   { enabled, url, tenant, nodeId, role, siteId, profile, tls, proxy, noProxy, timeoutMs }
- * @param {object} o.queue    { enqueue(kind,payload), dequeue(n), ack(ids), fail(id,err), stats() }
- * @param {object} [o.legacy] { enabled, url, token, probeId, tenantId }
- * @param {Function} [o.request]  transport.request, injectable
+ * @param {object} o.node      { tenant, nodeId, siteId, profile, sites }
+ * @param {object} [o.console] console/client.js instance — the only destination
  * @param {Function} [o.now]
- * @param {Function} [o.random]   0..1, for jitter
  * @param {object} [o.log]
  * @param {string} [o.version]
- * @param {object} [o.alarms]     engine options (alarms/engine.js DEFAULTS) + {maintenance, persist}
- * @param {object} [o.console]    console/client.js instance: telemetry and events also go to the
- *                                Local Console, which notifies and answers with local_notified
- * @param {object} [o.notifier]   alarms/local-notify.js instance — the Collector notifying by itself
- *                                (CFLEX_COLLECTOR_NOTIFY=1 only; Q-2026-10-25-10 moved it to the console)
- * @param {object} [o.idStore]    ledger id → last device_id, for replaced_by (alarms/store.js)
+ * @param {object} [o.alarms]  engine options (alarms/engine.js DEFAULTS) + {maintenance, persist}
  */
 function createForwarder(o) {
-  const portal = o.portal;
-  const queue = o.queue;
-  const legacy = o.legacy || { enabled: false };
-  const request = o.request || transport.request;
+  const node = o.node;
   const now = o.now || Date.now;
-  const random = o.random || Math.random;
   const log = o.log || console;
   const version = o.version || '0.0.0';
-  const ctx = { tenant: portal.tenant, siteId: portal.siteId };
+  const ctx = { tenant: node.tenant, siteId: node.siteId };
   const alarms = o.alarms || {};
   const engine = createAlarmEngine({ ctx, now, opts: alarms, maintenance: alarms.maintenance, persist: alarms.persist || null, log });
-  const notifier = o.notifier || null;
   const consoleLink = o.console || null;
-  const idStore = o.idStore || jsonStore(null);
+  const stats = { points: 0, events: 0, unmapped_alerts: 0, console_errors: 0, last_error: null };
 
-  let points = [];
-  let attempts = 0;
-  let nextAt = 0;
-  let throttled = false;          // the last wait came from a 429, not an outage
-  let flushing = null;
-  let lastReachable = null;
-  let commandsPending = 0;
-  let drift = null;               // { alarm_id } while the clock is off
-  const stats = { sent: 0, rejected: 0, retried: 0, invalid: 0, blocked_keys: 0, unmapped_alerts: 0, notify_errors: 0, last_error: null };
+  // The ledger, by ledger id. The pollers' payloads carry only the ledger id;
+  // the contract device_id needs serial and site, and telemetry and events
+  // must derive the same one the FMS has.
+  const ledger = new Map();
 
-  const headers = (key, len) => ({
-    'Content-Type': 'application/json',
-    'Content-Length': String(len),
-    'X-CFlex-Tenant': portal.tenant,
-    'X-CFlex-Node': portal.nodeId,
-    'X-CFlex-API-Version': API_VERSION,
-    'Idempotency-Key': key,
-    'User-Agent': `cflex-probe/${version}`,
-  });
-
-  /** Whitelist (§5) then validate (§7). Returns the body to send, or null. */
-  function prepare(name, payload) {
-    const { value, blocked } = schema.prune(name, payload);
-    if (blocked.length) {
-      stats.blocked_keys += blocked.length;
-      log.warn(`[forwarder] ${name}: ${blocked.length} key(s) not in contract, dropped: ${blocked.slice(0, 5).join(', ')}`);
-    }
-    const v = schema.validate(name, value);
-    if (!v.ok) {
-      stats.invalid++;
-      log.error(`[forwarder] ${name}: payload fails contract schema, not sent: ${v.errors.slice(0, 5).join('; ')}`);
-      return null;
-    }
-    return value;
-  }
-
-  function enqueuePortal(name, method, body) {
-    queue.enqueue('portal', { name, method, path: PATHS[name], key: crypto.randomUUID(), body });
-  }
-
-  async function call(method, path, body, key) {
-    const buf = Buffer.from(JSON.stringify(body));
-    return request({
-      method, url: portal.url.replace(/\/+$/, '') + path, headers: headers(key, buf.length), body: buf,
-      tls: portal.tls, proxy: portal.proxy, noProxy: portal.noProxy, timeoutMs: portal.timeoutMs,
-    });
-  }
-
-  async function callLegacy(kind, payload, bufferedTs) {
-    const body = Buffer.from(JSON.stringify({ kind, payload, ...(bufferedTs ? { buffered_ts: bufferedTs } : {}) }));
-    return request({
-      method: 'POST', url: legacy.url.replace(/\/+$/, '') + '/v1/probe/event', body,
-      headers: {
-        'Content-Type': 'application/json', 'Content-Length': String(body.length),
-        'X-Probe-Key': legacy.token, 'X-Probe-Id': legacy.probeId, 'X-Tenant-Id': legacy.tenantId,
-      },
-      // Same trust store and proxy as the Portal; the old cloud never asks
-      // for a client certificate, so offering one changes nothing there.
-      tls: portal.tls, proxy: portal.proxy, noProxy: portal.noProxy, timeoutMs: portal.timeoutMs,
-    });
-  }
-
-  function backoff(ms) {
-    attempts++;
-    const base = Math.min(BACKOFF_MIN_MS * 2 ** (attempts - 1), BACKOFF_MAX_MS);
-    nextAt = now() + (ms ?? Math.round(base * (0.8 + 0.4 * random())));
-    return nextAt;
-  }
-
-  /** What to do with a response: 'ok' | 'retry' | 'drop'. */
-  function verdict(res) {
-    if (res.status >= 200 && res.status < 300) return 'ok';
-    if (res.status === 429 || res.status === 409 || res.status >= 500) return 'retry';
-    return 'drop';
-  }
-
-  async function flushOnce() {
-    if (now() < nextAt) return { sent: 0, waiting_ms: nextAt - now() };
-    let sent = 0;
-    for (;;) {
-      const rows = queue.dequeue(50);
-      if (!rows.length) break;
-      for (const row of rows) {
-        const item = JSON.parse(row.payload);
-        // Rows written before this version are old-cloud events ({kind} in
-        // the row, payload bare). They belong to the legacy path either way.
-        const isPortal = row.kind === 'portal';
-        let res;
-        try {
-          if (!isPortal) {
-            if (!legacy.enabled) {
-              stats.rejected++;
-              log.warn(`[forwarder] discarding buffered old-cloud row ${row.id} (${row.kind}); CFLEX_LEGACY_FORWARD is off`);
-              queue.ack([row.id]);
-              continue;
-            }
-            res = row.kind === 'legacy'
-              ? await callLegacy(item.kind, item.payload, row.ts)
-              : await callLegacy(row.kind, item, row.ts);
-          } else {
-            res = await call(item.method, item.path, item.body, item.key);
-          }
-        } catch (e) {
-          stats.retried++; stats.last_error = e.message;
-          queue.fail(row.id, e.message);
-          backoff();
-          return { sent, error: e.message };
-        }
-        const v = verdict(res);
-        if (v === 'ok') {
-          queue.ack([row.id]); sent++; stats.sent++;
-          attempts = 0; nextAt = 0; throttled = false; lastReachable = now();
-          continue;
-        }
-        const why = `${isPortal ? item.name : 'legacy'} → HTTP ${res.status}${res.json?.error?.code ? ` ${res.json.error.code}` : ''}`;
-        stats.last_error = why;
-        if (v === 'drop') {
-          stats.rejected++;
-          log.error(`[forwarder] ${why}; dropped (4xx is not retried)`);
-          queue.ack([row.id]);
-          continue;
-        }
-        stats.retried++;
-        queue.fail(row.id, why);
-        throttled = res.status === 429;
-        backoff(throttled ? retryAfterMs(res.headers['retry-after'], now()) ?? undefined : undefined);
-        return { sent, error: why };
-      }
-    }
-    return { sent };
-  }
-
-  /** Drain the queue in order. Concurrent callers share one pass. */
-  function flush() {
-    if (!portal.enabled && !legacy.enabled) return Promise.resolve({ sent: 0, disabled: true });
-    if (!flushing) flushing = flushOnce().finally(() => { flushing = null; });
-    return flushing;
+  /** Register the ledger (the FMS's device rows). The FMS sends the inventory to the Portal. */
+  async function syncInventory(list) {
+    ledger.clear();
+    for (const d of list) ledger.set(String(d.id), d);
+    return { devices: ledger.size };
   }
 
   function flushTelemetry() {
-    while (points.length) {
-      const batch = points.splice(0, MAX_POINTS);
-      const body = prepare('telemetry', { node_id: portal.nodeId, points: batch });
-      if (body) enqueuePortal('telemetry', 'POST', body);
-    }
     if (consoleLink) consoleLink.flushTelemetry().catch(e => log.error(`[forwarder] console telemetry: ${e.message}`));
   }
 
   function addPoint(p) {
-    points.push(p);
-    if (points.length >= MAX_POINTS) flushTelemetry();
+    stats.points++;
+    if (consoleLink) consoleLink.addPoint(p);
   }
 
-  async function postEvents(events) {
-    if (!events.length || !portal.enabled) return { queued: 0 };
-    const body = prepare('events', { events });
-    if (!body) return { queued: 0, invalid: true };
-    enqueuePortal('events', 'POST', body);
-    await flush();
-    return { queued: events.length };
-  }
-
-  async function putInventory(devices, { full = true } = {}) {
-    const body = prepare('inventory', { full, devices });
-    if (!body) return { queued: false };
-    enqueuePortal('inventory', 'PUT', body);
-    await flush();
-    return { queued: true };
-  }
-
-  // The ledger, by ledger id. The pollers' payloads carry only the ledger id;
-  // the contract device_id needs serial and site, and telemetry, events and
-  // inventory must all derive the same one.
-  const ledger = new Map();
-  let inventorySig = null;
-  let inventoryAt = 0;
-
-  /** Register the ledger; PUT the full inventory when it changed or a day has passed (§3.2). */
-  async function syncInventory(list) {
-    ledger.clear();
-    for (const d of list) ledger.set(String(d.id), d);
-    if (!portal.enabled) return { queued: false };
-    const entries = list.map(d => adapt.inventoryDevice(d, ctx));
-    // A device whose ID changed (its serial became known, Q-2026-10-25-05)
-    // sends its old ID once more, linked to the new one (§2 replaced_by).
-    for (let i = 0; i < list.length; i++) {
-      const lid = String(list[i].id);
-      const was = idStore.get(lid);
-      const e = entries[i];
-      if (was && was.device_id !== e.device_id) {
-        entries.push({ device_id: was.device_id, site_id: was.site_id, replaced_by: e.device_id });
-      }
-      if (!was || was.device_id !== e.device_id) idStore.set(lid, { device_id: e.device_id, site_id: e.site_id });
-    }
-    const sig = crypto.createHash('sha1').update(JSON.stringify(entries)).digest('hex');
-    if (sig === inventorySig && now() - inventoryAt < 24 * 3600 * 1000) return { queued: false, unchanged: true };
-    const r = await putInventory(entries, { full: true });
-    if (r.queued) { inventorySig = sig; inventoryAt = now(); }
-    return r;
-  }
-
-  /**
-   * Engine items → the Local Console (which notifies HAEA) → the Portal. The
-   * console goes first because what it delivered is part of the event
-   * (`local_notified`). Unreachable, the event still goes to the Portal now,
-   * without the field — "not notified locally", so the Portal routes it.
-   */
+  /** Engine items → the FMS. Unreachable, they wait in the console queue and go in order. */
   async function emit(items) {
-    if (!items.length) return { queued: 0 };
-    const events = [];
-    for (const it of items) {
-      if (notifier) {
-        try {
-          const ln = await notifier.handle(it);
-          if (ln) it.event.local_notified = ln;
-        } catch (e) {
-          // A notifier bug must not cost the Portal its event.
-          stats.notify_errors++;
-          log.error(`[forwarder] local notify failed for ${it.event.code}: ${e.message}`);
-        }
-      }
-      events.push(it.event);
+    if (!items.length) return { sent: 0 };
+    const events = items.map(it => it.event);
+    stats.events += events.length;
+    if (!consoleLink) return { sent: 0 };
+    try {
+      await consoleLink.events(events);
+    } catch (e) {
+      stats.console_errors++; stats.last_error = e.message;
+      log.error(`[forwarder] console events: ${e.message}`);
     }
-    if (consoleLink) {
-      try {
-        const ln = await consoleLink.events(events);
-        if (ln) for (const ev of events) if (ln[ev.event_id] && !ev.local_notified) ev.local_notified = ln[ev.event_id];
-      } catch (e) {
-        stats.notify_errors++;
-        log.error(`[forwarder] console events: ${e.message}`);
-      }
-    }
-    return postEvents(events);
+    return { sent: events.length };
   }
 
   const deviceFor = (p) => ledger.get(String(p.device_id)) || { id: p.device_id, site_id: p.site_id, serial: p.serial };
@@ -327,129 +91,55 @@ function createForwarder(o) {
    * Translated to the contract here, so no poller had to change.
    */
   async function sendEvent(kind, payload) {
-    if (legacy.enabled) queue.enqueue('legacy', { kind, payload });
-    if (portal.enabled || notifier || consoleLink) {
-      const device = deviceFor(payload);
-      const ts = payload.ts ?? now();
-      // One contract point for both destinations (the console validates the same schema).
-      const point = (p) => {
-        if (portal.enabled) addPoint(p);
-        if (consoleLink) consoleLink.addPoint(p);
-      };
-      if (kind === 'telemetry') {
-        point(Array.isArray(payload.metrics)
-          ? adapt.collectorPoint(device, payload, ctx)
-          : adapt.upsPoint(device, payload, ctx));
-        if (payload.kind === 'ups') {
-          // Comm loss comes from the poll outcome, not from the poller's
-          // reachability alerts: appendix B wants 30 minutes of silence.
-          const items = engine.commStatus(device, payload.ok !== false, ts, payload.error);
-          if (payload.ok !== false) items.push(...engine.beginCycle(device, ts));
-          await emit(items);
-        }
-      } else if (kind === 'metrics') {
-        point(adapt.collectorPoint(device, payload, ctx));
-      } else if (kind === 'alert' && payload.metric !== 'reachability') {
-        const r = engine.fromAlert(device, payload);
-        if (r.code) await emit(r.items);
-        else stats.unmapped_alerts++;
+    const device = deviceFor(payload);
+    const ts = payload.ts ?? now();
+    if (kind === 'telemetry') {
+      addPoint(Array.isArray(payload.metrics)
+        ? adapt.collectorPoint(device, payload, ctx)
+        : adapt.upsPoint(device, payload, ctx));
+      if (payload.kind === 'ups') {
+        // Comm loss comes from the poll outcome, not from the poller's
+        // reachability alerts: appendix B wants 30 minutes of silence.
+        const items = engine.commStatus(device, payload.ok !== false, ts, payload.error);
+        if (payload.ok !== false) items.push(...engine.beginCycle(device, ts));
+        await emit(items);
       }
+    } else if (kind === 'metrics') {
+      addPoint(adapt.collectorPoint(device, payload, ctx));
+    } else if (kind === 'alert' && payload.metric !== 'reachability') {
+      const r = engine.fromAlert(device, payload);
+      if (r.code) await emit(r.items);
+      else stats.unmapped_alerts++;
     }
-    if (legacy.enabled) await flush();
     return { ok: true, queued: true };
-  }
-
-  async function checkClock(dateHeader) {
-    const t = Date.parse(dateHeader || '');
-    if (!Number.isFinite(t)) return;
-    // Date has one-second resolution; allow for it.
-    const off = Math.abs(now() - t) - 1000;
-    const base = { device_id: null, site_id: portal.siteId, ts: adapt.iso(now()), severity: 'P4', code: 'CLOCK_DRIFT', source: 'system' };
-    if (off > CLOCK_DRIFT_MS && !drift) {
-      drift = { alarm_id: crypto.randomUUID() };
-      log.warn(`[forwarder] clock differs from Portal by ${Math.round((now() - t) / 1000)} s`);
-      await postEvents([{ ...base, event_id: crypto.randomUUID(), alarm_id: drift.alarm_id, kind: 'alarm_raise',
-        title: 'Probe clock drift > 60 s', detail: { drift_s: Math.round((now() - t) / 1000) } }]);
-    } else if (off <= CLOCK_DRIFT_MS && drift) {
-      const a = drift; drift = null;
-      await postEvents([{ ...base, event_id: crypto.randomUUID(), alarm_id: a.alarm_id, kind: 'alarm_clear',
-        title: 'Probe clock back within 60 s', detail: {} }]);
-    }
   }
 
   /**
    * @param {object} s  { devices_total, devices_unreachable, last_poll_ok_ratio }
    */
   async function heartbeat(s = {}) {
-    const results = {};
-    if (legacy.enabled) {
-      try {
-        const body = { probe_id: legacy.probeId, tenant_id: legacy.tenantId, version, buffer_stats: queue.stats(), ts: now(), ...s };
-        const buf = Buffer.from(JSON.stringify(body));
-        const r = await request({
-          method: 'POST', url: legacy.url.replace(/\/+$/, '') + '/v1/probe/heartbeat', body: buf,
-          headers: { 'Content-Type': 'application/json', 'Content-Length': String(buf.length), 'X-Probe-Key': legacy.token, 'X-Probe-Id': legacy.probeId, 'X-Tenant-Id': legacy.tenantId },
-          tls: portal.tls, proxy: portal.proxy, noProxy: portal.noProxy, timeoutMs: portal.timeoutMs,
-        });
-        results.legacy = { ok: r.status < 300, status: r.status };
-      } catch (e) { results.legacy = { ok: false, error: e.message }; }
-    }
-    if (consoleLink) {
-      // The console shows the Portal link as this node sees it (Settings → status).
-      results.console = await consoleLink.heartbeat({
-        node_id: portal.nodeId, role: portal.role || 'collector', version,
-        uptime_s: Math.round(process.uptime()), queue_depth: queue.stats().pending,
-        ...(s.last_poll_ok_ratio !== undefined ? { last_poll_ok_ratio: s.last_poll_ok_ratio } : {}),
-        ...(s.devices_total !== undefined ? { devices_total: s.devices_total } : {}),
-        ...(s.devices_unreachable !== undefined ? { devices_unreachable: s.devices_unreachable } : {}),
-        clock: adapt.iso(now()), profile: portal.profile || 'bare', os: osName(),
-        portal: { enabled: !!portal.enabled, last_reachable: lastReachable, last_error: stats.last_error, sent: stats.sent, rejected: stats.rejected, queued: queue.stats().pending },
-      });
-      consoleLink.flush().catch(() => {});
-    }
-    if (!portal.enabled) return { ok: !!(results.legacy?.ok || results.console?.ok), ...results };
-
-    const body = prepare('heartbeat', {
-      node_id: portal.nodeId, role: portal.role || 'collector', version,
-      uptime_s: Math.round(process.uptime()), queue_depth: queue.stats().pending,
+    if (!consoleLink) return { ok: false, error: 'no Local Console configured (CFLEX_CONSOLE_URL)' };
+    const r = await consoleLink.heartbeat({
+      node_id: node.nodeId, role: 'collector', version,
+      uptime_s: Math.round(process.uptime()), queue_depth: consoleLink.stats().queued,
       ...(s.last_poll_ok_ratio !== undefined ? { last_poll_ok_ratio: s.last_poll_ok_ratio } : {}),
       ...(s.devices_total !== undefined ? { devices_total: s.devices_total } : {}),
       ...(s.devices_unreachable !== undefined ? { devices_unreachable: s.devices_unreachable } : {}),
-      clock: adapt.iso(now()), profile: portal.profile || 'bare', os: osName(),
+      clock: adapt.iso(now()), profile: node.profile || 'bare', os: osName(),
+      sites: node.sites && node.sites.length ? node.sites : null,
     });
-    if (!body) return { ok: false, error: 'invalid heartbeat' };
-    try {
-      const r = await call('POST', PATHS.heartbeat, body, crypto.randomUUID());
-      if (r.status >= 300) {
-        stats.last_error = `heartbeat → HTTP ${r.status}`;
-        return { ok: false, status: r.status, ...results };
-      }
-      lastReachable = now();
-      commandsPending = r.json?.commands_pending || 0;
-      await checkClock(r.headers.date);
-      // The link is up: whatever was waiting out an outage can go now. A 429
-      // wait stands — the Portal asked for it.
-      if (!throttled) { attempts = 0; nextAt = 0; }
-      await flush();
-      return { ok: true, data: r.json, ...results };
-    } catch (e) {
-      stats.last_error = e.message;
-      return { ok: false, error: e.message, ...results };
-    }
+    consoleLink.flush().catch(() => {});
+    return { ok: !!r.ok, console: r };
   }
 
   return {
-    sendEvent, emitAlarms: emit, postEvents, putInventory, syncInventory, addPoint, flushTelemetry, flush, heartbeat,
+    sendEvent, emitAlarms: emit, syncInventory, addPoint, flushTelemetry, heartbeat,
     drain: async () => {
       const c = consoleLink ? await consoleLink.flush() : { sent: 0 };
-      const r = await flush();
-      return { drained: (r.sent || 0) + (c.sent || 0), ...r, console: c };
+      return { drained: c.sent || 0, console: c };
     },
-    stats: () => ({ ...stats, queued_points: points.length, commands_pending: commandsPending, next_attempt_at: nextAt || null,
-      ...(consoleLink ? { console: consoleLink.stats() } : {}) }),
-    lastReachable: () => lastReachable,
+    stats: () => ({ ...stats, ...(consoleLink ? { console: consoleLink.stats() } : {}) }),
     alarms: engine,
-    notifier,
     console: consoleLink,
   };
 }
@@ -464,101 +154,59 @@ function get() {
   const version = require('../package.json').version;
   let consoleLink = null;
   if (cfg.console.url) {
+    const transport = require('./net/transport');
     const { createConsoleClient } = require('./console/client');
     consoleLink = createConsoleClient({
-      url: cfg.console.url, nodeId: cfg.portal.nodeId, timeoutMs: cfg.console.timeoutMs, version,
+      url: cfg.console.url, nodeId: cfg.node.nodeId, timeoutMs: cfg.console.timeoutMs, version,
       key: cfg.console.keyPath ? fs.readFileSync(cfg.console.keyPath, 'utf8').trim() : '',
       tls: transport.loadTls({ caPath: cfg.console.caPath }),
       queue: buffer.channel('console'),
+      sites: cfg.node.sites,
     });
-    console.log(`[forwarder] Local Console ${cfg.console.url} — inventory, telemetry, events; it sends the local notifications`);
+    console.log(`[forwarder] Local Console ${cfg.console.url} — telemetry, events, heartbeat; the FMS sends to the Portal (D-13)`
+      + (cfg.node.sites.length ? `; sites ${cfg.node.sites.join(',')}` : '; every site'));
+  } else {
+    console.warn('[forwarder] CFLEX_CONSOLE_URL not set: this collector has nowhere to send (D-13: collectors send only to the FMS)');
   }
-  let notifier = null;
-  let ncfg = null;
-  if (cfg.notify.configPath && !cfg.notify.collectorNotify) {
-    console.warn(`[forwarder] CFLEX_NOTIFY_CONFIG ignored: the Local Console sends local notifications (Q-2026-10-25-10). Set CFLEX_COLLECTOR_NOTIFY=1 only on a site without a console.`);
-  } else if (cfg.notify.configPath) {
-    const { createLocalNotifier, loadNotifyConfig } = require('./alarms/local-notify');
-    ncfg = loadNotifyConfig(cfg.notify.configPath);
-    notifier = createLocalNotifier({
-      config: { ...ncfg, itsmStorePath: ncfg.itsmStorePath || cfg.notify.itsmStorePath },
-      request: transport.request, proxy: cfg.portal.proxy, noProxy: cfg.portal.noProxy,
-      ca: transport.loadTls({ caPath: cfg.portal.tls.proxyCaPath }).ca,
-    });
-    console.log(`[forwarder] local notify on the Collector ${notifier.enabled() ? 'on' : 'configured but no channel usable'} (${cfg.notify.configPath})`);
+  const pending = buffer.stats().pending;
+  if (pending) {
+    // Rows a pre-D-13 version queued for the Portal. The FMS got the same data on its own link;
+    // they are kept until BUFFER_RETENTION_DAYS and then purged, never sent from here.
+    console.warn(`[forwarder] ${pending} row(s) queued for the Portal by an older version stay unsent (D-13: the FMS sends)`);
   }
   instance = createForwarder({
-    notifier,
     console: consoleLink,
-    idStore: jsonStore(cfg.notify.idStorePath),
-    // Maintenance windows come from the Local Console's config pull
-    // (fetchDeviceConfig); a notify.json's are the starting set without one.
-    alarms: { ...cfg.alarms, maintenance: ncfg?.maintenance || [], persist: buffer.state('alarm_engine') },
-    portal: {
-      enabled: cfg.portal.enabled, url: cfg.portal.url, tenant: cfg.tenantId, nodeId: cfg.portal.nodeId,
-      role: 'collector', siteId: cfg.portal.siteId, profile: cfg.portal.profile,
-      tls: transport.loadTls(cfg.portal.tls), proxy: cfg.portal.proxy, noProxy: cfg.portal.noProxy,
-      timeoutMs: 15000,
-    },
-    legacy: { enabled: cfg.legacy.enabled, url: cfg.cflexUrl, token: cfg.cflexToken, probeId: cfg.probeId, tenantId: cfg.tenantId },
-    queue: buffer,
+    // Maintenance windows come from the Local Console's config pull (fetchDeviceConfig).
+    alarms: { ...cfg.alarms, maintenance: [], persist: buffer.state('alarm_engine') },
+    node: { tenant: cfg.tenantId, nodeId: cfg.node.nodeId, siteId: cfg.node.siteId, profile: cfg.node.profile, sites: cfg.node.sites },
     version,
   });
   return instance;
 }
 
-// The inventory comes from the Local Console (spec 01 §2.1). Without one
-// configured it is still pulled from the old cloud. Pulling is not
-// forwarding, so that is not behind the legacy flag — only behind having a
-// token for that cloud at all.
-async function legacyGet(path) {
-  get();
-  if (!cfg.cflexToken) return null;
-  const r = await transport.request({
-    method: 'GET', url: cfg.cflexUrl.replace(/\/+$/, '') + path,
-    headers: { 'X-Probe-Key': cfg.cflexToken, 'X-Probe-Id': cfg.probeId, 'X-Tenant-Id': cfg.tenantId },
-    proxy: cfg.portal.proxy, noProxy: cfg.portal.noProxy, timeoutMs: 15000,
-  });
-  return r;
-}
-
 /**
- * The UPS inventory. From the Local Console: its devices with credentials and
- * thresholds, and its maintenance windows applied to the alarm engine. Null
- * when the console cannot be reached, so the caller keeps the list it has.
+ * The UPS inventory, from the Local Console: its devices (of this collector's
+ * sites) with credentials and thresholds, and its maintenance windows applied
+ * to the alarm engine. Null when the console cannot be reached, so the caller
+ * keeps the list it has.
  */
 async function fetchDeviceConfig() {
   const f = get();
-  if (f.console) {
-    const inv = await f.console.inventory({ snmpPort: cfg.snmp.port });
-    if (!inv) return null;
-    f.alarms.setMaintenance(inv.maintenance);
-    return inv.devices;
-  }
-  try {
-    const r = await legacyGet(`/v1/probe/devices?tenant=${encodeURIComponent(cfg?.tenantId || '')}`);
-    return r && r.status < 300 ? r.json?.devices || [] : [];
-  } catch (e) {
-    console.error('[forwarder] fetchDeviceConfig failed:', e.message);
-    return [];
-  }
+  if (!f.console) return [];
+  const inv = await f.console.inventory({ snmpPort: cfg.snmp.port });
+  if (!inv) return null;
+  f.alarms.setMaintenance(inv.maintenance);
+  return inv.devices;
 }
 
 /**
- * The non-UPS inventory: PDUs, NetBotz, CRACs, switches. A server that does
- * not have this endpoint yet answers 404, and the agent carries on with the
- * UPS feed alone.
+ * The non-UPS inventory (PDUs, NetBotz, CRACs, switches). The console's
+ * inventory is UPSs only (its device table) and has no object feed, and the
+ * old-cloud feed is gone with the collector's external path (D-13) — so none.
+ * The collectors stay for when the console grows one (Q-2026-10-26-14).
  */
 async function fetchObjectConfig() {
-  // The console's inventory is UPSs only (its device table); it has no object feed.
-  if (get().console) return [];
-  try {
-    const r = await legacyGet(`/v1/probe/objects?tenant=${encodeURIComponent(cfg?.tenantId || '')}`);
-    return r && r.status < 300 ? r.json?.devices || [] : [];
-  } catch (e) {
-    console.error('[forwarder] fetchObjectConfig failed:', e.message);
-    return [];
-  }
+  return [];
 }
 
 module.exports = {
@@ -567,12 +215,10 @@ module.exports = {
   heartbeat: (...a) => get().heartbeat(...a),
   drain: (...a) => get().drain(...a),
   flushTelemetry: (...a) => get().flushTelemetry(...a),
-  putInventory: (...a) => get().putInventory(...a),
   syncInventory: (...a) => get().syncInventory(...a),
   stats: () => get().stats(),
   alarms: () => get().alarms,
   emitAlarms: (...a) => get().emitAlarms(...a),
-  lastReachable: () => get().lastReachable(),
   consoleConfigured: () => !!get().console,
   fetchDeviceConfig,
   fetchObjectConfig,

@@ -68,8 +68,8 @@ implemented until the IdP date is known (spec §6-5).
 | `POST /v1/fms/devices/:id/mute` · `unmute` | operator | = maintenance window |
 | `GET/POST/DELETE /v1/console/maintenance` | viewer / operator | |
 | `/v1/console/{sites,devices,import,credentials,thresholds,notify,notify/test-ticket,users,collectors/:node/key,audit}` | admin (reads of sites/devices/thresholds: viewer) | |
-| `GET /v1/console/status` | viewer | this node, Redis, collectors, Portal link as the collectors report it |
-| `POST /collector/v1/{heartbeat,telemetry,events}` · `GET /collector/v1/{devices,config}` | collector key | |
+| `GET /v1/console/status` | viewer | this node, Redis, collectors, the Portal link as each app node last saw it |
+| `POST /collector/v1/{heartbeat,telemetry,events}` · `GET /collector/v1/{devices?sites=…,config}` | collector key | `sites`: the collector's scope (D-13) |
 | `GET /healthz` | — | 503 when Redis is down |
 
 **Profile** (`CONSOLE_PROFILE`, DECISIONS Q-2026-10-25-09 (B)). The default, `internal`, serves no
@@ -82,17 +82,56 @@ instead of falling back to its sample data. Nothing else differs.
 `docs/spec/schemas`. Replays are harmless: an `event_id` or a `(device_id, ts)` that is already stored
 is skipped.
 
+**Several collectors** (D-13, WO-INT-012). Each posts with its own key and node id (`cap01`, `cap02` …),
+which is kept as `collector_id`. A device is one row (`device_id`) whoever polls it; the row shows the
+latest reading. An alarm is one row too: when a second collector raises the same code on a device that
+another collector already has open, its `alarm_id` is mapped onto the open one (`alarm_sources`), its
+events go into that alarm's history, and the alarm clears when the last collector clears it. A
+collector's own alarms are never merged with each other (its engine already keeps one per fault).
+
+## The Portal link (D-13, WO-INT-012)
+
+The Portal sender — contract 00 **v1.2** to `cflex.fms.support` (FW-4: app → Portal 443, mTLS, through
+HAEA's proxy) — is here, not on the collectors (`src/portal.js`, the rules the collector's forwarder had):
+
+| | |
+|---|---|
+| `POST /api/v1/heartbeat` | every 60 s from **each** app node (`role: app`), and from the sender one per collector heard from in the last 5 min (`role: collector`, `collector_id`) |
+| `PUT /api/v1/inventory` | the `devices` table, on change and in full daily; a device whose ID changed is sent once more with `replaced_by` |
+| `POST /api/v1/telemetry` | what each collector posted (known devices only), each point with `collector_id` |
+| `POST /api/v1/events` | the merged events (FMS `alarm_id`), with `collector_id` and what this console delivered (`local_notified`) |
+
+`node_id` is the app node (`X-CFlex-Node`, certificate CN `<tenant>.app01`). Everything but the heartbeat
+goes through `portal_outbox` (db01) in order, with its `Idempotency-Key` fixed at enqueue — the 7-day
+buffer of contract §1 (`CFLEX_PORTAL_BUFFER_DAYS`). Both nodes enqueue; **the node holding the sender
+lock** (a PostgreSQL session advisory lock on a connection of its own) drains it, syncs the inventory and
+relays the collectors; when it stops, the other takes over on its next tick. 5xx/network → backoff
+1 s … 5 min ±20 %, 429 → `Retry-After`, 409 → retried, other 4xx → dropped and counted. A Portal `Date`
+more than 60 s off raises `CLOCK_DRIFT` (node event, no `collector_id`). Events wait up to 30 s in the
+outbox for the notifier's answer, then go without `local_notified`.
+
+| Env | Default | |
+|---|---|---|
+| `CFLEX_PORTAL_ENABLED` | `1` when `CFLEX_PORTAL_URL` is set | `0` = no Portal link |
+| `CFLEX_PORTAL_URL` | `https://cflex.fms.support` | |
+| `CFLEX_NODE_ID` | `CONSOLE_NODE_ID` | contract node id (`app01`) |
+| `CFLEX_TLS_CERT`, `CFLEX_TLS_KEY` | — | device certificate and key **paths**; key 0600, never logged |
+| `CFLEX_TLS_CA`, `CFLEX_PROXY_CA` | system store | Portal CA; CA of a TLS-inspecting proxy |
+| `HTTPS_PROXY`, `NO_PROXY` | — | Basic auth (NTLM: not yet, Q-2026-10-25-04) |
+| `CFLEX_PORTAL_BUFFER_DAYS` | `7` | outbox purge |
+| `CFLEX_PORTAL_HEARTBEAT_MS` · `_FLUSH_MS` · `_INVENTORY_MS` | `60000` · `5000` · `300000` | |
+
 **Local notification is sent from here** (Q-2026-10-25-10 (A); firewall request v3 FW-8:
 app → SMTP relay 25/587, app → proxy → Teams/ServiceNow 443). `POST /collector/v1/events` stores the
 events, then notifies with the channels in Settings (`src/notify.js` → probe-agent `local-notify.js`) and
-answers `{accepted, duplicate, local_notified: {event_id: {email, teams, itsm}}}`. The collector puts
-that in the event it sends the Portal. Details:
+answers `{accepted, duplicate, local_notified: {event_id: {email, teams, itsm}}}`. The same goes into
+the event this console sends the Portal. Off by default (D-12a). Details:
 - alarm_id → ServiceNow INC is in the `itsm_map` table, so a clear on app02 resolves what app01 opened.
 - A replayed `event_id` gets the stored answer; nobody is told twice.
 - Suppressed (nothing sent, an open INC still resolves on clear): the event's `detail.maintenance`, a
   window set here since the collector last pulled its config, and a replay (`X-CFlex-Replay: 1`, the
   collector could not reach the console) older than `CONSOLE_NOTIFY_REPLAY_MAX_S` (900).
-- An event that already carries `local_notified` (a collector notifying by itself) is not notified again.
+- An event that already carries `local_notified` is not notified again.
 
 **Secrets** (SNMP community and v3 keys, SMTP password, Teams webhook, ServiceNow password) are sealed
 with AES-256-GCM (`CONSOLE_SECRET_KEY_FILE`). Reading them back returns `{ "set": true }`. Only the
@@ -119,6 +158,5 @@ npm test                           # integration: two app instances on one Postg
 
 | Item | Where it goes |
 |---|---|
-| The collector sending to and pulling from this API | probe-agent side (`forwarder` second sink, device pull). The endpoints exist here. |
 | XLSX import | CSV only for now. Exhibit 1 XLSX → "Save as CSV". |
 | Portal routing result on alarms (contract §4) | Shown only once that query exists. |

@@ -1,24 +1,24 @@
 // console/client.js — the Collector's link to the Local Console (spec 01
-// §2.1; firewall request v3 FW-7: cap01 → app 443, through nginx).
+// §2.1; firewall request v3 FW-7: cap01 → app 443, through nginx). Since D-13
+// (WO-INT-012) the only link a collector has: the FMS sends to the Portal.
 //
-//   GET  /collector/v1/devices    the inventory to poll, credentials opened
+//   GET  /collector/v1/devices    the inventory to poll, credentials opened —
+//                                 only this collector's sites (?sites=, CFLEX_COLLECTOR_SITES)
 //   GET  /collector/v1/config     thresholds and maintenance windows
-//   POST /collector/v1/telemetry  batched with the Portal's (contract §3.3 shape)
-//   POST /collector/v1/events     alarm events; the console notifies HAEA and
-//                                 answers event_id → local_notified
-//                                 (DECISIONS Q-2026-10-25-10 (A))
-//   POST /collector/v1/heartbeat  this node, and the state of its Portal link
+//   POST /collector/v1/telemetry  batched, contract §3.3 shape
+//   POST /collector/v1/events     alarm events; the console merges them across
+//                                 collectors, notifies HAEA and answers
+//                                 event_id → local_notified (Q-2026-10-25-10 (A))
+//   POST /collector/v1/heartbeat  this node (the FMS relays it to the Portal)
 //
 // Auth is the collector key (Bearer) issued on the console. The console is
 // inside HAEA: no proxy, and the trust anchor is the CA of its nginx
 // certificate (CFLEX_CONSOLE_CA), not the Portal's.
 //
-// Events go straight to the console while it answers, because the answer is
-// part of the event the Portal receives. When it does not, they wait in a
-// queue of their own (buffer channel 'console') and are re-sent marked as a
-// replay; the Portal is not held up — it gets the event without
-// `local_notified`, which tells it no one here was told.
-const transport = require('../portal/transport');
+// Events go straight to the console while it answers. When it does not, they
+// wait in a queue of their own (buffer channel 'console', the collector → FMS
+// store-and-forward) and are re-sent in order, marked as a replay.
+const transport = require('../net/transport');
 const { fromConsole } = require('../pollers/thresholds');
 
 const PATHS = {
@@ -67,6 +67,7 @@ function pollerDevice(d, { thresholds = null, snmpPort = null } = {}) {
  * @param {Function} [o.random]
  * @param {object} [o.log]
  * @param {string} [o.version]
+ * @param {string[]} [o.sites]  site scope (D-13); empty = every site
  */
 function createConsoleClient(o) {
   // Both app nodes, active first (CFLEX_CONSOLE_URL=https://app01,https://app02). Each serves
@@ -195,7 +196,7 @@ function createConsoleClient(o) {
         log.error(`[console] events: ${e.message}; dropped (4xx is not retried)`);
         return null;
       }
-      log.warn(`[console] events not delivered (${e.message}); queued — the Portal gets them without local_notified`);
+      log.warn(`[console] events not delivered (${e.message}); queued, re-sent in order when the FMS answers`);
       queue.enqueue('events', { path: PATHS.events, body });
       backoff();
       return null;
@@ -217,7 +218,8 @@ function createConsoleClient(o) {
   /** The inventory and its config. Null when the console cannot be reached (keep what you have). */
   async function inventory({ snmpPort = null } = {}) {
     try {
-      const [c, d] = [await call('GET', PATHS.config), await call('GET', PATHS.devices)];
+      const scope = (o.sites || []).length ? `?sites=${encodeURIComponent(o.sites.join(','))}` : '';
+      const [c, d] = [await call('GET', PATHS.config), await call('GET', PATHS.devices + scope)];
       const thresholds = c.json?.thresholds || null;
       return {
         devices: (d.json?.devices || []).map(x => pollerDevice(x, { thresholds, snmpPort })),
