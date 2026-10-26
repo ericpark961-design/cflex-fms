@@ -195,6 +195,12 @@ function hBoard({ owner, status }) {
       .sort((a, b2) => (parseInt(a.priority, 10) || 99) - (parseInt(b2.priority, 10) || 99))
       .map(r => r.id),
     decisions_confirmed: b.decisions.confirmed.filter(c => c.id).map(c => `${c.id} ${c.text}`),
+    // Surfaced, not refused: a status outside the board's declared vocabulary
+    // is either the manager annotating or a typo, and the tool cannot tell
+    // which. Reporting it puts the question where it can be answered.
+    unknown_statuses: b.tasks.sections.flatMap(s2 => s2.rows)
+      .filter(r => !C.knownStatus(r.status))
+      .map(r => `${r.id}: "${r.status}"`),
     questions_open: open,
     held: b.tasks.trailing.filter(l => /^- /.test(l)).map(l => l.slice(2)),
   };
@@ -214,8 +220,8 @@ function hClaim({ id }) {
   if (!IS_MANAGER && r.owner !== AGENT) {
     return { error: `${id} belongs to ${r.owner}, not ${AGENT} — 배정되지 않은 일은 하지 않는다` };
   }
-  if (r.status === '완료') return { error: `${id} is already 완료` };
-  if (r.status === '보류') return { error: `${id} is 보류 — 관리자 지시 없이 집지 않는다` };
+  if (C.statusBase(r.status) === '완료') return { error: `${id} is already 완료` };
+  if (C.statusBase(r.status) === '보류') return { error: `${id} is 보류 — 관리자 지시 없이 집지 않는다` };
 
   // Priority order is a rule, not a suggestion: taking #3 while #2 waits is
   // how a queue stops meaning anything.
@@ -268,7 +274,7 @@ function hReport({ entries, questions, next }) {
       // WO assigned for a piece of directed work, a report filed against the
       // nearest id moved WO-INT-002 from 완료 back to 진행 — erasing a
       // manager approval and a merged PR. Reopening is the manager's call.
-      if (r.status === '완료' && !IS_MANAGER) {
+      if (C.statusBase(r.status) === '완료' && !IS_MANAGER) {
         lines.push(`  - (${e.id} 는 완료 상태다 — 상태를 바꾸지 않았다. 재개는 관리자가 한다)`);
         touched.push(`${e.id}: 완료 유지`);
       } else if (e.status === '완료' && !IS_MANAGER) {

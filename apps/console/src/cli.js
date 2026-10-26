@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-// cli.js — the two things that have to happen before anyone can log in.
+// cli.js — the two things that have to happen before anyone can log in, and
+// the SOW test ticket for the installer's `verify --send-test`.
 //
 //   node src/cli.js create-user <username> <admin|operator|viewer>   password on stdin
 //   node src/cli.js collector-key <node-id>                          prints the key once
+//   node src/cli.js test-ticket [--keep-open]                        ServiceNow create → update → resolve
+//                                                                    with the channels in Settings (exit 0 ok, 1 failed)
 //
 // The password is read from stdin (no echo when it is a terminal), never from
 // argv — argv is visible in `ps` and in shell history.
@@ -43,8 +46,19 @@ async function main() {
     const k = settings.issueCollectorKey(a);
     audit('collector_key_issued', k.node_id);
     process.stdout.write(`${k.key}\n`);
+  } else if (cmd === 'test-ticket') {
+    // The Settings button's code path (notify.js), from a shell on the app node.
+    const { createConsoleNotify, netFrom } = require('./notify');
+    const quiet = { log() {}, warn() {}, error() {} };
+    const n = createConsoleNotify({ db, settings, net: netFrom(config.notify), log: quiet });
+    const r = await n.testTicket({ resolve: a !== '--keep-open' });
+    audit('test_ticket', r.number || null, { ok: !!r.ok, step: r.step || null });
+    console.log(r.ok
+      ? `OK  ServiceNow test ticket ${r.number} created, updated${r.resolved ? ' and resolved' : ' (left open)'}`
+      : `FAIL ServiceNow test ticket at ${r.step || 'config'}: ${r.error}`);
+    process.exitCode = r.ok ? 0 : 1;
   } else {
-    console.log('commands: create-user <username> <role> | collector-key <node-id>');
+    console.log('commands: create-user <username> <role> | collector-key <node-id> | test-ticket [--keep-open]');
     process.exitCode = 2;
   }
 }

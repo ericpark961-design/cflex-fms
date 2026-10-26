@@ -3,7 +3,8 @@
 //   /v1/auth/*, /v1/me          local accounts, sessions in Redis
 //   /v1/fms/*                   what apps/twin reads (same keys as before)
 //   /v1/console/*               alarms detail/comment, maintenance, settings, users, status
-//   /collector/v1/*             the Collector: telemetry/events/heartbeat in, devices/config out
+//   /collector/v1/*             the Collector: telemetry/events/heartbeat in, devices/config out;
+//                               alarm events are notified from here (notify.js)
 //   /twin/*                     the existing UI (apps/twin, console build)
 //   /login, /settings           the two pages twin does not have
 //
@@ -17,6 +18,7 @@ const { createIngest } = require('./ingest');
 const { createSettings } = require('./settings');
 const { createPortal } = require('./portal');
 const { createSealer } = require('./seal');
+const { createConsoleNotify, announces, netFrom } = require('./notify');
 
 const COOKIE = 'cflex_sid';
 
@@ -26,7 +28,7 @@ const COOKIE = 'cflex_sid';
  * @param {object} o.db         db.js open()
  * @param {object} o.redis      redis.js client
  * @param {Function} [o.now]
- * @param {object} [o.notifyDeps]  injected into the test-ticket notifier (tests)
+ * @param {object} [o.notifyDeps]  injected into the notifier: {http, smtpSend} (tests)
  * @param {object} [o.log]
  */
 function createApp({ config, db, redis, now = Date.now, notifyDeps = null, portalChecker, log = console }) {
@@ -37,6 +39,9 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
   const sealer = createSealer(config.secretKey);
   const settings = createSettings(db, { sealer, tenant: config.tenant, now });
   const portal = createPortal(db, { sealer, tenant: config.tenant, now, ...(portalChecker ? { checker: portalChecker } : {}) });
+  const notify = createConsoleNotify({
+    db, settings, deps: notifyDeps || {}, now, log, replayMaxAgeMs: config.notify?.replayMaxMs, net: netFrom(config.notify),
+  });
   const router = createRouter();
   const R = (m, p, role, h) => router.add(m, p, { role }, h);
 
@@ -125,10 +130,15 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
   R('GET', '/v1/fms/fleet-live', 'viewer', (c) => views.fleetLive(parseInt(c.query.minutes, 10) || 60, c.query.cbu));
   R('GET', '/v1/fms/channels/health', 'viewer', () => ({ ok: true, channels: settings.channelsHealth() }));
   // Alarm routing and device control are the Portal's (D-01) and device
-  // writes are forbidden (D-05): the screens get honest empty lists, not the
-  // sample data they would otherwise fall back to.
-  R('GET', '/v1/fms/routes', 'viewer', () => ({ ok: true, routes: [], stats: {}, note: 'alarm routing is configured in the portal' }));
-  R('GET', '/v1/fms/control/actions', 'viewer', () => ({ ok: true, actions: [] }));
+  // writes are forbidden (D-05). The internal build (Q-2026-10-25-09 (B))
+  // has no screen that asks, so it does not answer at all — 404, like
+  // copilot, power chain, topology, tickets and incidents. A `portal`
+  // profile keeps the honest empty lists the full twin build reads instead
+  // of falling back to its sample data.
+  if (config.profile === 'portal') {
+    R('GET', '/v1/fms/routes', 'viewer', () => ({ ok: true, routes: [], stats: {}, note: 'alarm routing is configured in the portal' }));
+    R('GET', '/v1/fms/control/actions', 'viewer', () => ({ ok: true, actions: [] }));
+  }
 
   // ── alarms: detail, ACK, comments (operator) ─────────────────────────────
   R('GET', '/v1/fms/alerts/:id', 'viewer', (c) => {
@@ -248,17 +258,10 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
     audit(c, 'notify_put', null, { keys: Object.keys(c.body || {}) });
     return { ok: true, notify: n };
   });
-  // SOW acceptance: the "test ticket" button. Same code path as the
-  // collector's cflex-test-ticket (probe-agent local-notify testTicket).
+  // SOW acceptance: the "test ticket" button. Same channels and code path as
+  // the alarm notifications (notify.js → probe-agent local-notify testTicket).
   R('POST', '/v1/console/notify/test-ticket', 'admin', async (c) => {
-    const { createLocalNotifier } = require('../../../probe-agent/src/alarms/local-notify');
-    const transport = require('../../../probe-agent/src/portal/transport');
-    const n = createLocalNotifier({
-      config: settings.getNotify({ open: true }), deps: notifyDeps || {}, request: transport.request,
-      proxy: process.env.HTTPS_PROXY || process.env.https_proxy || null, noProxy: process.env.NO_PROXY || null,
-      log: { warn() {}, error() {}, log() {} },
-    });
-    const r = await n.testTicket({ resolve: c.body?.resolve !== false });
+    const r = await notify.testTicket({ resolve: c.body?.resolve !== false });
     audit(c, 'test_ticket', r.number || null, { ok: r.ok, step: r.step || null });
     return { ok: !!r.ok, ...r };
   });
@@ -302,17 +305,34 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
   // ── collector (key auth) ─────────────────────────────────────────────────
   R('POST', '/collector/v1/heartbeat', 'collector', (c) => ingest.heartbeat(c.collector.node_id, c.body));
   R('POST', '/collector/v1/telemetry', 'collector', (c) => ingest.telemetry(c.body));
-  R('POST', '/collector/v1/events', 'collector', (c) => {
-    // Site isolation is enforced here, not trusted from the payload: the node
-    // supplies site_id itself, and one site's collector must not be able to
-    // write another site's devices. Collector ID and Site ID are separate
-    // things, and the allowed set lives on the registration.
+  // Alarm events: stored, then notified here (Q-2026-10-25-10 (A)). The answer
+  // carries event_id → local_notified, which the Collector puts in the event
+  // it sends the Portal. A replayed event gets what was delivered the first
+  // time; nobody is told twice.
+  R('POST', '/collector/v1/events', 'collector', async (c) => {
+    // Site isolation first, before anything is stored or anyone is notified:
+    // the node names site_id in its own payload, so one site's collector must
+    // not be able to write — or raise a notification about — another site's
+    // devices. Collector ID and Site ID are separate; the allowed set lives on
+    // the registration (portal.assertSite).
     for (const site of new Set((c.body?.events || []).map(e => e?.site_id).filter(Boolean))) {
       portal.assertSite(c.collector.node_id, site);
     }
-    return ingest.events(c.body);
+    const r = ingest.events(c.body);
+    const sent = await notify.forEvents(r.fresh, { replay: c.req.headers['x-cflex-replay'] === '1' });
+    const localNotified = {};
+    for (const [id, ln] of Object.entries(r.prior)) if (ln) localNotified[id] = ln;
+    for (const ev of r.fresh) {
+      const ln = sent[ev.event_id];
+      if (!ln) continue;
+      ingest.recordNotified(ev, ln, { announces: announces(ev) });
+      localNotified[ev.event_id] = ln;
+    }
+    return { accepted: r.accepted, duplicate: r.duplicate, local_notified: localNotified };
   });
   R('GET', '/collector/v1/devices', 'collector', () => ({ ok: true, devices: settings.collectorDevices() }));
+  // No notification channels in here: the Collector does not notify, so the
+  // SMTP / Teams / ServiceNow secrets never leave the console.
   // ── 포털 연동 (managed service) ─────────────────────────────────────
   // The Portal connection belongs to the collector; this page configures it
   // and the collector pulls the result. See src/portal.js for why enrolment is
@@ -391,14 +411,17 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
   });
   R('GET', '/collector/v1/certs', 'collector', (c) =>
     ({ ok: true, ...portal.certsFor(c.collector?.node_id || c.query?.node_id) }));
-
   R('GET', '/collector/v1/config', 'collector', () => {
     const t = now();
     const devs = new Map(db.prepare('SELECT device_id, id FROM devices').all().map(d => [d.device_id, d.id]));
     return {
-      ok: true, thresholds: settings.getThresholds(), notify: settings.getNotify({ open: true }),
+      ok: true, thresholds: settings.getThresholds(),
       // The collector's own Portal settings, so cap01 no longer needs a
       // hand-edited .env to change the managed-service link.
+      //
+      // `notify` is deliberately NOT here: Q-2026-10-25-10 (A) moved local
+      // notification to the console, so the SMTP / Teams / ServiceNow secrets
+      // never leave it.
       portal: portal.get({ open: true }),
       // In the shape probe-agent's alarm engine takes (setMaintenance).
       maintenance: db.prepare('SELECT * FROM maintenance WHERE ends_at > ?').all(t).map(w => ({
@@ -497,7 +520,7 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
   const server = http.createServer((req, res) => { handle(req, res); });
   server.headersTimeout = 20_000;
   server.requestTimeout = 60_000;
-  return { server, router, sessions, settings, views, ingest };
+  return { server, router, sessions, settings, views, ingest, notify };
 }
 
 const clip = (v, n) => (v == null || String(v).trim() === '' ? null : String(v).trim().slice(0, n));

@@ -1,8 +1,8 @@
 // index.js — cflex-probe main entry
 // Responsibilities:
-//   1. Fetch device config from cflex on boot + periodically (config sync)
+//   1. Fetch device config from the Local Console (or, without one, cflex) on boot + periodically
 //   2. Poll all UPS devices on POLL_INTERVAL_MS schedule
-//   3. Forward telemetry + alerts to cflex
+//   3. Forward telemetry + alarm events to the Local Console and the Portal
 //   4. Drain local buffer when cflex reachable
 //   5. Send heartbeat every HEARTBEAT_INTERVAL_MS
 //   6. Purge old buffered events daily
@@ -13,6 +13,7 @@ const { createEnroller } = require('./portal/enroll');
 const transport = require('./portal/transport');
 const upsPoller = require('./pollers/ups');
 const collectors = require('./pollers');
+const health = require('./health');
 
 let devices = [];
 let objects = [];
@@ -20,11 +21,14 @@ let polling = false;
 
 async function loadDevices() {
   const remote = await forwarder.fetchDeviceConfig();
-  if (remote && remote.length) {
+  // The Local Console's answer is the inventory, even when it is empty (every
+  // device removed or polling disabled). null = unreachable: keep the last list.
+  const fromConsole = forwarder.consoleConfigured();
+  if (remote && (remote.length || fromConsole)) {
     devices = remote;
-    console.log(`[probe] loaded ${devices.length} UPS from cflex`);
+    console.log(`[probe] loaded ${devices.length} UPS from ${fromConsole ? 'the Local Console' : 'cflex'}`);
   } else if (!devices.length) {
-    console.log('[probe] no devices from cflex yet — polling disabled');
+    console.log(`[probe] no devices from ${fromConsole ? 'the Local Console' : 'cflex'} yet — polling disabled`);
   }
   // The rest of the room: PDUs, NetBotz, CRACs, switches. A separate feed
   // because they live in a separate table and have separate collectors; a
@@ -109,6 +113,7 @@ async function pollAll() {
   await Promise.all(Array.from({ length: Math.min(cfg.pollConcurrency, Math.max(1, queue.length)) }, worker));
   const took = Date.now() - t0;
   lastCycle = { ok, fail, took, error: lastError, at: Date.now(), metrics: metricsSent, skipped, unsupported };
+  health.mark(lastCycle);
   console.log(`[probe] cycle: ${ok} ok, ${fail} fail, ${took}ms` +
     (metricsSent ? `, ${metricsSent} metrics` : '') +
     (skipped ? `, ${skipped} skipped` : '') +
@@ -122,7 +127,7 @@ async function pollAll() {
 async function bootstrap() {
   console.log(`[probe] starting cflex-probe v${require('../package.json').version}`);
   console.log(`[probe] tenant=${cfg.tenantId} probe_id=${cfg.probeId}`);
-  console.log(`[probe] cflex=${cfg.cflexUrl}`);
+  console.log(cfg.console.url ? `[probe] console=${cfg.console.url}` : `[probe] cflex=${cfg.cflexUrl}`);
 
   // ── enrolment (contract §6) ───────────────────────────────────────────
   // The collector gets its own device certificate: generate the key here if
@@ -131,21 +136,31 @@ async function bootstrap() {
   //
   // Idempotent and on a timer, so it also covers "the certificate was signed
   // an hour after the collector started" and a later rotation.
-  if (cfg.console_.url && cfg.console_.token) {
+  if (cfg.console.url && cfg.console.keyPath) {
     const fs = require('fs');
+    // Secrets come from FILES, not the environment: a value in the environment
+    // is readable in /proc/<pid>/environ and in systemd's view of the unit.
+    // The enrolment token is single use, so it is deleted once it has been
+    // accepted — leaving it on disk is leaving a spent credential around.
+    const readFile = (p2) => { try { return p2 ? fs.readFileSync(p2, 'utf8').trim() : ''; } catch { return ''; } };
     const enroller = createEnroller({
-      consoleUrl: cfg.console_.url,
+      consoleUrl: cfg.console.url,
       nodeId: cfg.portal.nodeId,
       tenant: cfg.tenantId,
-      token: cfg.console_.token,
-      dir: cfg.console_.pkiDir,
-      enrollToken: cfg.console_.enrollToken,
+      token: readFile(cfg.console.keyPath),
+      dir: cfg.console.pkiDir,
+      enrollToken: readFile(cfg.console.tokenPath),
       request: transport.request,
-      ca: cfg.console_.caPath && fs.existsSync(cfg.console_.caPath)
-        ? [fs.readFileSync(cfg.console_.caPath)] : [],
+      ca: cfg.console.caPath && fs.existsSync(cfg.console.caPath)
+        ? [fs.readFileSync(cfg.console.caPath)] : [],
     });
     const enrol = async () => {
       const r = await enroller.tick();
+      if (r.posted && cfg.console.tokenPath) {
+        // Accepted: the token is spent. Remove it so a copy cannot be reused
+        // and so a later restart does not present a dead credential.
+        try { fs.rmSync(cfg.console.tokenPath, { force: true }); } catch { /* best effort */ }
+      }
       // A certificate that lands while we are running is only useful once the
       // forwarder reads it, and it reads its TLS material at construction.
       // Say so rather than appearing to work until the next restart.
@@ -154,16 +169,16 @@ async function bootstrap() {
       }
     };
     await enrol();
-    setInterval(enrol, cfg.console_.enrollIntervalMs);
-    console.log(`[probe] enrolment via ${cfg.console_.url} (pki ${cfg.console_.pkiDir})`);
+    setInterval(enrol, cfg.console.enrollIntervalMs);
+    console.log(`[probe] enrolment via ${cfg.console.url} (pki ${cfg.console.pkiDir})`);
   } else {
-    console.log('[probe] enrolment not configured (CFLEX_CONSOLE_URL / CFLEX_COLLECTOR_KEY) — device certificate must be placed by hand');
+    console.log('[probe] enrolment not configured (CFLEX_CONSOLE_URL / CFLEX_CONSOLE_KEY_FILE) — device certificate must be placed by hand');
   }
 
   await loadDevices();
 
-  // Reload device config every 5 minutes
-  setInterval(loadDevices, 5 * 60 * 1000);
+  // Reload device config (and the console's thresholds and maintenance windows), every 5 minutes by default
+  setInterval(loadDevices, cfg.configReloadMs);
 
   // Poll cycle
   setInterval(pollAll, cfg.pollIntervalMs);

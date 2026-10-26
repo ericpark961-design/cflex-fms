@@ -36,12 +36,14 @@ for (const f of ['MapScreen.jsx', 'TwinScreen.jsx']) {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${f.padEnd(22)} renders <CbuBar/>`);
 }
 
-// And that the shell mounts it for the template screens and the wall.
-const app = readFileSync(path.join(here, 'App.jsx'), 'utf8');
-const mounts = (app.match(/mountCbuBar\(/g) || []).length;
-const okApp = mounts >= 2;
-if (!okApp) fail++;
-console.log(`${okApp ? 'ok  ' : 'FAIL'} App.jsx${' '.repeat(15)} mountCbuBar calls=${mounts} (wire + wall)`);
+// And that the shell mounts it for the template screens, and the wall
+// (WallScreen.jsx since WO-INT-004c) for its own.
+for (const [f, what] of [['App.jsx', 'wire'], ['WallScreen.jsx', 'wall']]) {
+  const mounts = (readFileSync(path.join(here, f), 'utf8').match(/mountCbuBar\(/g) || []).length;
+  const ok = mounts >= 1;
+  if (!ok) fail++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${f.padEnd(22)} mountCbuBar calls=${mounts} (${what})`);
+}
 
 console.log(fail ? `\nFAIL: ${fail} screen(s) would show no CBU selector.` : '\nok - every screen gets the shared CBU selector');
 process.exit(fail ? 1 : 0);

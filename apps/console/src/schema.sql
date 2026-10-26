@@ -114,9 +114,18 @@ CREATE TABLE IF NOT EXISTS alarm_events (
   ts        INTEGER NOT NULL,
   kind      TEXT NOT NULL,
   title     TEXT,
-  detail    TEXT
+  detail    TEXT,
+  local_notified TEXT                       -- what the console delivered for this event (JSON), returned again on a replay
 );
 CREATE INDEX IF NOT EXISTS idx_alarm_events_alarm ON alarm_events(alarm_id, ts);
+
+-- alarm_id → ServiceNow incident, so a clear resolves the ticket its raise
+-- opened — on either node and across restarts (notify.js).
+CREATE TABLE IF NOT EXISTS itsm_map (
+  alarm_id  TEXT PRIMARY KEY,
+  value     TEXT NOT NULL,                  -- {number, sys_id, code, device_id, opened, updated?, resolved?}
+  updated   INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS alarm_comments (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,

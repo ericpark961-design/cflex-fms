@@ -18,6 +18,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const STATUSES = ['대기', '진행', '검토요청', '완료', '보류'];
+
+/**
+ * The board's declared vocabulary is the manager's, not mine, and they
+ * annotate — `머지(정적 검증만)` appeared on WO-INT-005. Breaking on that would
+ * be the tool policing its owner; silently ignoring it would let a typo pass
+ * for a real state.
+ *
+ * So: strip a parenthetical and compare the base word, and report anything
+ * still unknown rather than refusing it.
+ */
+const statusBase = (raw) => String(raw || '').replace(/\s*[(（][^)）]*[)）]\s*$/, '').trim();
+const knownStatus = (raw) => STATUSES.includes(statusBase(raw));
 const AGENTS = { 'claude-code': 'Claude Code', codex: 'Codex' };
 
 /** Resolve docs/control relative to the repository this file lives in. */
@@ -454,7 +466,7 @@ function nextQuestionId(board, day = todayISO()) {
 }
 
 module.exports = {
-  STATUSES, AGENTS,
+  STATUSES, AGENTS, statusBase, knownStatus,
   load, save, findTask, answerOf, nextQuestionId, todayISO, controlDir,
   repliedBy, consensus, nextInterfaceId,
   parseTasks, serializeTasks, parseStatus, serializeStatus, parseDecisions, serializeDecisions,

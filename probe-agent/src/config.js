@@ -52,24 +52,45 @@ const cfg = {
     enabled: process.env.CFLEX_LEGACY_FORWARD === '1',
   },
 
-  // The Local Console on app01/app02. This is where the collector enrols
-  // (posts its CSR, collects the signed certificate) and, later, pulls its
-  // configuration. NOT the Portal, and not the legacy cloud — three different
-  // destinations that are easy to conflate.
-  console_: {
+  // The Local Console (spec 01 §2.1): the inventory comes from it, telemetry
+  // and alarm events go to it, and it sends the local notifications
+  // (DECISIONS Q-2026-10-25-10 (A), firewall request v3 FW-7: cap → app 443).
+  // The key is a file (issued by `node src/cli.js collector-key <node>` on
+  // the console, 0600); only its path is here.
+  //
+  // It is also where this node ENROLS — posts its CSR and collects the signed
+  // certificate (portal/enroll.js). Not the Portal and not the legacy cloud:
+  // three destinations that are easy to conflate, so CFLEX_CONSOLE_URL and
+  // CFLEX_PORTAL_URL stay separate settings.
+  console: {
     url: process.env.CFLEX_CONSOLE_URL || '',
-    token: process.env.CFLEX_COLLECTOR_KEY || '',
+    keyPath: process.env.CFLEX_CONSOLE_KEY_FILE || '',
+    // The CA that signed the console's nginx certificate (HAEA internal CA).
+    caPath: process.env.CFLEX_CONSOLE_CA || '',
+    timeoutMs: parseInt(process.env.CFLEX_CONSOLE_TIMEOUT_MS || '20000', 10),
+
+    // ── enrolment (contract §6) ──
+    // Where this node's key and CSR live. The key never leaves it.
     pkiDir: process.env.CFLEX_PKI_DIR || '/etc/cflex/pki',
     enrollIntervalMs: parseInt(process.env.CFLEX_ENROLL_INTERVAL_MS || '60000', 10),
-    caPath: process.env.CFLEX_CONSOLE_CA || '',
     // One-time, node-scoped, issued by an operator in the console. Needed only
     // for a NEW key pair; a restart re-posting the same CSR does not use it.
-    enrollToken: process.env.CFLEX_ENROLL_TOKEN || '',
+    //
+    // A FILE, like the collector key, and for the same reason: a value in the
+    // environment is readable in /proc/<pid>/environ and in systemd's view of
+    // the unit. Deleted after a successful enrolment — it is single use.
+    tokenPath: process.env.CFLEX_ENROLL_TOKEN_FILE || '',
   },
+  // How often the inventory and config (thresholds, maintenance windows) are pulled again.
+  configReloadMs: parseInt(process.env.CONFIG_RELOAD_MS || String(5 * 60 * 1000), 10),
 
-  // Local notification (HAEA SMTP relay / Teams / ServiceNow). The file holds
-  // the channel config and, by reference (…File keys), its secrets; 0600.
+  // Local notification from the Collector itself — off. The Local Console
+  // notifies (Q-2026-10-25-10 (A)); cap01 has no route to the SMTP relay or
+  // the proxy in firewall request v3. CFLEX_COLLECTOR_NOTIFY=1 brings the old
+  // path back for a site without a console; CFLEX_NOTIFY_CONFIG alone is
+  // ignored with a warning.
   notify: {
+    collectorNotify: process.env.CFLEX_COLLECTOR_NOTIFY === '1',
     configPath: process.env.CFLEX_NOTIFY_CONFIG || '',
     itsmStorePath: process.env.CFLEX_ITSM_STORE || './data/itsm-map.json',
     idStorePath: process.env.CFLEX_ID_STORE || './data/device-ids.json',
@@ -94,11 +115,16 @@ const cfg = {
     community: process.env.SNMP_COMMUNITY || 'public',
     timeoutMs: parseInt(process.env.SNMP_TIMEOUT_MS || '3000', 10),
     retries: parseInt(process.env.SNMP_RETRIES || '2', 10),
+    // NMC agents answer on 161; another port only for a simulator on a test host.
+    port: parseInt(process.env.SNMP_PORT || '161', 10),
   },
 };
 
 if (cfg.legacy.enabled && !cfg.cflexToken) {
   console.warn('[config] WARN: CFLEX_LEGACY_FORWARD=1 but CFLEX_TOKEN not set — legacy events will fail and buffer');
+}
+if (cfg.console.url && !cfg.console.keyPath) {
+  console.warn('[config] WARN: CFLEX_CONSOLE_URL set but CFLEX_CONSOLE_KEY_FILE not — the Local Console will refuse this node');
 }
 if (cfg.portal.enabled && !(cfg.portal.tls.certPath && cfg.portal.tls.keyPath)) {
   console.warn('[config] WARN: CFLEX_TLS_CERT/CFLEX_TLS_KEY not set — the Portal will refuse this node (mTLS, contract §1)');

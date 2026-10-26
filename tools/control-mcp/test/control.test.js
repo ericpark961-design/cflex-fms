@@ -97,13 +97,25 @@ t('the real board parses into the shape the handlers assume', (root) => {
   assert.strictEqual(bb.owner, 'codex');
   assert.strictEqual(bb.prefix, 'WO-PTL');
   assert.ok(a.rows.length >= 8, `expected ≥8 INT rows, got ${a.rows.length}`);
+  const unknown = [];
   for (const r of [...a.rows, ...bb.rows]) {
     assert.match(r.id, /^WO-(INT|PTL)-\d{3}[a-z]?$/);   // 004b is a real sub-task
-    assert.ok(C.STATUSES.includes(r.status), `bad status "${r.status}" on ${r.id}`);
+    // The vocabulary is the manager's and they annotate (`머지(정적 검증만)`).
+    // Breaking the build on their own writing would be the tool policing its
+    // owner — so the base word is checked, and anything still unknown has to
+    // show up in control_board's `unknown_statuses` rather than pass unseen.
+    if (!C.knownStatus(r.status)) unknown.push(`${r.id}: "${r.status}"`);
     assert.ok(r.acceptance.trim(), `${r.id} has no acceptance criteria`);
   }
   for (const n of ['Claude Code 블록', 'Codex 블록']) {
     assert.ok(b.status.blocks.some(x => x.name === n), `missing STATUS block ${n}`);
+  }
+  if (unknown.length) {
+    const srv = serverAs('claude-code', root);
+    const reported = srv.call('control_board', { owner: 'all' }).unknown_statuses;
+    srv.restore();
+    assert.deepStrictEqual(reported.slice().sort(), unknown.slice().sort(),
+      'an unrecognised status must be reported, not swallowed');
   }
   delete require.cache[require.resolve('../control')];
 });

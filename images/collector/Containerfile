@@ -1,0 +1,55 @@
+# cflex/collector — Collector (probe-agent): SNMP polling, alarm engine, Portal forwarder.
+# Spec 01 §2.1, §3.1. Build context = repository root:
+#   podman build --format docker -f images/collector/Containerfile \
+#     --build-arg BASE_IMAGE=registry.access.redhat.com/ubi8/nodejs-20@sha256:… -t cflex/collector:<ver> .
+# install/build-bundle does this from `git archive`, with the base pinned by digest.
+# --format docker keeps HEALTHCHECK (the OCI format drops it); the Quadlet unit repeats it as Health*.
+ARG BASE_IMAGE=registry.access.redhat.com/ubi8/nodejs-20:1
+
+# ── build: node_modules (better-sqlite3 compiles here, against UBI8 glibc) ──
+FROM ${BASE_IMAGE} AS build
+USER 1001
+WORKDIR /opt/app-root/src
+COPY --chown=1001:0 probe-agent/package.json probe-agent/
+RUN cd probe-agent \
+ && npm install --omit=dev --no-audit --no-fund \
+ && npm cache clean --force
+
+# ── runtime ──
+FROM ${BASE_IMAGE}
+ARG CFLEX_VERSION=0.0.0-dev
+ARG CFLEX_COMMIT=unknown
+LABEL name="cflex/collector" \
+      vendor="RingOn" \
+      version="${CFLEX_VERSION}" \
+      org.opencontainers.image.revision="${CFLEX_COMMIT}" \
+      summary="C-Flex Collector (probe) — HAEA on-prem" \
+      io.k8s.description="SNMP polling of UPS NMCs, alarm classification, store-and-forward to the C-Flex Portal"
+
+# The repository layout is kept (probe-agent requires ../../packages/notify and
+# ../../docs/spec/schemas by relative path). Everything is root-owned and read-only to UID 1001.
+WORKDIR /opt/cflex
+COPY --from=build --chown=0:0 /opt/app-root/src/probe-agent/node_modules probe-agent/node_modules
+COPY --chown=0:0 probe-agent/package.json probe-agent/
+COPY --chown=0:0 probe-agent/src probe-agent/src
+COPY --chown=0:0 probe-agent/bin probe-agent/bin
+COPY --chown=0:0 packages/notify/package.json packages/notify/
+COPY --chown=0:0 packages/notify/src packages/notify/src
+COPY --chown=0:0 docs/spec/schemas docs/spec/schemas
+
+ENV NODE_ENV=production \
+    CFLEX_PROFILE=container \
+    BUFFER_DB_PATH=/opt/app/cflex/queue/buffer.db \
+    CFLEX_ITSM_STORE=/opt/app/cflex/queue/itsm-map.json \
+    CFLEX_ID_STORE=/opt/app/cflex/queue/device-ids.json \
+    CFLEX_HEALTH_FILE=/tmp/cflex-collector-health.json \
+    CFLEX_TRAP_PORT=1162
+
+# Run read-only: the only writable paths are the queue volume and /tmp (tmpfs).
+VOLUME ["/opt/app/cflex/queue"]
+# Trap listener (WO-INT-006). Unprivileged inside; the host maps 162 → 1162.
+EXPOSE 1162/udp
+USER 1001
+HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
+  CMD ["node", "/opt/cflex/probe-agent/bin/cflex-healthcheck.js"]
+CMD ["node", "/opt/cflex/probe-agent/src/index.js"]

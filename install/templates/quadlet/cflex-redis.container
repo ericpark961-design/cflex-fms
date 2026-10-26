@@ -1,0 +1,34 @@
+# C-Flex Redis 6 (console sessions) — Red Hat image rhel8/redis-6, unmodified. Rendered by cflex-install @@INSTALLER_VERSION@@.
+# Started with our own config instead of the image's run script: that script edits /etc/redis.conf,
+# which a read-only root filesystem does not allow. The password is in an include file (0600), never argv.
+[Unit]
+Description=C-Flex Redis @@VERSION@@ (@@NODE_ID@@)
+@@SIDECAR_UNIT_DEPS@@
+
+[Container]
+ContainerName=cflex-redis
+Image=localhost/cflex/redis:@@VERSION@@
+Pull=never
+UserNS=keep-id:uid=1001,gid=1001
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=ALL
+@@SIDECAR_NETWORK@@
+Exec=redis-server /opt/app/cflex/config/redis.conf
+Volume=/opt/app/cflex/config/redis:/opt/app/cflex/config:ro,Z
+Volume=/opt/app/cflex/secrets/redis:/opt/app/cflex/secrets:ro,Z
+Volume=/opt/app/cflex/redis:/var/lib/redis/data:Z
+LogDriver=journald
+# A script, not an inline command: '$' and '%' in a Quadlet value meet systemd's own expansion.
+HealthCmd=/bin/sh /opt/app/cflex/config/healthcheck.sh
+HealthInterval=30s
+HealthTimeout=5s
+HealthStartPeriod=20s
+HealthRetries=3
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

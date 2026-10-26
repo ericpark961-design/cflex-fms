@@ -2,20 +2,13 @@
 // Forwards normalized telemetry + threshold breaches as events to cflex.
 const { pollMetrics } = require('../services/ups-metrics');
 const forwarder = require('../forwarder');
+// Default thresholds (per-device override comes from the device config).
+const { DEFAULT_THRESHOLDS } = require('./thresholds');
 
-// Default thresholds (per-device override comes from cflex device config).
-const DEFAULT_THRESHOLDS = {
-  battery_critical_pct: 30,
-  battery_warn_pct: 60,
-  temp_critical_c: 45,
-  temp_warn_c: 38,
-  load_critical_pct: 90,
-  load_warn_pct: 75,
-  runtime_critical_min: 5,
-  runtime_warn_min: 15,
-};
-
-function evaluateAlerts(device, metrics, thresholds = DEFAULT_THRESHOLDS) {
+function evaluateAlerts(device, metrics, thresholds) {
+  // A ledger row with no override carries `thresholds: null`, which a default
+  // parameter would let through.
+  thresholds = thresholds || DEFAULT_THRESHOLDS;
   const alerts = [];
 
   // Output source first: the alarm engine holds the battery-capacity warning

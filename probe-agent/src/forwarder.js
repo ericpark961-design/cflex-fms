@@ -63,7 +63,10 @@ function retryAfterMs(h, now) {
  * @param {object} [o.log]
  * @param {string} [o.version]
  * @param {object} [o.alarms]     engine options (alarms/engine.js DEFAULTS) + {maintenance, persist}
- * @param {object} [o.notifier]   alarms/local-notify.js instance; absent = no local notification
+ * @param {object} [o.console]    console/client.js instance: telemetry and events also go to the
+ *                                Local Console, which notifies and answers with local_notified
+ * @param {object} [o.notifier]   alarms/local-notify.js instance — the Collector notifying by itself
+ *                                (CFLEX_COLLECTOR_NOTIFY=1 only; Q-2026-10-25-10 moved it to the console)
  * @param {object} [o.idStore]    ledger id → last device_id, for replaced_by (alarms/store.js)
  */
 function createForwarder(o) {
@@ -79,6 +82,7 @@ function createForwarder(o) {
   const alarms = o.alarms || {};
   const engine = createAlarmEngine({ ctx, now, opts: alarms, maintenance: alarms.maintenance, persist: alarms.persist || null, log });
   const notifier = o.notifier || null;
+  const consoleLink = o.console || null;
   const idStore = o.idStore || jsonStore(null);
 
   let points = [];
@@ -226,6 +230,7 @@ function createForwarder(o) {
       const body = prepare('telemetry', { node_id: portal.nodeId, points: batch });
       if (body) enqueuePortal('telemetry', 'POST', body);
     }
+    if (consoleLink) consoleLink.flushTelemetry().catch(e => log.error(`[forwarder] console telemetry: ${e.message}`));
   }
 
   function addPoint(p) {
@@ -282,8 +287,10 @@ function createForwarder(o) {
   }
 
   /**
-   * Engine items → local notification → the Portal. The notification goes
-   * first because its outcome is part of the event (`local_notified`).
+   * Engine items → the Local Console (which notifies HAEA) → the Portal. The
+   * console goes first because what it delivered is part of the event
+   * (`local_notified`). Unreachable, the event still goes to the Portal now,
+   * without the field — "not notified locally", so the Portal routes it.
    */
   async function emit(items) {
     if (!items.length) return { queued: 0 };
@@ -301,6 +308,15 @@ function createForwarder(o) {
       }
       events.push(it.event);
     }
+    if (consoleLink) {
+      try {
+        const ln = await consoleLink.events(events);
+        if (ln) for (const ev of events) if (ln[ev.event_id] && !ev.local_notified) ev.local_notified = ln[ev.event_id];
+      } catch (e) {
+        stats.notify_errors++;
+        log.error(`[forwarder] console events: ${e.message}`);
+      }
+    }
     return postEvents(events);
   }
 
@@ -312,15 +328,18 @@ function createForwarder(o) {
    */
   async function sendEvent(kind, payload) {
     if (legacy.enabled) queue.enqueue('legacy', { kind, payload });
-    if (portal.enabled || notifier) {
+    if (portal.enabled || notifier || consoleLink) {
       const device = deviceFor(payload);
       const ts = payload.ts ?? now();
+      // One contract point for both destinations (the console validates the same schema).
+      const point = (p) => {
+        if (portal.enabled) addPoint(p);
+        if (consoleLink) consoleLink.addPoint(p);
+      };
       if (kind === 'telemetry') {
-        if (portal.enabled) {
-          addPoint(Array.isArray(payload.metrics)
-            ? adapt.collectorPoint(device, payload, ctx)
-            : adapt.upsPoint(device, payload, ctx));
-        }
+        point(Array.isArray(payload.metrics)
+          ? adapt.collectorPoint(device, payload, ctx)
+          : adapt.upsPoint(device, payload, ctx));
         if (payload.kind === 'ups') {
           // Comm loss comes from the poll outcome, not from the poller's
           // reachability alerts: appendix B wants 30 minutes of silence.
@@ -329,7 +348,7 @@ function createForwarder(o) {
           await emit(items);
         }
       } else if (kind === 'metrics') {
-        if (portal.enabled) addPoint(adapt.collectorPoint(device, payload, ctx));
+        point(adapt.collectorPoint(device, payload, ctx));
       } else if (kind === 'alert' && payload.metric !== 'reachability') {
         const r = engine.fromAlert(device, payload);
         if (r.code) await emit(r.items);
@@ -375,7 +394,20 @@ function createForwarder(o) {
         results.legacy = { ok: r.status < 300, status: r.status };
       } catch (e) { results.legacy = { ok: false, error: e.message }; }
     }
-    if (!portal.enabled) return { ok: !!results.legacy?.ok, ...results };
+    if (consoleLink) {
+      // The console shows the Portal link as this node sees it (Settings → status).
+      results.console = await consoleLink.heartbeat({
+        node_id: portal.nodeId, role: portal.role || 'collector', version,
+        uptime_s: Math.round(process.uptime()), queue_depth: queue.stats().pending,
+        ...(s.last_poll_ok_ratio !== undefined ? { last_poll_ok_ratio: s.last_poll_ok_ratio } : {}),
+        ...(s.devices_total !== undefined ? { devices_total: s.devices_total } : {}),
+        ...(s.devices_unreachable !== undefined ? { devices_unreachable: s.devices_unreachable } : {}),
+        clock: adapt.iso(now()), profile: portal.profile || 'bare', os: osName(),
+        portal: { enabled: !!portal.enabled, last_reachable: lastReachable, last_error: stats.last_error, sent: stats.sent, rejected: stats.rejected, queued: queue.stats().pending },
+      });
+      consoleLink.flush().catch(() => {});
+    }
+    if (!portal.enabled) return { ok: !!(results.legacy?.ok || results.console?.ok), ...results };
 
     const body = prepare('heartbeat', {
       node_id: portal.nodeId, role: portal.role || 'collector', version,
@@ -408,11 +440,17 @@ function createForwarder(o) {
 
   return {
     sendEvent, postEvents, putInventory, syncInventory, addPoint, flushTelemetry, flush, heartbeat,
-    drain: async () => { const r = await flush(); return { drained: r.sent || 0, ...r }; },
-    stats: () => ({ ...stats, queued_points: points.length, commands_pending: commandsPending, next_attempt_at: nextAt || null }),
+    drain: async () => {
+      const c = consoleLink ? await consoleLink.flush() : { sent: 0 };
+      const r = await flush();
+      return { drained: (r.sent || 0) + (c.sent || 0), ...r, console: c };
+    },
+    stats: () => ({ ...stats, queued_points: points.length, commands_pending: commandsPending, next_attempt_at: nextAt || null,
+      ...(consoleLink ? { console: consoleLink.stats() } : {}) }),
     lastReachable: () => lastReachable,
     alarms: engine,
     notifier,
+    console: consoleLink,
   };
 }
 
@@ -422,9 +460,24 @@ let cfg = null;
 function get() {
   if (instance) return instance;
   cfg = require('./config');
+  const buffer = require('./buffer');
+  const version = require('../package.json').version;
+  let consoleLink = null;
+  if (cfg.console.url) {
+    const { createConsoleClient } = require('./console/client');
+    consoleLink = createConsoleClient({
+      url: cfg.console.url, nodeId: cfg.portal.nodeId, timeoutMs: cfg.console.timeoutMs, version,
+      key: cfg.console.keyPath ? fs.readFileSync(cfg.console.keyPath, 'utf8').trim() : '',
+      tls: transport.loadTls({ caPath: cfg.console.caPath }),
+      queue: buffer.channel('console'),
+    });
+    console.log(`[forwarder] Local Console ${cfg.console.url} — inventory, telemetry, events; it sends the local notifications`);
+  }
   let notifier = null;
   let ncfg = null;
-  if (cfg.notify.configPath) {
+  if (cfg.notify.configPath && !cfg.notify.collectorNotify) {
+    console.warn(`[forwarder] CFLEX_NOTIFY_CONFIG ignored: the Local Console sends local notifications (Q-2026-10-25-10). Set CFLEX_COLLECTOR_NOTIFY=1 only on a site without a console.`);
+  } else if (cfg.notify.configPath) {
     const { createLocalNotifier, loadNotifyConfig } = require('./alarms/local-notify');
     ncfg = loadNotifyConfig(cfg.notify.configPath);
     notifier = createLocalNotifier({
@@ -432,14 +485,14 @@ function get() {
       request: transport.request, proxy: cfg.portal.proxy, noProxy: cfg.portal.noProxy,
       ca: transport.loadTls({ caPath: cfg.portal.tls.proxyCaPath }).ca,
     });
-    console.log(`[forwarder] local notify ${notifier.enabled() ? 'on' : 'configured but no channel usable'} (${cfg.notify.configPath})`);
+    console.log(`[forwarder] local notify on the Collector ${notifier.enabled() ? 'on' : 'configured but no channel usable'} (${cfg.notify.configPath})`);
   }
-  const buffer = require('./buffer');
   instance = createForwarder({
     notifier,
+    console: consoleLink,
     idStore: jsonStore(cfg.notify.idStorePath),
-    // Maintenance windows live with the notify config until the Local Console
-    // (WO-INT-004) and the set_maintenance command (§3.6) can set them.
+    // Maintenance windows come from the Local Console's config pull
+    // (fetchDeviceConfig); a notify.json's are the starting set without one.
     alarms: { ...cfg.alarms, maintenance: ncfg?.maintenance || [], persist: buffer.state('alarm_engine') },
     portal: {
       enabled: cfg.portal.enabled, url: cfg.portal.url, tenant: cfg.tenantId, nodeId: cfg.portal.nodeId,
@@ -449,14 +502,15 @@ function get() {
     },
     legacy: { enabled: cfg.legacy.enabled, url: cfg.cflexUrl, token: cfg.cflexToken, probeId: cfg.probeId, tenantId: cfg.tenantId },
     queue: buffer,
-    version: require('../package.json').version,
+    version,
   });
   return instance;
 }
 
-// Device config is still pulled from the old cloud until the Local Console
-// inventory API exists (WO-INT-004). Pulling is not forwarding, so it is not
-// behind the legacy flag — only behind having a token for that cloud at all.
+// The inventory comes from the Local Console (spec 01 §2.1). Without one
+// configured it is still pulled from the old cloud. Pulling is not
+// forwarding, so that is not behind the legacy flag — only behind having a
+// token for that cloud at all.
 async function legacyGet(path) {
   get();
   if (!cfg.cflexToken) return null;
@@ -468,7 +522,19 @@ async function legacyGet(path) {
   return r;
 }
 
+/**
+ * The UPS inventory. From the Local Console: its devices with credentials and
+ * thresholds, and its maintenance windows applied to the alarm engine. Null
+ * when the console cannot be reached, so the caller keeps the list it has.
+ */
 async function fetchDeviceConfig() {
+  const f = get();
+  if (f.console) {
+    const inv = await f.console.inventory({ snmpPort: cfg.snmp.port });
+    if (!inv) return null;
+    f.alarms.setMaintenance(inv.maintenance);
+    return inv.devices;
+  }
   try {
     const r = await legacyGet(`/v1/probe/devices?tenant=${encodeURIComponent(cfg?.tenantId || '')}`);
     return r && r.status < 300 ? r.json?.devices || [] : [];
@@ -484,6 +550,8 @@ async function fetchDeviceConfig() {
  * UPS feed alone.
  */
 async function fetchObjectConfig() {
+  // The console's inventory is UPSs only (its device table); it has no object feed.
+  if (get().console) return [];
   try {
     const r = await legacyGet(`/v1/probe/objects?tenant=${encodeURIComponent(cfg?.tenantId || '')}`);
     return r && r.status < 300 ? r.json?.devices || [] : [];
@@ -503,6 +571,7 @@ module.exports = {
   syncInventory: (...a) => get().syncInventory(...a),
   stats: () => get().stats(),
   lastReachable: () => get().lastReachable(),
+  consoleConfigured: () => !!get().console,
   fetchDeviceConfig,
   fetchObjectConfig,
 };

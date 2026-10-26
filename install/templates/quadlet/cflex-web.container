@@ -1,0 +1,32 @@
+# C-Flex Local Console — nginx TLS 443 (spec 01 §2.2). Rendered by cflex-install @@INSTALLER_VERSION@@.
+[Unit]
+Description=C-Flex Console web (nginx) @@VERSION@@ (@@NODE_ID@@)
+Wants=network-online.target
+After=network-online.target
+@@WEB_UNIT_DEPS@@
+
+[Container]
+ContainerName=cflex-web
+Image=localhost/cflex/web:@@VERSION@@
+Pull=never
+UserNS=keep-id:uid=1001,gid=1001
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=ALL
+@@WEB_NETWORK@@
+Volume=/opt/app/cflex/config/nginx:/opt/cflex/nginx.d:ro,Z
+Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,Z
+LogDriver=journald
+HealthCmd=curl -fsk -o /dev/null https://127.0.0.1:8443/-/nginx
+HealthInterval=30s
+HealthTimeout=5s
+HealthStartPeriod=30s
+HealthRetries=3
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

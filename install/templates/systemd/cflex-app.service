@@ -1,0 +1,25 @@
+# C-Flex Local Console API — bare profile (spec 01 §3.2). Rendered by cflex-install @@INSTALLER_VERSION@@.
+[Unit]
+Description=C-Flex Console API @@VERSION@@ (@@NODE_ID@@)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=cflex
+Group=cflex
+WorkingDirectory=/opt/app/cflex/current/apps/console
+EnvironmentFile=/opt/app/cflex/config/app/app.env
+ExecStart=/usr/bin/node /opt/app/cflex/current/apps/console/src/server.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/opt/app/cflex/data
+
+[Install]
+WantedBy=multi-user.target

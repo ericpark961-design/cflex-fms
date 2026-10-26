@@ -1,3 +1,6 @@
+# Legacy unit (Ubuntu-era /opt/cflex-probe layout). New installs do not use it: cflex-install
+# renders install/templates/systemd/cflex-collector.service (bare profile) or a Quadlet unit
+# (container profile). Kept so an existing host can still be identified and migrated.
 [Unit]
 Description=cflex-probe — RingOn C-Flex FMS customer-site probe agent
 Documentation=https://github.com/ericpark961-design/cflex-probe

@@ -80,6 +80,96 @@
 - 블로커: 없음
 - 다음 세션 계획: PR #3·#4 검토 반영 → probe-agent의 콘솔 연동(장비 pull, telemetry/events 두 번째 목적지, 지시가 있으면) → WO-INT-005
 
+### 2026-10-25 15:36 PDT — Claude Code (5차)
+- WO-INT-005: **검토요청 (일부 미수행)** | 브랜치 `wo/INT-005-rhel-container` (base main `91a2080`, 작업 트리 `../cflex-fms-wt-int005`) | 커밋 `25906b7` | **PR #5** https://github.com/ericpark961-design/cflex-fms/pull/5
+  - 만든 것:
+    - `images/{collector,app,web}/Containerfile`: ubi8/nodejs-20, ubi8/nginx-122, UID 1001, 읽기 전용 루트 전제, HEALTHCHECK
+    - redis/postgres는 rhel8 이미지 참조만(`images/base-images.env`)
+    - Quadlet `.container` 5종 + `.pod`: 전 볼륨 `:Z`, `Pull=never`
+    - `cflex-install`: preflight/install/verify/netcheck/upgrade/rollback/render, 베어 프로파일 포함
+    - `install.sh` RHEL 전용 교체
+    - `build-bundle`: podman save + SHA256SUMS + SBOM 스텁 + MANIFEST.json
+    - 운영 문서 `docs/install/CONTAINER_PROFILE.md`
+  - trap 162 결정: forward(firewalld 162→1162)가 기본이고, firewalld가 없으면 sysctl(`ip_unprivileged_port_start=161`). 문서 §2
+  - netcheck: 01 §1 8행을 `install/netmatrix.json`에 글자 그대로 옮겼다. 정적 테스트가 §1 표와 대조하고, 출력도 같은 표 형식
+  - 설계상 발견:
+    - RHEL 8.10의 Podman 4.9에는 Quadlet `.pod`가 없다 → web이 네트워크 네임스페이스를 소유하는 방식으로 렌더하고, Podman ≥5에서는 `.pod`를 쓴다
+    - 콘솔 노드 간 대체 경로는 v3대로 443으로 만들었다(8080 아님)
+  - 테스트:
+    - `node --test install/test/static.test.js` **11/11**
+    - probe-agent 기존 7파일 + health **52/52**
+    - apps/console **22/22**
+    - `bash -n` 스크립트 4개 OK
+  - **미수행 (추측으로 통과 처리하지 않음)**:
+    - ① `podman build`·컨테이너 기동·`podman healthcheck`: 이 Mac에 Podman 없음
+    - ② RHEL 8.10/UBI8에서 Node 20 테스트: 같은 이유
+    - ③ 설치기 Python 단위 테스트 8파일(`python3 -m unittest discover -s install/test`): 작성만 했다. 이 세션은 Python 실행 권한이 없다. 대신 별도 리뷰 1회로 실제 결함 6건을 찾아 고쳤다(PyYAML 3.12 비호환, /opt/app/cflex 권한, secret 개행, Podman 5 `UserNS`+`Pod`, 예외 처리, 로케일)
+    - ④ `nginx -t`: 실행 승인이 안 됨
+    - ⑤ redis/postgres를 읽기 전용 루트에서 기동하는 것
+    - ⑥ 취약점 스캔과 정식 SBOM(스텁만 있음)
+  - 범위 밖으로 남긴 것: 베어용 SELinux .pp 모듈, DB 마이그레이션 실행기(WO-INT-008), trap 리스너 자체(WO-INT-006)
+  - collector 장비 pull은 아직 구 클라우드 경로다(WO-INT-004c). env에 `CFLEX_URL=https://<active app>`를 넣어 v3 밖으로 나가지 않게만 했다
+- 작업 트리 사고 대응: 이 세션 도중 다른 세션이 메인 트리를 `wo/INT-portal-integration`로 바꿈
+  - 내 미커밋 변경을 새 규칙대로 `../cflex-fms-wt-int005` 워크트리로 옮겨 커밋했다
+  - 메인 트리에서는 내 파일만 되돌리고 지웠다(`git restore`·`git clean`, 경로 지정). 그 세션의 커밋·파일은 건드리지 않음
+- WO-INT-004c: **미착수** (시간 부족 — 005 이전·재검증에 소요)
+- 질문: `Q-2026-10-25-10`(로컬 알림 발송 위치 collector vs v3 FW-8 app) · `Q-2026-10-25-11`(Redis 단일 노드 → app01 VM 장애 시 app02 로그인 불가, SAT 6)
+- 블로커: 없음. 관리자 확인 요청 — Python 실행이 가능한 곳에서 `python3 -m unittest discover -s install/test` 1회
+- 다음 세션 계획: Podman이 있는 RHEL/UBI 호스트가 생기면 ①②⑤ 확인 → WO-INT-004c(Q-10 답에 따라 알림 발송 이전 포함)
+
+### 2026-10-25 18:10 PDT — Claude Code (6차)
+- WO-INT-004c: **검토요청** | 브랜치 `wo/INT-004c-internal-console` (base main `e7ea8dc`, 작업 트리 `../cflex-fms-wt-int004c`) | 커밋 `ee6476e`·`19bc15c`·`c161098`(+질문) | **PR #6** https://github.com/ericpark961-design/cflex-fms/pull/6
+  - ① Q-10=(A) **알림 발송을 콘솔로 이전**:
+    - Collector는 알림 채널이 없다. `CFLEX_NOTIFY_CONFIG`만 있으면 경고 후 무시한다. `CFLEX_COLLECTOR_NOTIFY=1`일 때만 구 경로를 쓴다.
+    - 콘솔 `POST /collector/v1/events`가 저장 → SMTP/Teams/ServiceNow 발송(`apps/console/src/notify.js`, local-notify 재사용) → `event_id → local_notified`로 응답한다. Collector가 이것을 포털 events에 싣는다(계약 00 v1.1 그대로).
+    - alarm_id↔INC 매핑은 `itsm_map` 테이블에 둔다. 그래서 app01에서 연 INC를 app02가 해결한다.
+    - 같은 이벤트를 다시 받으면 저장된 답을 돌려준다(두 번 알리지 않음).
+    - 억제: 콘솔에서 연 유지보수 창, 15분 넘게 늦은 replay.
+    - `/collector/v1/config`에서 알림 비밀값을 뺐다(이제 콘솔 밖으로 나가지 않음).
+  - ② **probe-agent↔콘솔 실제 연동** (`probe-agent/src/console/client.js`):
+    - 인벤토리 pull: 장비 + SNMP 크리덴셜 + 임계치(콘솔→폴러 형식) + 유지보수 창 → 엔진.
+    - telemetry/events/heartbeat push.
+    - 콘솔 전용 큐 `q_console`과 백오프를 따로 둔다. 콘솔이 불통이어도 포털은 막히지 않는다. 그 사이 이벤트는 포털에 `local_notified` 없이 즉시 가고, 콘솔에는 나중에 `X-CFlex-Replay`로 간다.
+    - `CFLEX_CONSOLE_URL`에 두 앱 노드를 넣으면, 한쪽이 접속 불가일 때 다른 노드로 넘어간다(SAT 6, VIP 없음).
+  - **E2E 1회 — mock 없이 두 프로세스**: `probe-agent/test/console.e2e.test.js` **4/4**.
+    - 프로세스 3개: `node apps/console/src/server.js`, `node probe-agent/src/index.js`, UPS SNMP 시뮬 `sim/sim-ups.js`(신규).
+    - 흐름: 콘솔 인벤토리 pull(community 포함) → SNMP 폴링 → onBattery P1 → 콘솔이 메일·ServiceNow 발송 → 포털 raise 이벤트의 `local_notified` = 콘솔 기록 → online 복귀 → clear, INC 해결 → heartbeat에 포털 링크 상태.
+    - 대역(이 Mac에 없는 것): nginx=TLS 프런트, Redis=mini-redis, HAEA SMTP/SN=dummy, 포털=mTLS mock(실 포털 /api/v1 없음).
+  - ③ **`CONSOLE_PROFILE=internal` 빌드** (Q-09 B):
+    - `npm run build:console`의 기본값이 internal이다. app 이미지 빌드에도 명시했다.
+    - 3D·NOC·파워체인·지도·Copilot의 라우트·메뉴 링크·API 호출이 **0**이고, three/maplibre가 빠졌다(1.9 MB → 0.89 MB).
+    - 코드는 지우지 않았다. 포털 화면은 `portalScreens.jsx`로 모았고, 내부 빌드는 스텁으로 해석한다. 템플릿 링크는 빌드 시 제거된다. WallScreen은 App.jsx에서 파일로 이동만 했다.
+    - 콘솔 API: internal에서 routes·control/actions 미등록(404).
+    - 빌드 검사: `apps/twin/src/profile.test.mjs`가 두 프로파일을 실제로 빌드해 비교한다. portal 빌드에서는 검출되므로 검사가 동작함이 확인된다. 콘솔 테스트는 배포될 `dist-console`을 검사한다.
+  - ④ Q-11=(A) **Redis replica + promote**:
+    - 두 앱 노드에 Redis를 둔다. `install.redis_host`가 primary, 다른 노드는 `replicaof`(읽기 전용)이다.
+    - `auth.conf`에 requirepass와 masterauth를 둔다. 6379는 피어 /32만, 양 노드에서 연다.
+    - `cflex-install promote --role app`: 옛 primary가 6379에 응답하면 거부한다(`--force` 예외). 이어서 `REPLICAOF NO ONE` → redis.conf·app.env 재렌더 → 콘솔 재시작 → state 기록.
+    - site.yaml이 바뀔 때까지 install/upgrade/rollback은 승격을 되돌리지 않는다. verify에 replication 점검을 넣었다.
+    - 운영 절차 `docs/install/REDIS_FAILOVER.md`: SAT 6 판정 절차, 복귀, 원복, 베어 수동 절차.
+  - ⑤ **노드 간 443 통일, netcheck·verify 정리**:
+    - 베어 nginx 참조본(`deploy/console`)을 설치기 bare 렌더 결과로 교체했다(로컬 127.0.0.1:8080, 피어 443). 정적 테스트로 두 프로파일 모두 노드 간 8080이 없음을 확인한다.
+    - netcheck: cap01의 FW-8은 **"해당 없음 — 로컬 알림은 Local Console(app)이 발송"**.
+    - verify: 알림 경로 점검은 app만 한다. `--send-test`는 app에서 콘솔 CLI `test-ticket`(신규)을 돌린다. collector 키 존재도 확인한다.
+    - collector.env에 콘솔 URL(두 노드)·키·CA를 넣었다.
+  - 테스트(이 세션 실행, 전부 통과):
+    ```
+    probe-agent        npm test                                       62/62   (기존 52 + console-link 6 + console.e2e 4)
+    apps/console       npm test                                       27/27   skip 0 (dist-console 빌드 있음 → CDN·라우트 검사 실행)
+    apps/twin          npm test                                       13/13 스크립트 (profile.test.mjs 신규)
+    install            python3 -m unittest discover -s install/test   51/51
+    install            node --test install/test/static.test.js        12/12
+    packages/notify    npm test                                       5/5
+    ```
+  - **미수행 (통과로 치지 않음)**:
+    - ① Redis 복제·`promote`의 실제 동작: Podman이 없어 확인하지 못했다. 단위 테스트는 명령·파일·상태만 본다. SAT 항목(D-11과 같음).
+    - ② 내부 빌드 화면을 브라우저로 육안 확인하지 않았다. 산출물 스캔만 했다.
+    - ③ 실 HAEA 릴레이·ServiceNow는 시험하지 않았다(금지 범위).
+  - 로컬 전용(커밋 안 함): `probe-agent`, `apps/twin`에 `npm install` → node_modules. `.runtime/` 미추적.
+- 질문 3건: `Q-2026-10-26-01`(콘솔 복구 후 replay 이벤트 알림 — 15분 기본) · `Q-2026-10-26-02`(내부 빌드에 남긴 워크벤치/티켓, "FMS 1.x"→"설정" 링크) · `Q-2026-10-26-03`(베어 Redis 미관리) — 모두 권고안으로 진행
+- 블로커: 없음
+- 다음 세션 계획: PR #6 검토 반영 → WO-INT-006(SNMP trap 162) 또는 관리자 지시 순서
+
 ### 2026-10-25 15:00 PDT — Claude Code
 - WO-INT-002: **진행** | 진행 포털 연동 1단계 | 브랜치 `wo/INT-portal-integration` | 커밋 `6b076d9` | 테스트 probe-agent 58/58 (신규 portal-check 6) | 비고 실측 3 FAIL 전부 포털 쪽: mTLS 미구성 · 장치 인증서 없음(포털 CA 부재) · /api/v1 미구현(303→/login, Review Login 앱). 전송계층(DNS·TCP·TLS 1.3·시계 +1s)은 정상. docs/handoff/PORTAL_INTEGRATION_REQUIREMENTS.md
   - 완료 기준: Eric 직접 지시(배정 WO 없음) — cflex.fms.support 실연동 착수. 장치 CSR 생성기 + 연동 점검 도구 + 포털측 요구사항 문서
@@ -95,5 +185,10 @@
 - 2026-10-25 (3차): WO-INT-000 **완료**(origin/main=cbb4f49→7766313). WO-INT-002 **완료** — PR #1 관리자 머지(7766313), 테스트 22/22 관리자 재실행 확인, 비밀값 없음. Q-04=(A) Basic만, Q-05=임시 ID+provisional 표시(계약 v1.1 예정), Q-06=(A) docs/spec/schemas 정본(D-08). 다음: WO-INT-003 진행 지시. 미해결: index.js 실기동 스모크(node_modules 없음) → WO-INT-007에서 같이.
 - 2026-10-25 (4차): WO-INT-003 **완료** — PR #2 머지, 테스트 42/42 + notify 6/6 재실행, 비밀값 없음. Q-07=(B) 새 코드 UPS_BATTERY_CAPACITY_LOW(P3), Q-08=계약 v1.1 승격(스키마 태그 1.1). WO-INT-004(Local Console) 진행 지시, WO-INT-004b(v1.1 반영) 등록. 미시험: 실제 HAEA 릴레이/ServiceNow, STARTTLS — 현장 SAT 항목.
 - 2026-10-25 (5차): WO-INT-004b **완료**(PR #3, 48/48), WO-INT-004 **완료**(PR #4, console 22/22, CSP self-only·CDN 0, Redis 세션·2인스턴스 페일오버 테스트). Q-09=(B) 내부 콘솔 프로파일 → WO-INT-004c 등록. 한계 기록: app01/02 실분리는 WO-INT-008(PostgreSQL) 선행, XLSX 임포트 미구현(CSV만), 브라우저 실화면 미확인(SAT). 다음: WO-INT-005(RHEL 컨테이너) 기동.
+- 2026-10-25 (6차): 사고 기록 — 대화형 세션과 헤드리스 세션이 **한 작업 트리를 공유**해 브랜치가 서로 바뀌고(고아 커밋 7c0b010→복구), control_report가 완료 WO-INT-002를 진행으로 되돌림(가드 추가 97a808d), TASKS 행 재배열(원복, 822207d와 바이트 동일 확인). 데이터 손실 없음. 재발 방지: CLAUDE.md '세션 하나=작업 트리 하나' 규칙. 포털 연동 1단계 작업에 WO-INT-011 번호 부여(검토요청). 실측: cflex.fms.support는 현재 'Review Login' 웹앱만 떠 있고 /api/v1·mTLS 없음 → Codex WO-PTL-001/002가 선행.
+- 2026-10-26 (7차): WO-INT-005 PR #5 **머지**(2ab2da9) — 정적 검증만(Podman 없음), 설치기 Python 44/44(관리자 재실행; `test_smtp_banner` 교착은 테스트 서버가 클라이언트 요청을 기다리던 문제 → 서버가 먼저 배너 송신으로 수정 49ef019), probe 52/52·console 22/22, 비밀값 0. 상태 '머지(정적 검증만)', 완료는 SAT(D-11). Q-10=(A) 알림 발송 app 이전, Q-11=(A) app02 Redis replica+promote. WO-INT-004c **진행** 지시(별도 워크트리 `../cflex-fms-wt-int004c`). 대화형 세션은 `wo/INT-portal-integration` 2단계(dea4db4) 진행 중 — 메인 트리 점유, 검토는 다음 회차.
+
+- 2026-10-26 (8차): WO-INT-004c PR #6 **머지**(649622b) — 관리자 재실행 probe 62/62(두 프로세스 E2E 4 포함)·console 27/27·twin 내부 프로파일 빌드 검사 통과·설치기 Python 51/51·static 12/12·notify 5/5, `bash -n` OK, 비밀값 0, Docker 0, 노드 간 8080 0, 장비 SET 0, 역할 침범 없음. 상태 **완료**(Redis replica/promote 실동작·내부 빌드 육안 확인은 SAT, D-11 기준). Q-2026-10-26-01/02/03 모두 **(A)** 권고안 채택. WO-INT-006(SNMP trap 162) **진행** 지시 — TASKS 행에 포트 1162·콘솔 인벤토리 매핑·기존 분류 엔진 경유·중복 억제·부록 B 밖 코드 금지를 명시, 워크트리 `../cflex-fms-wt-int006`. 머지된 004c/005 워크트리 정리. Codex: 진척 없음(마지막 커밋 a8b097c 10-25 09:25) → codex 워크트리에 `docs/control/TASKS.md`(WO-PTL-001/002 완료 기준 구체화, cflex-portal-check 기준) + AGENTS.md 지시 커밋(1173d7a, push 안 함) — **실행은 법인장**. 대화형 세션 `wo/INT-portal-integration`(1805359)은 메인 트리 점유 중, 검토는 PR 생성 후.
+
 
 - 2026-10-25: WO-INT-002 상태 복원 — Claude Code 의 포털 연동 보고가 배정 WO 가 없어 INT-002 에 붙으면서 완료→진행으로 되돌아간 것. PR #1 머지와 3차 승인은 유효하다. control-mcp 에 완료 재개 차단 추가.

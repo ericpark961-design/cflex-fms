@@ -24,8 +24,10 @@ function createIngest(db, { now = Date.now } = {}) {
         runtime_min = COALESCE(?, runtime_min), output_v = COALESCE(?, output_v), input_v = COALESCE(?, input_v),
         ups_status = COALESCE(?, ups_status), firmware = COALESCE(?, firmware)
       WHERE device_id = ? AND (last_ts IS NULL OR last_ts <= ?)`),
-    seen: db.prepare('SELECT 1 FROM alarm_events WHERE event_id = ?'),
-    ev: db.prepare('INSERT INTO alarm_events (event_id, alarm_id, ts, kind, title, detail) VALUES (?, ?, ?, ?, ?, ?)'),
+    seen: db.prepare('SELECT local_notified FROM alarm_events WHERE event_id = ?'),
+    ev: db.prepare('INSERT INTO alarm_events (event_id, alarm_id, ts, kind, title, detail, local_notified) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+    evNotified: db.prepare('UPDATE alarm_events SET local_notified = ? WHERE event_id = ?'),
+    alarmNotified: db.prepare('UPDATE alarms SET local_notified = ? WHERE alarm_id = ?'),
     alarm: db.prepare('SELECT * FROM alarms WHERE alarm_id = ?'),
     raise: db.prepare(`INSERT INTO alarms (alarm_id, device_id, site_id, code, severity, title, state, raised_at, updated_at, detail, local_notified, maintenance)
       VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)`),
@@ -75,17 +77,27 @@ function createIngest(db, { now = Date.now } = {}) {
     return { accepted: stored, unknown_devices: unknown };
   }
 
+  /**
+   * Store the events. Returns the counts, the events stored just now (`fresh`,
+   * in order — the caller notifies for these), and for each replayed event
+   * what was delivered for it the first time (`prior`), so a retried POST is
+   * answered the same way without anyone being told twice.
+   */
   function events(body) {
     validate('events', body);
     let accepted = 0, duplicate = 0;
+    const fresh = [];
+    const prior = {};
     tx(db, () => {
       for (const e of body.events) {
-        if (st.seen.get(e.event_id)) { duplicate++; continue; }
+        const seen = st.seen.get(e.event_id);
+        if (seen) { duplicate++; prior[e.event_id] = json(seen.local_notified); continue; }
         const t = ms(e.ts);
         const det = e.detail || {};
         const ln = e.local_notified ? JSON.stringify(e.local_notified) : null;
         const maint = det.maintenance ? 1 : 0;
-        st.ev.run(e.event_id, e.alarm_id, t, e.kind, e.title, JSON.stringify(det));
+        st.ev.run(e.event_id, e.alarm_id, t, e.kind, e.title, JSON.stringify(det), ln);
+        fresh.push(e);
         const cur = st.alarm.get(e.alarm_id);
         if (e.kind === 'alarm_raise' || (!cur && e.kind === 'alarm_update')) {
           // An update for an alarm we never saw raised (the console came up
@@ -101,7 +113,18 @@ function createIngest(db, { now = Date.now } = {}) {
         accepted++;
       }
     });
-    return { accepted, duplicate };
+    return { accepted, duplicate, fresh, prior };
+  }
+
+  /**
+   * What the console delivered for one event. The alarm row keeps how the
+   * alarm was announced — its raise (or the late raise when a maintenance
+   * window ended) — not the later update or clear.
+   */
+  function recordNotified(ev, ln, { announces = ev.kind === 'alarm_raise' } = {}) {
+    const v = JSON.stringify(ln);
+    st.evNotified.run(v, ev.event_id);
+    if (announces) st.alarmNotified.run(v, ev.alarm_id);
   }
 
   /** Heartbeat: the contract fields plus, on this internal path only, the forwarder's Portal link state. */
@@ -120,10 +143,11 @@ function createIngest(db, { now = Date.now } = {}) {
     return { ack: true };
   }
 
-  return { authCollector, telemetry, events, heartbeat };
+  return { authCollector, telemetry, events, recordNotified, heartbeat };
 }
 
-const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const json = (s) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
+const num =(v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const str = (v, n) => (v == null ? null : String(v).slice(0, n));
 
 module.exports = { createIngest };

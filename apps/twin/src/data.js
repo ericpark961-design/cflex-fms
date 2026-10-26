@@ -9,6 +9,7 @@ import * as Alarms from './screens/Alarms.logic.js';
 import * as Power from './screens/PowerChain.logic.js';
 import * as NOC from './screens/NOC.logic.js';
 import { evalLogic } from './tpl';
+import { INTERNAL } from './profile';
 
 const OK = '#42be65', WARN = '#f1c21b', CRIT = '#fa4d56', NA = '#6f6f6f';
 const SC = { ok: OK, warn: WARN, critical: CRIT, nodata: NA, unreachable: NA, unknown: NA };
@@ -45,7 +46,9 @@ export const store = { me: null, cbuMeta: {}, summary: null, summaryAll: null, a
 export async function refresh() {
   const [s, sa, a, al, f, t] = await Promise.all([
     api('/v1/fms/summary' + withCbu()), api('/v1/fms/summary'), api('/v1/fms/assets' + withCbu()),
-    api('/v1/fms/alerts' + withCbu('?hours=24')), api('/v1/fms/floor' + withCbu()), api('/v1/fms/topology' + withCbu()),
+    api('/v1/fms/alerts' + withCbu('?hours=24')), api('/v1/fms/floor' + withCbu()),
+    // The ledger topology feeds the 3D twin and the NOC wall only — portal screens the internal build does not have.
+    INTERNAL ? null : api('/v1/fms/topology' + withCbu()),
   ]);
   if (s?.ok) store.summary = s; if (sa?.ok) store.summaryAll = sa;
   // cbu -> { company, display, timezone }, used by hhmm()/tzMark().
@@ -377,7 +380,10 @@ export async function deviceData(id, _fellBack = false, range = '24h') {
 // Cached so the alarm screen can stay synchronous; refreshed by refresh().
 export const aux = { rules: null, channels: null, actions: null, sites: null };
 export async function loadAlarmAux() {
-  const [r, c, a, si] = await Promise.all([alarmRoutes(), channelsHealth(), controlActions(), sitesMap()]);
+  // Routing rules, control actions and the site map are the Portal's (D-01): the internal build does not ask.
+  const [r, c, a, si] = await Promise.all(INTERNAL
+    ? [{ routes: [] }, channelsHealth(), [], []]
+    : [alarmRoutes(), channelsHealth(), controlActions(), sitesMap()]);
   aux.rules = r.routes; aux.channels = c; aux.actions = a; aux.sites = si;
   return aux;
 }

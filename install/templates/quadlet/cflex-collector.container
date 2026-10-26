@@ -1,0 +1,40 @@
+# C-Flex Collector — rootless Podman Quadlet (spec 01 §3.1). Rendered by cflex-install @@INSTALLER_VERSION@@;
+# edits on the host are overwritten by the next install/upgrade. Installed to ~cflex/.config/containers/systemd/.
+[Unit]
+Description=C-Flex Collector @@VERSION@@ (@@NODE_ID@@)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+ContainerName=cflex-collector
+Image=localhost/cflex/collector:@@VERSION@@
+# Offline site: images come only from `podman load` of the signed bundle.
+Pull=never
+# Container UID 1001 = host user cflex, so volume files stay owned by cflex.
+UserNS=keep-id:uid=1001,gid=1001
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=ALL
+# Source address of every trap must survive the port forward (it identifies the NMC).
+Network=@@NETWORK@@
+# Trap UDP 162 (FW-2). Host side is @@TRAP_HOST_PORT@@ — see docs/install/CONTAINER_PROFILE.md §2.
+PublishPort=@@HOST_IP@@:@@TRAP_HOST_PORT@@:1162/udp
+EnvironmentFile=/opt/app/cflex/config/collector/collector.env
+Volume=/opt/app/cflex/config/collector:/opt/app/cflex/config:ro,Z
+Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,Z
+Volume=/opt/app/cflex/secrets/collector:/opt/app/cflex/secrets:ro,Z
+Volume=/opt/app/cflex/queue:/opt/app/cflex/queue:Z
+LogDriver=journald
+HealthCmd=node /opt/cflex/probe-agent/bin/cflex-healthcheck.js
+HealthInterval=60s
+HealthTimeout=10s
+HealthStartPeriod=120s
+HealthRetries=3
+
+[Service]
+Restart=always
+RestartSec=10
+TimeoutStartSec=180
+
+[Install]
+WantedBy=default.target
