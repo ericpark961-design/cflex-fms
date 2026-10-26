@@ -176,6 +176,12 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
         // the console keeps the device's history under the new one.
         for (const tbl of ['telemetry', 'alarms', 'maintenance', 'credentials']) await tx.run(`UPDATE ${tbl} SET device_id = ? WHERE device_id = ?`, cid, row.device_id);
         await tx.run('UPDATE devices SET device_id = ? WHERE id = ?', cid, id);
+        // The Portal hears of the old ID once more, linked to the new one (contract §2 replaced_by, portal.js).
+        if (!isNew) {
+          await tx.run(`INSERT INTO device_replaced (device_id, site_id, replaced_by, created_at) VALUES (?, ?, ?, ?)
+            ON CONFLICT (device_id) DO UPDATE SET site_id = excluded.site_id, replaced_by = excluded.replaced_by, created_at = excluded.created_at, sent_at = NULL`,
+          row.device_id, row.site_id, cid, t);
+        }
       }
       return { device: await tx.one('SELECT * FROM devices WHERE id = ?', id), warnings, created: isNew };
     });
@@ -372,10 +378,17 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
   const listCollectors = async () => (await db.all('SELECT node_id, created_at, last_seen, heartbeat FROM collectors ORDER BY node_id'))
     .map(c => ({ ...c, heartbeat: json(c.heartbeat) }));
 
-  /** What a collector polls: devices with their credentials opened (device override, else site default). */
-  async function collectorDevices() {
+  /**
+   * What a collector polls: devices with their credentials opened (device
+   * override, else site default). `sites` is the collector's scope (D-13,
+   * CFLEX_COLLECTOR_SITES); empty = every site.
+   */
+  async function collectorDevices({ sites = [] } = {}) {
     const creds = await db.all('SELECT * FROM credentials ORDER BY id');
-    return (await db.all('SELECT * FROM devices WHERE polling_enabled = 1 ORDER BY site_id, label')).map(d => {
+    const rows = sites.length
+      ? await db.all('SELECT * FROM devices WHERE polling_enabled = 1 AND site_id = ANY(?::text[]) ORDER BY site_id, label', sites)
+      : await db.all('SELECT * FROM devices WHERE polling_enabled = 1 ORDER BY site_id, label');
+    return rows.map(d => {
       const c = creds.find(x => x.device_id === d.device_id) || creds.find(x => x.device_id == null && x.site_id === d.site_id);
       const s = c?.secret ? sealer.open(c.secret) : {};
       return {

@@ -223,12 +223,24 @@ def _secrets(c):
     return "created: " + ", ".join(made) if made else "present (values not shown)"
 
 
+def _device_cert(c):
+    """The Portal device certificate (contract §6) — on the app nodes since D-13; a collector has none."""
+    if not siteconf.get(c.site, "portal.enabled", True):
+        return "portal disabled"
+    cert = siteconf.get(c.site, "portal.mtls_cert") or BASE + "/certs/device.pem"
+    if c.runner.exists(cert):
+        return "device certificate present"
+    c.log("  ! %s missing — the Portal will refuse this node until the CSR (CN %s.%s) is signed (contract §6)"
+          % (cert, siteconf.get(c.site, "tenant.code"), c.me[1]))
+    return "device certificate missing (not fatal)"
+
+
 def _certs(c):
     """Certificates are HAEA's (console, internal CA) or the Portal's (device). Never invented silently."""
     if c.role == "app":
         crt, key = BASE + "/certs/console.crt", BASE + "/certs/console.key"
         if c.runner.exists(crt) and c.runner.exists(key):
-            return "console.crt present"
+            return "console.crt present; " + _device_cert(c)
         if not c.self_signed:
             raise DeployError("%s / %s missing — install the HAEA internal-CA certificate, or pass "
                               "--self-signed-console-cert for a staging install" % (crt, key))
@@ -242,13 +254,10 @@ def _certs(c):
             os.chown(crt, uid, uid)
             shutil.copyfile(crt, BASE + "/certs/console-ca.pem")
             os.chown(BASE + "/certs/console-ca.pem", uid, uid)
-        return "self-signed (90 days) — replace with the HAEA CA certificate"
+        return "self-signed (90 days) — replace with the HAEA CA certificate; " + _device_cert(c)
     if c.role == "collector":
-        cert = siteconf.get(c.site, "portal.mtls_cert") or BASE + "/certs/device.pem"
-        if c.runner.exists(cert):
-            return "device certificate present"
-        c.log("  ! %s missing — the Portal will refuse this node until the CSR is signed (contract §6)" % cert)
-        return "device certificate missing (not fatal)"
+        # D-13: the collector talks to the console only (console-ca.pem); no Portal certificate here.
+        return "n/a (collector: no Portal link, D-13)"
     return "n/a"
 
 

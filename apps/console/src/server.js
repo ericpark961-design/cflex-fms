@@ -3,8 +3,9 @@
 //   /v1/auth/*, /v1/me          local accounts, sessions in Redis
 //   /v1/fms/*                   what apps/twin reads (same keys as before)
 //   /v1/console/*               alarms detail/comment, maintenance, settings, users, status
-//   /collector/v1/*             the Collector: telemetry/events/heartbeat in, devices/config out;
-//                               alarm events are notified from here (notify.js)
+//   /collector/v1/*             the Collectors (cap01, cap02 …): telemetry/events/heartbeat in,
+//                               devices/config out; alarm events are notified from here (notify.js)
+//                               and everything goes on to the Portal from here (portal.js, D-13)
 //   /twin/*                     the existing UI (apps/twin, console build)
 //   /login, /settings           the two pages twin does not have
 //
@@ -18,6 +19,7 @@ const { createIngest } = require('./ingest');
 const { createSettings } = require('./settings');
 const { createSealer } = require('./seal');
 const { createConsoleNotify, announces, netFrom } = require('./notify');
+const { createPortalLink } = require('./portal');
 
 const COOKIE = 'cflex_sid';
 
@@ -28,13 +30,15 @@ const COOKIE = 'cflex_sid';
  * @param {object} o.redis      redis.js client
  * @param {Function} [o.now]
  * @param {object} [o.notifyDeps]  injected into the notifier: {http, smtpSend} (tests)
+ * @param {object} [o.portalDeps]  injected into the Portal link: {request, random} (tests)
  * @param {object} [o.log]
  */
-function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log = console }) {
+function createApp({ config, db, redis, now = Date.now, notifyDeps = null, portalDeps = null, log = console }) {
   const sessions = auth.createSessions(redis, config.session);
   const lockout = auth.createLockout(redis, config.lockout);
   const views = createViews(db, { staleMs: config.staleMs, now });
-  const ingest = createIngest(db, { now });
+  const portal = createPortalLink({ db, config, now, log, version: require('../package.json').version, ...(portalDeps || {}) });
+  const ingest = createIngest(db, { now, portal });
   const sealer = createSealer(config.secretKey);
   const settings = createSettings(db, { sealer, tenant: config.tenant, now });
   const notify = createConsoleNotify({
@@ -290,8 +294,8 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
     return {
       ok: true, node: config.nodeId, redis: redisOk, secret_key: sealer.available,
       collectors: collectors.map(c => ({ ...c, stale: !c.last_seen || now() - c.last_seen > 5 * 60e3 })),
-      // The Portal link as the collectors last reported it (their forwarder owns that connection).
-      portal: collectors.map(c => ({ node_id: c.node_id, ...(c.heartbeat?.portal || {}) })),
+      // The Portal link as each app node last saw it (D-13: the FMS sends, the collectors do not).
+      portal: await portal.links(),
     };
   });
   R('GET', '/v1/console/audit', 'admin', async (c) => ({
@@ -302,13 +306,18 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
 
   // ── collector (key auth) ─────────────────────────────────────────────────
   R('POST', '/collector/v1/heartbeat', 'collector', (c) => ingest.heartbeat(c.collector.node_id, c.body));
-  R('POST', '/collector/v1/telemetry', 'collector', (c) => ingest.telemetry(c.body));
-  // Alarm events: stored, then notified here (Q-2026-10-25-10 (A)). The answer
-  // carries event_id → local_notified, which the Collector puts in the event
-  // it sends the Portal. A replayed event gets what was delivered the first
-  // time; nobody is told twice.
+  R('POST', '/collector/v1/telemetry', 'collector', async (c) => {
+    const r = await ingest.telemetry(c.body, c.collector.node_id);
+    portal.flush();
+    return r;
+  });
+  // Alarm events: stored (merged across collectors by device_id, one alarm_id),
+  // then notified here (Q-2026-10-25-10 (A)), then sent on to the Portal with
+  // what was delivered (local_notified, contract §3.4). The answer carries
+  // event_id → local_notified too. A replayed event gets what was delivered
+  // the first time; nobody is told twice.
   R('POST', '/collector/v1/events', 'collector', async (c) => {
-    const r = await ingest.events(c.body);
+    const r = await ingest.events(c.body, c.collector.node_id);
     const sent = await notify.forEvents(r.fresh, { replay: c.req.headers['x-cflex-replay'] === '1' });
     const localNotified = {};
     for (const [id, ln] of Object.entries(r.prior)) if (ln) localNotified[id] = ln;
@@ -318,9 +327,14 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
       await ingest.recordNotified(ev, ln, { announces: announces(ev) });
       localNotified[ev.event_id] = ln;
     }
+    await portal.releaseEvents(r.outbox, localNotified);
+    portal.flush();
     return { accepted: r.accepted, duplicate: r.duplicate, local_notified: localNotified };
   });
-  R('GET', '/collector/v1/devices', 'collector', async () => ({ ok: true, devices: await settings.collectorDevices() }));
+  // A collector polls only its own sites (CFLEX_COLLECTOR_SITES → ?sites=HMA-FV,KUS-IRV); none = every site.
+  R('GET', '/collector/v1/devices', 'collector', async (c) => ({
+    ok: true, devices: await settings.collectorDevices({ sites: String(c.query.sites || '').split(',').map(x => x.trim().toUpperCase()).filter(Boolean) }),
+  }));
   // No notification channels in here: the Collector does not notify, so the
   // SMTP / Teams / ServiceNow secrets never leave the console.
   R('GET', '/collector/v1/config', 'collector', async () => {
@@ -425,7 +439,7 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
   const server = http.createServer((req, res) => { handle(req, res); });
   server.headersTimeout = 20_000;
   server.requestTimeout = 60_000;
-  return { server, router, sessions, settings, views, ingest, notify };
+  return { server, router, sessions, settings, views, ingest, notify, portal };
 }
 
 const clip = (v, n) => (v == null || String(v).trim() === '' ? null : String(v).trim().slice(0, n));
@@ -438,12 +452,14 @@ async function main() {
   // Month partitions ahead, retention behind: both nodes run the timer, the lock holder does the round.
   const partitions = require('./partitions').schedule(db, { ...partitionOpts, intervalMs: config.partitions.intervalH * 3600e3 }, console);
   const redis = require('./redis').createRedis(config.redisUrl, { password: config.redisPassword });
-  const { server } = createApp({ config, db, redis });
+  const { server, portal } = createApp({ config, db, redis });
   server.listen(config.port, config.bind, () => console.log(`[console] ${config.nodeId} listening on ${config.bind}:${config.port}`));
+  // The Portal link (D-13): heartbeat on every node, the outbox from the one holding the sender lock.
+  const link = portal.start();
   const stop = (sig) => {
     console.log(`[console] ${sig}, closing`);
     partitions.stop();
-    server.close(() => { redis.close(); db.close().finally(() => process.exit(0)); });
+    server.close(() => { redis.close(); link.stop().finally(() => db.close().finally(() => process.exit(0))); });
     setTimeout(() => process.exit(0), 5000).unref();
   };
   process.on('SIGTERM', () => stop('SIGTERM'));

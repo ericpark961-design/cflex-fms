@@ -2,7 +2,7 @@
 
 - 문서: WO-INT-013 · 명세 03 §1·§9 · 작성 Claude Code · 2026-10-26
 - 기준 코드: `main` `d328497` (D-12a 기능 완료 시점). 표마다 출처 파일과 그 파일의 마지막 커밋을 적었다.
-- 기준 계약: `docs/spec/00_INTERFACE_CONTRACT_Probe-Portal_v1.md` v1.1, 부록 A(메트릭 27키), 부록 B(알람 코드 22개).
+- 기준 계약: `docs/spec/00_INTERFACE_CONTRACT_Probe-Portal_v1.md` v1.2(WO-INT-012: `collector_id`만 추가, 부록 A·B 변경 없음; 아래 표의 대조는 v1.1 기준과 같다), 부록 A(메트릭 27키), 부록 B(알람 코드 22개).
 - 원칙: **코드에서 읽은 사실만** 적었다. 코드에 없으면 `미구현`이라고 적었다. 시뮬레이터(`probe-agent/sim/`)에만 있는 값은 `시뮬레이터 전용`이라고 표시했다.
 - 범위: SOW 44대(UPS)와 같은 컬렉터가 읽는 PDU·NetBotz·CRAC·네트워크 장비. Probe는 SNMP 읽기(GET/WALK)만 하고 trap은 받기만 한다. 장비 쓰기(SET)는 없다(D-05).
 - 형식: 표 하나 = CSV 하나. 열 이름은 영문 snake_case이고, 1행 = 1항목이다. 셀 안에는 줄바꿈과 세로선 문자를 넣지 않았다. 빈 값은 `-`로 적었다.
@@ -26,10 +26,10 @@
 | snmp_versions | v1, v2c, v3(noAuthNoPriv, authNoPriv, authPriv) | probe-agent/src/services/snmp-helpers.js | 장비별 `snmp_version`. 기본값 v2c |
 | snmp_port | 161 (`snmp_port` 또는 `SNMP_PORT`) | probe-agent/src/services/snmp-helpers.js | 161이 아닌 포트는 시뮬레이터 전용 |
 | config_reload | 300000 ms (`CONFIG_RELOAD_MS`) | probe-agent/src/index.js | 장비 목록·임계·유지보수 창을 다시 받는다 |
-| telemetry_flush | 60000 ms 또는 500포인트 | probe-agent/src/forwarder.js | 계약 §3.3 |
+| telemetry_flush | 60000 ms 또는 500포인트 | probe-agent/src/console/client.js | 계약 §3.3 형태로 FMS에 보낸다. FMS는 받은 배치를 그대로(알려진 장비만, `collector_id` 추가) 포털에 보낸다(WO-INT-012) |
 | heartbeat | 60000 ms | probe-agent/src/config.js | 계약 §3.1 |
 | ups_profile_select | `oid_profile`이 `apc-powernet`이면 APC, `ups-mib`이면 RFC 1628. 값이 없으면 vendor에 apc·schneider가 있거나 model이 SR·SRT·SMART-UPS·SMC·SUA·SURTA·SYMMETRA·GALAXY로 시작할 때 APC | probe-agent/src/services/snmp-helpers.js | `isApcVendor` |
-| non_ups_feed_with_console | Local Console을 구성하면 비UPS 객체 피드가 비어 있다 | probe-agent/src/forwarder.js | `fetchObjectConfig`가 `[]`를 반환한다. 그래서 Local Console 구성(HAEA 기본)에서는 PDU·NetBotz·CRAC·네트워크 폴러가 돌지 않는다. 이 폴러들은 구 클라우드 `/v1/probe/objects` 피드에서만 장비를 받는다 |
+| non_ups_feed_with_console | Local Console을 구성하면 비UPS 객체 피드가 비어 있다 | probe-agent/src/forwarder.js | `fetchObjectConfig`가 `[]`를 반환한다. 그래서 PDU·NetBotz·CRAC·네트워크 폴러가 돌지 않는다. 이 폴러들이 장비를 받던 구 클라우드 `/v1/probe/objects` 피드는 WO-INT-012(D-13, 컬렉터 외부 경로 0)에서 없앴다 |
 
 ### 1.1 UPS — APC PowerNet-MIB 프로파일 (`OID_APC_POWERNET`)
 
@@ -327,7 +327,7 @@
 | UPS_RETURN_FROM_BATTERY | P4 | 미구현 | - | 배터리 복귀는 UPS_ON_BATTERY의 alarm_clear로만 나간다. 이 코드 이벤트는 만들지 않는다 | - | - | - | - | - | device | alarms/engine.js | Q-2026-10-26-15 |
 | UPS_CONFIG_CHANGED | P4 | 미구현 | - | 코드 사전에만 있다 | - | - | - | - | - | device | alarms/codes.js | Q-2026-10-26-15 |
 | BATTERY_EOL_90D | P4 | 미구현 | - | 코드 사전에만 있다. bat_due를 폴링하지 않는다 | - | - | - | - | - | device | alarms/codes.js | Q-2026-10-26-15 |
-| CLOCK_DRIFT | P4 | implemented | system | 성공한 heartbeat 응답의 Date 헤더와 노드 시계가 (차이 − 1초) > 60초면 raise(detail.drift_s) | 차이가 60초 이하로 돌아오면 clear | 없음 | - | 노드당 1개(forwarder 메모리 drift 상태) | 알람 엔진을 거치지 않으므로 유지보수 창·flapping·15분 update 규칙이 없다 | node(device_id null) | forwarder.js | 포털로만 보낸다(postEvents). Local Console로는 가지 않는다. 60초 heartbeat마다 판정한다 |
+| CLOCK_DRIFT | P4 | implemented | system | 성공한 heartbeat 응답의 Date 헤더와 노드 시계가 (차이 − 1초) > 60초면 raise(detail.drift_s) | 차이가 60초 이하로 돌아오면 clear | 없음 | - | app 노드당 1개(portal.js 메모리 drift 상태) | 알람 엔진을 거치지 않으므로 유지보수 창·flapping·15분 update 규칙이 없다 | node(device_id null, detail.node_id) | apps/console/src/portal.js | WO-INT-012부터 FMS가 포털 heartbeat 응답으로 판정해 포털로만 보낸다(콘솔 알람 표에는 넣지 않는다). 60초 heartbeat마다 판정한다 |
 | CONFIG_CONFLICT | P4 | 미구현 | - | NODE_CODES에만 있다. config pull(§3.7)이 미구현이다 | - | - | - | - | - | node(device_id null) | alarms/codes.js | Q-2026-10-26-15 |
 
 대조 결과(부록 B 22개): 코드 사전(`codes.js` SEVERITY) **일치 22/22**, 심각도 일치 22/22. 발생 경로가 있는 코드 **12개**, **미구현 10개**. 부록 B에 없는 알람 코드를 내는 곳 **0개**. `SNMP_TRAP_UNKNOWN`은 알람 코드가 아니며 이벤트로 나가지 않는다(§4.2).
@@ -395,7 +395,7 @@ PowerNet-MIB trap은 SNMPv1 TRAP-TYPE이고 ENTERPRISE는 apc(1.3.6.1.4.1.318)�
 ## §5. `collect_diag` 번들 구성
 
 **상태: 계약 정의만 있고 미구현이다.** 코드에서 확인한 사실:
-- `forwarder.js`의 PATHS는 heartbeat·inventory·telemetry·events 4개뿐이다. `GET /api/v1/commands`, `POST /api/v1/commands/{cmd_id}/result`, `POST /api/v1/files` 호출 코드가 없다.
+- 포털 송신기(WO-INT-012부터 `apps/console/src/portal.js`)의 PATHS는 heartbeat·inventory·telemetry·events 4개뿐이다. `GET /api/v1/commands`, `POST /api/v1/commands/{cmd_id}/result`, `POST /api/v1/files` 호출 코드가 없다.
 - heartbeat 응답의 `commands_pending`은 `stats().commands_pending`에 저장만 된다. 명령을 가져오거나 실행하지 않는다.
 - 번들을 만드는 코드도, NMC 이벤트 로그·데이터 로그를 가져오는 코드도 없다. Local Console(`apps/console`)에도 `collect_diag`가 없다.
 - D-12a(기능 추가 금지)에 따라 이 WO에서는 추가하지 않았다.
@@ -403,7 +403,7 @@ PowerNet-MIB trap은 SNMPv1 TRAP-TYPE이고 ENTERPRISE는 apc(1.3.6.1.4.1.318)�
 | item | contract_definition | implementation | source |
 |---|---|---|---|
 | command_type | collect_diag(허용 명령 6종 중 하나. 원격 셸·임의 스크립트 금지) | 미구현 | 계약 00 §3.6, schemas/commands.schema.json |
-| command_fetch | heartbeat의 commands_pending > 0이면 GET /api/v1/commands?node_id=<node> | 미구현(commands_pending 저장만) | 계약 00 §3.6, forwarder.js |
+| command_fetch | heartbeat의 commands_pending > 0이면 GET /api/v1/commands?node_id=<node> | 미구현(commands_pending 저장만) | 계약 00 §3.6, apps/console/src/portal.js |
 | command_result | POST /api/v1/commands/{cmd_id}/result, status ok·failed·rejected, detail 객체 | 미구현 | schemas/commands.schema.json $defs.result |
 | upload_path | POST /api/v1/files multipart | 미구현 | 계약 00 §3.5 |
 | upload_fields | kind(pm_report·photo·log·config_backup), device_id?, site_id, ts, sha256, file | 미구현 | schemas/files.schema.json |
@@ -419,7 +419,7 @@ PowerNet-MIB trap은 SNMPv1 TRAP-TYPE이고 ENTERPRISE는 apc(1.3.6.1.4.1.318)�
 
 ## §6. 데이터 흐름 요약과 출처
 
-**흐름(현재 코드, `d328497`):** 컬렉터(probe-agent)가 Local Console의 `/collector/v1/devices`·`/collector/v1/config`에서 UPS 인벤토리와 SNMP 크리덴셜, 임계, 유지보수 창을 5분마다 받는다. 그다음 60초 주기로 SNMP GET/WALK 폴링을 하고 UDP trap을 받는다. 폴 결과는 `contract/adapt.js`에서 계약 텔레메트리 포인트(부록 A 키 + m_ext)로 바뀐다. 임계 경보와 trap은 `alarms/engine.js`에서 부록 B 코드 알람(raise·update·clear)이 된다. 이 둘은 먼저 Local Console(`/collector/v1/telemetry`·`/collector/v1/events`)로 간다. Local Console은 HAEA 내부 통보를 하고 `local_notified`를 돌려준다. 이어서 같은 데이터가 계약 00 `/api/v1/*`로 포털에 간다(로컬 큐 7일, 멱등 키, 재시도). D-13이 정한 최종 구조는 "컬렉터 N대 → FMS(Local Console) collector API → 포털"이다. 이 구조에서는 포털 송신기가 FMS(app) 노드로 옮겨 가고 컬렉터는 외부 경로를 갖지 않는다. 다만 이것은 **WO-INT-012에서 할 일이고 아직 구현되지 않았다.** 현재 코드에서는 컬렉터의 forwarder가 포털로 직접 보낸다. 포털은 inventory·telemetry·events를 K3 Site Book의 자동 입력으로 쓰고(명세 03 §4.2), 이 문서의 표를 K1 구조화 표(`apc_powernet_traps.csv`, 알람 코드 사전)의 Probe 측 정본으로 적재한다.
+**흐름(WO-INT-012 이후, D-13):** 컬렉터(probe-agent, `cap01`·`cap02`…)가 Local Console(FMS)의 `/collector/v1/devices?sites=…`·`/collector/v1/config`에서 **자기 사이트(`CFLEX_COLLECTOR_SITES`, 비우면 전체)의** UPS 인벤토리와 SNMP 크리덴셜, 임계, 유지보수 창을 5분마다 받는다. 그다음 60초 주기로 SNMP GET/WALK 폴링을 하고 UDP trap을 받는다. 폴 결과는 `contract/adapt.js`에서 계약 텔레메트리 포인트(부록 A 키 + m_ext)로 바뀐다. 임계 경보와 trap은 `alarms/engine.js`에서 부록 B 코드 알람(raise·update·clear)이 된다(분류 엔진 위치는 컬렉터 그대로). 이 둘과 heartbeat는 **FMS로만** 간다(`/collector/v1/telemetry`·`/collector/v1/events`·`/collector/v1/heartbeat`, 컬렉터 버퍼 `q_console`). 컬렉터에는 외부 경로가 없다(포털 URL·장치 키·프록시 없음). FMS는 컬렉터 여러 대의 데이터를 `device_id`로 합친다(장비 1행, 같은 장비·같은 코드 알람은 먼저 연 `alarm_id` 하나 — `alarm_sources`, 마지막 컬렉터가 해제할 때 clear). FMS는 HAEA 내부 통보(기본 비활성, D-12a)를 하고, 같은 데이터를 계약 00 **v1.2** `/api/v1/*`로 포털에 보낸다 — `node_id`=app01, 수집 노드는 `collector_id`. 저장·재전송 7일 버퍼는 db01 `portal_outbox`, 송신은 advisory lock을 잡은 app 노드 1대(`apps/console/src/portal.js`). 포털은 inventory·telemetry·events를 K3 Site Book의 자동 입력으로 쓰고(명세 03 §4.2), 이 문서의 표를 K1 구조화 표(`apc_powernet_traps.csv`, 알람 코드 사전)의 Probe 측 정본으로 적재한다.
 
 ### 6.1 표 출처
 
@@ -437,7 +437,7 @@ PowerNet-MIB trap은 SNMPv1 TRAP-TYPE이고 ENTERPRISE는 apc(1.3.6.1.4.1.318)�
 | §3.0 §3.2 §3.3 | probe-agent/src/alarms/engine.js | 9cd0d1d |
 | §3.0 | probe-agent/src/alarms/persist.js | 9cd0d1d |
 | §4 | probe-agent/src/trap/apc-mib.js, handler.js, listener.js | 9cd0d1d |
-| §3.2 §5 §6 | probe-agent/src/forwarder.js | 9cd0d1d |
+| §3.2 §5 §6 | probe-agent/src/forwarder.js, probe-agent/src/console/client.js, apps/console/src/portal.js, apps/console/src/ingest.js | WO-INT-012 |
 | §1.9 §5 | docs/spec/schemas/telemetry.schema.json, files.schema.json, commands.schema.json | e6c6947 |
 | §6.2 | probe-agent/sim/*.js | 9cd0d1d |
 

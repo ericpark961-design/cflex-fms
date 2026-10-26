@@ -18,7 +18,7 @@
 //               or a window set on the console since the Collector last
 //               pulled its config
 const { createLocalNotifier } = require('../../../probe-agent/src/alarms/local-notify');
-const transport = require('../../../probe-agent/src/portal/transport');
+const transport = require('../../../probe-agent/src/net/transport');
 
 const NO_DELIVERY = Object.freeze({ email: false, teams: false, itsm: null });
 

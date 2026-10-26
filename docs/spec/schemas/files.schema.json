@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cflex.fms.support/schemas/v1.0/files.schema.json",
   "title": "POST /api/v1/files — multipart form fields except `file` (contract IFC-CFLEX-2026-1023 v1.0 §3.5)",
-  "x-contract-version": "1.1",
+  "x-contract-version": "1.2",
   "$comment": "The `file` part itself (<= 25 MB) is not JSON and is not described here; its sha256 must equal the `sha256` field.",
   "type": "object",
   "required": [

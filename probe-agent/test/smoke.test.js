@@ -4,28 +4,27 @@
 // start it — no module loaded into the test process, nothing mocked inside.
 // The open item from PM review 3: index.js had never been booted on its own.
 //
-//   inventory stub (127.0.0.1) ── 1 UPS ──▶ index.js ── SNMP get ──▶ sim/sim-ups.js (on battery)
-//   index.js ── inventory, UPS_ON_BATTERY raise, telemetry ──▶ Portal = a closed 127.0.0.1 port
-//                                                           └──▶ buffer.db (store-and-forward)
+//   console stub (127.0.0.1) ── 1 UPS ──▶ index.js ── SNMP get ──▶ sim/sim-ups.js (on battery)
+//   index.js ── UPS_ON_BATTERY raise, telemetry ──▶ console stub, answering 503 to pushes
+//                                                └──▶ buffer.db (store-and-forward, channel 'console')
 //
 // What it shows: the process boots, finishes poll cycles, writes what the
-// Portal could not take into the SQLite buffer (with the alarm engine's open
+// FMS could not take into the SQLite buffer (with the alarm engine's open
 // alarm in the same file), the container HEALTHCHECK (bin/cflex-healthcheck.js)
 // turns healthy, and SIGTERM ends it with exit 0 and an intact database.
 //
-// Without a Local Console the inventory comes from the old-cloud pull
-// (forwarder.legacyGet, HTTPS); here that is a 127.0.0.1 stub with a test CA
-// the process is told to trust through NODE_EXTRA_CA_CERTS. Nothing leaves
-// 127.0.0.1: the Portal URL, the inventory URL, the UPS and the trap port are
-// all local, the environment is only PATH plus what is set here (no proxy),
-// and SNMP is read-only (D-05).
+// Since D-13 (WO-INT-012) the Local Console is the collector's only peer:
+// inventory from it, everything to it, no Portal and no old cloud. Here it is
+// a 127.0.0.1 stub with a test CA (CFLEX_CONSOLE_CA). Nothing leaves
+// 127.0.0.1: the console, the UPS and the trap port are all local, the
+// environment is only PATH plus what is set here (no proxy, no Portal
+// setting), and SNMP is read-only (D-05).
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const https = require('node:https');
-const net = require('node:net');
 const dgram = require('node:dgram');
 const { spawn, execFile } = require('node:child_process');
 const { makeCerts, hasOpenssl } = require('./support/certs');
@@ -36,10 +35,11 @@ const skip = !hasOpenssl() ? 'openssl CLI not available'
   : !hasSqlite ? 'probe-agent dependencies not installed (npm install in probe-agent)' : false;
 
 const COMMUNITY = 'smoke-ro';
-const UPS = { id: 1, name: 'SMOKE-UPS-1', kind: 'ups', site_id: 'TEST-SITE', ip: '127.0.0.1',
-  vendor: 'APC', model: 'SRT5KRMXLT', serial: 'SMOKE0000001', snmp_version: 'v2c', snmp_community: COMMUNITY };
+// A console device row (GET /collector/v1/devices), credentials opened.
+const UPS = { id: 1, device_id: require('node:crypto').createHash('sha1').update('TEST|TEST-SITE|SMOKE0000001').digest('hex').slice(0, 16),
+  name: 'SMOKE-UPS-1', kind: 'ups', site_id: 'TEST-SITE', ip: '127.0.0.1',
+  vendor: 'APC', model: 'SRT5KRMXLT', serial: 'SMOKE0000001', snmp_version: '2c', snmp_community: COMMUNITY };
 
-const freeTcp = () => new Promise((r) => { const s = net.createServer().listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => r(port)); }); });
 const freeUdp = () => new Promise((r) => { const s = dgram.createSocket('udp4'); s.bind(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => r(port)); }); });
 
 let tmp, stub, probe, sim, env;
@@ -79,26 +79,28 @@ test.before(async () => {
 
   const certs = makeCerts();
   stub = https.createServer(certs.server, (req, res) => {
-    pulls.push({ url: req.url, key: req.headers['x-probe-key'] });
-    if (req.url.startsWith('/v1/probe/devices')) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      return res.end(JSON.stringify({ devices: [{ ...UPS, snmp_port: snmpPort }] }));
-    }
-    res.writeHead(404); res.end();
+    pulls.push({ method: req.method, url: req.url, auth: req.headers.authorization, node: req.headers['x-cflex-node'] });
+    const json = (status, b) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(b)); };
+    req.resume();
+    if (req.url.startsWith('/collector/v1/devices')) return json(200, { ok: true, devices: [UPS] });
+    if (req.url === '/collector/v1/config') return json(200, { ok: true, thresholds: null, maintenance: [] });
+    if (req.url === '/collector/v1/heartbeat') return json(200, { ack: true });
+    // The console takes no pushes today (db01 down, say): every one waits in the buffer.
+    if (req.url === '/collector/v1/telemetry' || req.url === '/collector/v1/events') return json(503, { ok: false, error: 'internal_error' });
+    json(404, { ok: false });
   });
   await new Promise(r => stub.listen(0, '127.0.0.1', r));
+  fs.writeFileSync(path.join(tmp, 'collector.key'), 'smoke-not-a-secret\n', { mode: 0o600 });
 
   env = {
     TENANT_ID: 'TEST', CFLEX_NODE_ID: 'cap-smoke', CFLEX_SITE_ID: 'TEST-SITE',
-    CFLEX_URL: `https://127.0.0.1:${stub.address().port}`, NODE_EXTRA_CA_CERTS: certs.caPath, CFLEX_TOKEN: 'smoke-not-a-secret',
-    CFLEX_PORTAL_URL: `https://127.0.0.1:${await freeTcp()}`,           // nothing listens: every send fails → buffer
+    CFLEX_CONSOLE_URL: `https://127.0.0.1:${stub.address().port}`, CFLEX_CONSOLE_CA: certs.caPath,
+    CFLEX_CONSOLE_KEY_FILE: path.join(tmp, 'collector.key'), CFLEX_CONSOLE_TIMEOUT_MS: '2000',
     BUFFER_DB_PATH: path.join(tmp, 'queue/buffer.db'),
     CFLEX_HEALTH_FILE: path.join(tmp, 'health.json'),
-    CFLEX_ITSM_STORE: path.join(tmp, 'queue/itsm-map.json'),
-    CFLEX_ID_STORE: path.join(tmp, 'queue/device-ids.json'),
-    CFLEX_TRAP_PORT: String(await freeUdp()), CFLEX_TRAP_BIND: '127.0.0.1', // the WO-INT-006 listener, once merged
-    POLL_INTERVAL_MS: '2000', HEARTBEAT_INTERVAL_MS: '2000', TELEMETRY_FLUSH_MS: '1000',
-    SNMP_TIMEOUT_MS: '1000', SNMP_RETRIES: '0',
+    CFLEX_TRAP_PORT: String(await freeUdp()), CFLEX_TRAP_BIND: '127.0.0.1',
+    POLL_INTERVAL_MS: '2000', HEARTBEAT_INTERVAL_MS: '2000', TELEMETRY_FLUSH_MS: '1000', CONFIG_RELOAD_MS: '600000',
+    SNMP_PORT: String(snmpPort), SNMP_TIMEOUT_MS: '1000', SNMP_RETRIES: '0',
   };
 });
 
@@ -116,8 +118,8 @@ test('healthcheck before any cycle: unhealthy', { skip }, async () => {
 
 test('index.js boots, pulls the inventory and finishes poll cycles against the simulator', { skip }, async () => {
   probe = run('probe', [path.join(AGENT, 'src/index.js')], env);
-  await waitFor('inventory', () => logs.probe.some(l => /\[probe\] loaded 1 UPS from cflex/.test(l)));
-  assert.ok(pulls.some(p => p.url.startsWith('/v1/probe/devices?tenant=TEST') && p.key === env.CFLEX_TOKEN));
+  await waitFor('inventory', () => logs.probe.some(l => /\[probe\] loaded 1 UPS from the Local Console/.test(l)));
+  assert.ok(pulls.some(p => p.url === '/collector/v1/devices' && p.auth === 'Bearer smoke-not-a-secret' && p.node === 'cap-smoke'));
   // Two cycles, each 1 ok / 0 fail: the SNMP session works, not just the timer.
   await waitFor('two poll cycles', () => logs.probe.filter(l => /\[probe\] cycle: 1 ok, 0 fail/.test(l)).length >= 2);
   assert.ok(!logs.probe.some(l => /fatal bootstrap|uncaught|unhandled rejection/.test(l)), logs.probe.join('\n'));
@@ -129,27 +131,29 @@ test('healthcheck after a cycle: healthy', { skip }, async () => {
   assert.match(r.out, /^healthy: last cycle \d+s ago/);
 });
 
-test('the buffer holds what the Portal could not take, and the open alarm', { skip }, async () => {
+test('the buffer holds what the FMS could not take, and the open alarm; nothing went anywhere but the console', { skip }, async () => {
   const Database = require('better-sqlite3');
-  const rows = await waitFor('buffered inventory, events and telemetry', () => {
+  const rows = await waitFor('buffered events and telemetry', () => {
     const db = new Database(env.BUFFER_DB_PATH, { readonly: true, fileMustExist: true });
     try {
-      const r = db.prepare(`SELECT json_extract(payload, '$.name') AS name, COUNT(*) AS n, MAX(attempts) AS tries, MAX(last_error) AS err
-        FROM events WHERE kind = 'portal' GROUP BY 1`).all();
+      const r = db.prepare(`SELECT kind AS name, COUNT(*) AS n, MAX(attempts) AS tries, MAX(last_error) AS err FROM q_console GROUP BY 1`).all();
       const by = Object.fromEntries(r.map(x => [x.name, x]));
-      return by.inventory && by.events && by.telemetry && by.inventory.tries > 0 ? by : null;
+      return by.events && by.telemetry && (by.events.tries > 0 || by.telemetry.tries > 0) ? by : null;
     } finally { db.close(); }
   });
-  // The forwarder did try 127.0.0.1 and kept the rows when it failed.
-  assert.match(rows.inventory.err, /ECONNREFUSED/);
+  // The collector did try the console and kept the rows when it answered 503.
+  assert.match(rows.events.err || rows.telemetry.err, /HTTP 503/);
   const db = new Database(env.BUFFER_DB_PATH, { readonly: true });
   try {
-    const raise = db.prepare(`SELECT payload FROM events WHERE kind = 'portal' AND json_extract(payload, '$.name') = 'events'`).all()
+    const raise = db.prepare(`SELECT payload FROM q_console WHERE kind = 'events'`).all()
       .flatMap(r => JSON.parse(r.payload).body.events).find(e => e.kind === 'alarm_raise');
     assert.strictEqual(raise.code, 'UPS_ON_BATTERY');
-    const pts = db.prepare(`SELECT payload FROM events WHERE kind = 'portal' AND json_extract(payload, '$.name') = 'telemetry'`).all()
+    assert.strictEqual(raise.device_id, UPS.device_id, 'the FMS device_id');
+    const pts = db.prepare(`SELECT payload FROM q_console WHERE kind = 'telemetry'`).all()
       .flatMap(r => JSON.parse(r.payload).body.points);
     assert.ok(pts.length > 0 && pts.every(p => p.device_id === raise.device_id));
+    assert.strictEqual(db.prepare('SELECT COUNT(*) AS c FROM events').get().c, 0, 'nothing queued for the Portal on a collector (D-13)');
+    assert.ok(pulls.every(p => p.url.startsWith('/collector/v1/')), 'the console API and nothing else');
     const st = JSON.parse(db.prepare(`SELECT value FROM state WHERE name = 'alarm_engine'`).get().value);
     assert.deepStrictEqual(st.open.map(a => a.alarm_id), [raise.alarm_id]);
   } finally { db.close(); }
@@ -165,6 +169,6 @@ test('SIGTERM: exit 0, promptly, and the buffer file is intact', { skip }, async
   const db = new (require('better-sqlite3'))(env.BUFFER_DB_PATH, { readonly: true });
   try {
     assert.strictEqual(db.pragma('integrity_check', { simple: true }), 'ok');
-    assert.ok(db.prepare(`SELECT COUNT(*) AS c FROM events`).get().c > 0, 'buffered rows survive the exit');
+    assert.ok(db.prepare(`SELECT COUNT(*) AS c FROM q_console`).get().c > 0, 'buffered rows survive the exit');
   } finally { db.close(); }
 });

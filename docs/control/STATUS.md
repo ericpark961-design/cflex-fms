@@ -377,6 +377,40 @@
 - 블로커: 없음
 - 다음 세션 계획: PR 검토 반영 → WO-INT-012(D-13 분산 구조) 또는 관리자가 지시하는 순서. Q-16을 승인하면 버그 수정 WO
 
+### 2026-10-26 11:55 PDT — Claude Code (11차)
+- WO-INT-012: **검토요청** | 브랜치 `wo/INT-012-distributed` (base main `0c02f13`, 작업 트리 `../cflex-fms-wt-int012`) | 커밋 `7b09e7c` + STATUS `34ab78b` | **PR #11** https://github.com/ericpark961-design/cflex-fms/pull/11
+  - 한 것:
+    - ① **포털 송신기 → FMS(app)**: `apps/console/src/portal.js`(컬렉터 forwarder 규칙 그대로 이식 — §5 화이트리스트·§7 스키마 검증, Idempotency-Key 고정, 1 s…5 min ±20 % 백오프, 429 Retry-After, 409 재시도, 그 밖 4xx 버림, CLOCK_DRIFT, replaced_by 1회).
+      7일 버퍼 = db01 `portal_outbox`(추가형 `0002_portal_outbox.sql`, 표 3·열 1 추가만). 두 app 노드가 넣고, **advisory lock(`LOCKS.portal`) 잡은 1노드만** 비우기·인벤토리·컬렉터 heartbeat 대리 송신. heartbeat(`role:app`)는 노드마다. 이벤트는 콘솔 통보 결과(`local_notified`)를 담을 때까지 최대 30초 보류.
+    - ② **컬렉터 외부 경로 0**: probe-agent에서 포털 설정(`CFLEX_PORTAL_*`·`CFLEX_TLS_*`·`HTTPS_PROXY`)·포털 호출·구 클라우드 경로(`CFLEX_LEGACY_FORWARD`·`CFLEX_URL`/`TOKEN` 인벤토리 pull)·컬렉터 자체 통보(`CFLEX_COLLECTOR_NOTIFY`) 제거(Q-21). `portal/transport.js` → `net/transport.js`(이름만). `buffer.js` SQLite는 컬렉터 → FMS 구간(`q_console`) 그대로.
+    - ③ **site_id 스코프 다중 인스턴스 + 병합**: `CFLEX_COLLECTOR_SITES` → `GET /collector/v1/devices?sites=`. FMS는 `device_id`로 장비 1행, 다른 컬렉터가 연 같은 장비·같은 코드 알람은 `alarm_sources`로 **하나의 alarm_id**, 마지막 컬렉터가 해제할 때 clear(Q-20). 분류 엔진은 컬렉터 그대로.
+    - ④ **계약 00 v1.2 — `collector_id`만**: heartbeat 최상위·telemetry point·event에 선택 필드. 스키마 8종 `x-contract-version` 1.2, 문서 §1·§2·§3.1·§3.3·§3.4. `node_id`=송신 app 노드. **부록 A 키·부록 B 코드 변경 0**(Q-05/14 대기 그대로).
+    - ⑤ **netcheck/설치기**: `netmatrix.json` FW-4 → app 필수, collector **N/A "해당 없음 (D-13)"**(방향·포트·용도 원문 유지 — **방화벽 요청서 v3 문서 변경 0**). collector.env 포털 블록 제거·`CFLEX_COLLECTOR_SITES` 추가(컬렉터 1대면 빈 값=전체, Q-22), app.env 포털 블록 추가, 콘솔 Quadlet certs 마운트, 장치 인증서 확인을 app 역할로(deploy), verify의 포털 점검을 app만으로. `CONTAINER_PROFILE.md` §5·§7, 데이터 사전 §6, README 2종 갱신.
+  - 테스트 (이 세션 실행, 숫자 그대로):
+    ```
+                                                       Node 22.22.2                 Node 20.20.2 (npx node@20, better-sqlite3 ABI 115 rebuild → 22로 복구)
+    probe-agent      npm test                          77/77 skip 0                 77/77 skip 0
+                       distributed.e2e (신설, 컬렉터 2 + FMS 1)   6/6 (3회 반복 6/6)   포함
+                       console.e2e (컬렉터 1 + FMS 1)            4/4                  포함
+                       contract (v1.2 + v1.1 하위호환 3건 신설)   통과                 포함
+    apps/console     npm test (embedded PG 16)         53 pass / 2 skip / 0 fail    53 pass / 2 skip / 0 fail
+                       portal.test.js (신설 15: 이식 11 + 송신 잠금·병합·local_notified 보류·끔)
+    install          python3 -m unittest discover      79/79 (기존 76 + FW-4 app 1 + 스코프 렌더 1 + app.env 포털 1)
+    install          node --test static.test.js        14/14
+    packages/notify  npm test                          14 ok + 5/5
+    bash -n          cflex-install, build-bundle, cflex-pg-backup.sh   OK
+    ```
+    - distributed.e2e가 확인한 것: cap01(HMA-FV) 1대·cap02(HMA-FV,KUS-IRV) 2대 폴링 / 장비 A 1행·포털에 A 포인트가 cap01·cap02 `collector_id`로, B는 cap02만 / A의 UPS_ON_BATTERY 알람 1행·`alarm_sources` 2건·포털 raise 1건(정본 alarm_id 하나) / 둘 다 해제된 뒤에만 clear 1건 / heartbeat는 app01 자기 것 + cap01·cap02 대리, 포털 요청 전부 CN `TEST.app01` / **grep: 컬렉터 env·`probe-agent/src/**/*.js`·`collector.env` 템플릿에 포털 URL·`/api/v1/`·`CFLEX_PORTAL`·`CFLEX_TLS_`·`HTTPS_PROXY`·`NO_PROXY`·구 클라우드 0건**.
+    - 기존 테스트 수정: 포털 경로를 단언하던 것만(forwarder.e2e → console portal.test.js로 이식·legacy 2건 삭제, console-link/trap/local-notify rig에서 포털 제거, smoke는 구 클라우드 stub → 콘솔 stub, cycle의 구 클라우드 heartbeat 필드 → 계약 필드, 설치기 FW-4·collector.env·verify 3건).
+    - 2 skip = twin 콘솔 빌드(`apps/twin/dist-console`)가 이 트리에 없음 — 이번 변경과 무관, 빌드하지 않았다.
+  - **미수행 (통과로 치지 않음)**: ① `podman build`·실 컨테이너 기동(콘솔 Quadlet certs 마운트 포함). ② 실 포털(cflex.fms.support /api/v1·mTLS 미가동, WO-PTL-001) 대상 송신 — mock 포털만. ③ HAEA 프록시 경유 실측. ④ app01/app02 **두 프로세스**의 송신 잠금 인계(테스트는 한 DB에 링크 2개로 인계까지 확인). ⑤ 실 NMC 2대·컬렉터 VM 2대. ⑥ twin 빌드 검사 2건(skip).
+  - 금지 사항 확인: Docker 0, 장비 SET 0, 포털 코드(`cflex-fms-codex`) 수정 0, 부록 B 밖 코드 0, 비밀값 0(테스트 픽스처·`not-a-secret`만), 새 실 IP·호스트명 0(새 픽스처는 192.0.2.x), `2211 Michelson` 0, Q-16 버그 수정 0, 알림 기능 추가 0, 노드 간 8080 0. 방화벽 요청서 v3 변경 0.
+  - 참고: 대화형 브랜치 `wo/INT-portal-integration`(WO-INT-011)의 `bin/cflex-csr.js`·`cflex-portal-check.js`는 컬렉터 기준이다. D-13 이후 CSR·포털 점검은 app 노드에서 해야 한다 — 그 브랜치는 건드리지 않았다(Q-23).
+  - 로컬 전용(커밋 안 함): `node_modules`(probe-agent·console), `package-lock.json` 2개, `.runtime/`.
+- 질문: `Q-2026-10-26-17`(송신 위치·잠금) `-18`(버퍼·병합 표) `-19`(`collector_id` 위치·기본값·heartbeat 대리) `-20`(알람 병합 규칙) `-21`(컬렉터에서 함께 뺀 외부 경로) `-22`(사이트 스코프 렌더) — 모두 권고안 (A)로 진행. `-23`은 포털(Codex) 조율 요청(v1.2 수락·collector_id 기준 생존·장치 인증서 app01/app02).
+- 블로커: 없음
+- 다음 세션 계획: PR 검토 반영 → 관리자 지시 순서(Q-16 버그 수정 WO 승인 시 그것, 또는 SAT 준비)
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.

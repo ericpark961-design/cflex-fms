@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cflex.fms.support/schemas/v1.0/events.schema.json",
   "title": "POST /api/v1/events — request (contract IFC-CFLEX-2026-1023 v1.0 §3.4, codes = appendix B)",
-  "x-contract-version": "1.1",
+  "x-contract-version": "1.2",
   "$comment": "device_id may be null only for node-level events (CLOCK_DRIFT, PORTAL_LINK_DOWN, COLLECTOR_DOWN, CONFIG_CONFLICT).",
   "type": "object",
   "required": [
@@ -154,6 +154,11 @@
               "maxLength": 64
             }
           }
+        },
+        "collector_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$",
+          "description": "v1.2: the collector node that took the reading / raised the event (cap01, cap02 …). node_id is the node that sent the request (app01). Optional; absent = node_id collected it (v1.1 senders)."
         }
       }
     },

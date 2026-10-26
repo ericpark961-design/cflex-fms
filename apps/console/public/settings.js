@@ -70,9 +70,9 @@
         el('td', {}, c.node_id), el('td', {}, el('span', { class: `pill ${c.stale ? 'crit' : 'ok'}` }, when(c.last_seen))),
         el('td', {}, c.heartbeat?.version ?? '—'), el('td', {}, c.heartbeat?.queue_depth ?? '—'),
         el('td', {}, c.heartbeat?.last_poll_ok_ratio ?? '—'), el('td', {}, c.heartbeat?.devices_total ?? '—'), el('td', {}, c.heartbeat?.devices_unreachable ?? '—')))),
-      el('h2', {}, '포털 연결 / Portal link (collector 보고 기준)'),
+      el('h2', {}, '포털 연결 / Portal link (app 노드 기준, D-13)'),
       table(['node', 'enabled', 'last reachable', 'sent', 'rejected', 'queued', 'last error'], s.portal.map(p => el('tr', {},
-        el('td', {}, p.node_id), el('td', {}, p.enabled == null ? '—' : String(p.enabled)), el('td', {}, when(p.last_reachable)),
+        el('td', {}, `${p.node_id}${p.sender ? ' (sender)' : ''}`), el('td', {}, p.enabled == null ? '—' : String(p.enabled)), el('td', {}, when(p.last_reachable)),
         el('td', {}, p.sent ?? '—'), el('td', {}, p.rejected ?? '—'), el('td', {}, p.queued ?? '—'), el('td', {}, p.last_error || '')))),
       isAdmin() ? collectorKeyForm() : null,
     ];

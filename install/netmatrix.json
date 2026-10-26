@@ -1,5 +1,5 @@
 {
-  "$comment": "Firewall request v3 = docs/spec/01 §1 network table, row for row. 'direction', 'port' and 'purpose' are copied verbatim so netcheck output lines up with the request. 'checks' is what cflex-install netcheck tests for each row. Change this file only together with §1.",
+  "$comment": "Firewall request v3 = docs/spec/01 §1 network table, row for row. 'direction', 'port' and 'purpose' are copied verbatim so netcheck output lines up with the request. 'checks' is what cflex-install netcheck tests for each row. Change this file only together with §1. D-13 (WO-INT-012): FW-4 is checked on app only — the collector's half of the v3 row is N/A (the v3 request itself is unchanged, HAEA's copy).",
   "source": "docs/spec/01_SPEC_INTERNAL_Probe-OnPrem_for-ClaudeCode_v1.md §1 (방화벽 요청서 v3)",
   "rows": [
     {
@@ -16,7 +16,8 @@
     },
     {
       "id": "FW-4", "direction": "collector/app → cflex.fms.support (40.114.79.164)", "port": "TCP 443 out", "purpose": "포털 전송(mTLS, 프록시 경유 가능) — 1순위",
-      "checks": [ { "type": "out", "roles": ["collector", "app"], "proto": "tcp", "ports": [443], "dest": "portal" } ]
+      "checks": [ { "type": "out", "roles": ["app"], "proto": "tcp", "ports": [443], "dest": "portal",
+        "na": { "collector": "해당 없음 (D-13) — 포털 송신은 FMS(app01/app02)가 한다; collector는 외부 경로 없음, collector → app 443(FW-7)만" } } ]
     },
     {
       "id": "FW-5", "direction": "HAEA 사용자 VLAN/VPN → app", "port": "TCP 443", "purpose": "로컬 콘솔",

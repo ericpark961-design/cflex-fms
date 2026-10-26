@@ -1,9 +1,10 @@
 // node --test probe-agent/test/console-link.test.js
 //
-// WO-INT-004c, the Collector side of the Local Console link without sockets:
-// the console's device rows become what the pollers read, alarm events take
-// the console's local_notified to the Portal, and an unreachable console
-// costs neither the Portal its events nor the console its history.
+// WO-INT-004c / WO-INT-012, the Collector side of the Local Console link
+// without sockets: the console's device rows become what the pollers read,
+// the collector asks only for its own sites, alarm events and telemetry go to
+// the console — the collector's only destination (D-13) — and an unreachable
+// console costs it no history: queued, then re-sent in order.
 const test = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
@@ -44,24 +45,19 @@ function fakeConsole() {
 
 function rig() {
   const con = fakeConsole();
-  const portalSent = [];
-  const portalReq = async ({ url, body }) => { portalSent.push({ path: new URL(url).pathname, body: JSON.parse(body) }); return { status: 200, headers: {}, json: { accepted: 1 } }; };
   let t = Date.parse('2026-10-26T10:00:00Z');
   const now = () => t;
   const cq = memQueue();
   const link = createConsoleClient({ url: 'https://console.haea.example/', nodeId: 'cap01', key: 'k3y', queue: cq, request: con.request, now, random: () => 0.5, log: quiet, tls: { ca: ['CA'] } });
-  const fwd = createForwarder({
-    portal: { enabled: true, url: 'https://portal.example', tenant: 'TEST', nodeId: 'cap01', siteId: 'HMA-FV', tls: {} },
-    queue: memQueue(), request: portalReq, now, log: quiet, console: link,
-  });
-  return { con, link, fwd, cq, portalSent, tick: (ms) => { t += ms; } };
+  const fwd = createForwarder({ node: { tenant: 'TEST', nodeId: 'cap01', siteId: 'HMA-FV' }, now, log: quiet, console: link });
+  return { con, link, fwd, cq, tick: (ms) => { t += ms; } };
 }
 
 const ups = { id: 1, name: 'HMA-UPS-1W-B', site_id: 'HMA-FV', serial: 'AS2535281781', kind: 'ups' };
 const onBattery = { device_id: 1, metric: 'output_source', value: 'onBattery', severity: 'P2', message: 'Output source: onBattery' };
 
-test('event push: the console answers local_notified and the Portal event carries it; the key and the CA are the console\'s, no proxy', async () => {
-  const { con, fwd, portalSent } = rig();
+test('event push: to the console only — the key and the CA are the console\'s, no proxy, no client certificate', async () => {
+  const { con, fwd } = rig();
   await fwd.syncInventory([ups]);
   await fwd.sendEvent('alert', { ...onBattery, ts: Date.parse('2026-10-26T10:00:00Z') });
   const sentEvents = con.calls.filter(c => c.path === '/collector/v1/events');
@@ -69,20 +65,21 @@ test('event push: the console answers local_notified and the Portal event carrie
   assert.deepStrictEqual([sentEvents[0].headers.Authorization, sentEvents[0].headers['X-CFlex-Node'], sentEvents[0].proxy, sentEvents[0].tls.ca],
     ['Bearer k3y', 'cap01', null, ['CA']]);
   assert.strictEqual(sentEvents[0].headers['X-CFlex-Replay'], undefined, 'live, not a replay');
-  const ev = portalSent.find(p => p.path === '/api/v1/events').body.events[0];
+  assert.deepStrictEqual(Object.keys(sentEvents[0].tls), ['ca'], 'no client certificate on the console link');
+  const ev = sentEvents[0].body.events[0];
   assert.strictEqual(ev.code, 'UPS_ON_BATTERY');
-  assert.deepStrictEqual(ev.local_notified, { email: true, teams: false, itsm: 'INC0012001' });
+  assert.ok(!('local_notified' in ev), 'the console notifies; the collector reports what it saw');
+  assert.ok(con.calls.every(c => c.path.startsWith('/collector/v1/')), 'nothing but the console API');
 });
 
-test('console down: the Portal still gets the event now (without local_notified); the console gets it later, marked as a replay, in order', async () => {
-  const { con, fwd, link, cq, portalSent, tick } = rig();
+test('console down: the event waits in the collector\'s queue and reaches the console later, marked as a replay, in order', async () => {
+  const { con, fwd, link, cq, tick } = rig();
   await fwd.syncInventory([ups]);
   con.up = false;
   await fwd.sendEvent('alert', { ...onBattery, ts: Date.parse('2026-10-26T10:00:00Z') });
-  const raise = portalSent.find(p => p.path === '/api/v1/events').body.events[0];
-  assert.strictEqual(raise.kind, 'alarm_raise');
-  assert.strictEqual(raise.local_notified, undefined, 'not notified locally — the Portal routes it itself');
   assert.strictEqual(cq.rows.length, 1, 'queued for the console');
+  const raise = JSON.parse(cq.rows[0].payload).body.events[0];
+  assert.strictEqual(raise.kind, 'alarm_raise');
 
   // While it is down (and backing off), telemetry and a second event wait behind the first, without a call.
   const calls = con.calls.length;
@@ -133,6 +130,23 @@ test('two app nodes (SAT 6): app01 unreachable → the same call goes to app02, 
   hits.length = 0;
   assert.deepStrictEqual(await link.heartbeat({}), { ok: false, error: 'POST /collector/v1/heartbeat → HTTP 503 session_store_unavailable' });
   assert.deepStrictEqual(hits, ['app02.haea'], 'an answer, even an error, is not a reason to switch');
+});
+
+test('site scope (D-13): a collector with CFLEX_COLLECTOR_SITES asks for those sites only; without, for every site', async () => {
+  const urls = [];
+  const request = async ({ url }) => { urls.push(url); return { status: 200, headers: {}, json: { ok: true, devices: [] } }; };
+  await createConsoleClient({ url: 'https://c', nodeId: 'cap02', key: 'k', queue: memQueue(), request, log: quiet, sites: ['HMA-FV', 'KUS-IRV'] }).inventory();
+  await createConsoleClient({ url: 'https://c', nodeId: 'cap01', key: 'k', queue: memQueue(), request, log: quiet }).inventory();
+  assert.deepStrictEqual(urls.filter(u => u.includes('/devices')), ['https://c/collector/v1/devices?sites=HMA-FV%2CKUS-IRV', 'https://c/collector/v1/devices']);
+});
+
+test('heartbeat: to the console, with the contract fields and the site scope', async () => {
+  const { con, fwd } = rig();
+  const r = await fwd.heartbeat({ devices_total: 2, devices_unreachable: 0, last_poll_ok_ratio: 1 });
+  assert.ok(r.ok);
+  const hb = con.calls.find(c => c.path === '/collector/v1/heartbeat').body;
+  assert.deepStrictEqual([hb.node_id, hb.role, hb.devices_total, hb.last_poll_ok_ratio, hb.sites], ['cap01', 'collector', 2, 1, null]);
+  assert.ok(!('portal' in hb), 'a collector has no Portal link to report');
 });
 
 test('inventory: config then devices; maintenance windows and thresholds come along; unreachable → null (keep the old list)', async () => {

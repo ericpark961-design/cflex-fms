@@ -17,6 +17,8 @@ DropCapability=ALL
 EnvironmentFile=/opt/app/cflex/config/app/app.env
 Volume=/opt/app/cflex/config/app:/opt/app/cflex/config:ro,Z
 Volume=/opt/app/cflex/secrets/app:/opt/app/cflex/secrets:ro,Z
+# The Portal device certificate/key and portal-ca.pem (D-13: the app node sends to the Portal).
+Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,Z
 Volume=/opt/app/cflex/data:/opt/app/cflex/data:Z
 LogDriver=journald
 HealthCmd=node /opt/cflex/healthcheck.js
