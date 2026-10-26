@@ -61,9 +61,80 @@
   }
 
   // ── status: portal link, collectors, this node ───────────────────────────
+  // ── 연동 서버와 연결 상태 ────────────────────────────────────────────
+  //
+  // 기본 화면에 두 가지를 둔다: 어느 운영 서비스 서버에 붙게 되어 있는지,
+  // 그리고 지금 붙어 있는지. 전에는 enabled/sent/queued 숫자만 있어서 "어느
+  // 서버에" 가 어디에도 없었고, 잘못된 URL 을 가리킨 노드가 인증서 거절과
+  // 똑같이 보였다.
+  //
+  // 표시는 프로브의 자기보고다. 보고가 끊기면 '정상' 이 아니라 '확인 불가' 로
+  // 떨어진다 — 멈춘 화면이 연결을 증명하지 않는다.
+  const LINK = {
+    up:       ['ok',    '연결됨'],
+    degraded: ['warn',  '불안정'],
+    down:     ['bad',   '끊김'],
+    never:    ['muted', '첫 연결 대기'],
+  };
+  const CAUSE = {
+    proxy: '프록시', cert: '장치 인증서', auth: '인증', throttled: '속도 제한',
+    portal: '포털 응답', dns: 'DNS', tls: '서버 인증서', network: '네트워크', unknown: '원인 미확인',
+  };
+
+  function managedService(rows = []) {
+    if (!rows.length) return [el('h2', {}, '연동 서버 / Managed Service'), el('p', { class: 'muted' }, '등록된 collector 가 없다.')];
+    return [
+      el('h2', {}, '연동 서버 / Managed Service'),
+      ...rows.map((p) => {
+        // 보고가 오래됐으면 링크 상태를 그대로 믿지 않는다.
+        const [cls, label] = p.stale ? ['muted', '확인 불가'] : (LINK[p.link?.link] || LINK[p.enabled === false ? 'never' : 'never']);
+        const quiet = p.link?.quiet_s;
+        const cause = p.link?.cause;
+        return el('section', { class: 'card' },
+          el('div', { class: 'cardhead' },
+            el('strong', {}, p.node_id),
+            el('span', { class: `pill ${cls}` }, label),
+            p.enabled === false ? el('span', { class: 'pill muted' }, '포털 전송 꺼짐') : null,
+            cause && !p.stale && p.link?.link !== 'up' ? el('span', { class: 'pill bad' }, CAUSE[cause] || cause) : null,
+          ),
+          el('dl', { class: 'kv' },
+            ...pair('서버', p.endpoint || '—', 'mono'),
+            ...pair('테넌트 · 사이트', [p.tenant, p.site_id].filter(Boolean).join(' · ') || '—'),
+            ...pair('장치 인증서', p.cert?.cn
+              ? `${p.cert.cn}${p.cert.days_left != null ? ` · ${p.cert.days_left}일 남음` : ''}${p.cert.renew_due ? ' · 갱신 필요' : ''}`
+              : '없음', 'mono'),
+            ...pair('계약 버전', p.api_version_seen
+              ? `보냄 ${p.api_version || '—'} · 받음 ${p.api_version_seen}`
+              : `보냄 ${p.api_version || '—'} · 아직 응답 없음`),
+            ...pair('마지막 성공', p.last_reachable
+              ? `${when(p.last_reachable)}${quiet != null ? ` (${quiet}초 전)` : ''}`
+              : '없음'),
+            ...pair('마지막 응답 코드', p.last_status == null ? '—' : String(p.last_status)),
+            ...pair('큐 잔량', p.queued == null ? '—' : `${p.queued}건`),
+            ...(p.proxy ? pair('프록시', p.proxy, 'mono') : []),
+            ...pair('보고 시각', p.stale ? `${when(p.as_of)} — 5분 넘게 보고가 없다` : when(p.as_of)),
+          ),
+          // 알람과 같은 판단이라는 걸 화면에 적어 둔다.
+          p.link?.link === 'down'
+            ? el('p', { class: 'note bad' }, `PORTAL_LINK_DOWN 발생 중${p.link.down_since ? ` (${when(Date.parse(p.link.down_since))}부터)` : ''}${p.link.hint ? ` — ${p.link.hint}` : ''}`)
+            : null,
+          p.last_error && p.link?.link !== 'down' ? el('p', { class: 'note' }, p.last_error) : null,
+          p.link?.thresholds
+            ? el('p', { class: 'muted small' }, `판정: ${p.link.thresholds.down_after_s}초 무성공 + 실패 ${p.link.thresholds.min_failures}회에서 알람, 복구는 첫 성공 즉시, 재발 억제 ${p.link.thresholds.reraise_s}초`)
+            : null,
+        );
+      }),
+    ];
+  }
+
+  const pair = (k, v, cls) => [el('dt', {}, k), el('dd', cls ? { class: cls } : {}, v)];
+
   async function status() {
     const s = await api('/v1/console/status');
     return [
+      // 운영 서비스(Managed Service) 서버와 연결 상태를 맨 위에 둔다. 여기가
+      // 기본 화면이고, 이 두 가지는 매번 탭을 파고들어 확인할 성질이 아니다.
+      ...managedService(s.portal),
       el('h2', {}, '이 노드 / This node'),
       el('p', {}, `${s.node} · Redis ${s.redis ? 'OK' : 'DOWN'} · secret key ${s.secret_key ? 'OK' : 'not configured'}`),
       el('h2', {}, 'Collector'),
@@ -71,10 +142,6 @@
         el('td', {}, c.node_id), el('td', {}, el('span', { class: `pill ${c.stale ? 'crit' : 'ok'}` }, when(c.last_seen))),
         el('td', {}, c.heartbeat?.version ?? '—'), el('td', {}, c.heartbeat?.queue_depth ?? '—'),
         el('td', {}, c.heartbeat?.last_poll_ok_ratio ?? '—'), el('td', {}, c.heartbeat?.devices_total ?? '—'), el('td', {}, c.heartbeat?.devices_unreachable ?? '—')))),
-      el('h2', {}, '포털 연결 / Portal link (collector 보고 기준)'),
-      table(['node', 'enabled', 'last reachable', 'sent', 'rejected', 'queued', 'last error'], s.portal.map(p => el('tr', {},
-        el('td', {}, p.node_id), el('td', {}, p.enabled == null ? '—' : String(p.enabled)), el('td', {}, when(p.last_reachable)),
-        el('td', {}, p.sent ?? '—'), el('td', {}, p.rejected ?? '—'), el('td', {}, p.queued ?? '—'), el('td', {}, p.last_error || '')))),
       isAdmin() ? collectorKeyForm() : null,
     ];
   }

@@ -24,6 +24,7 @@ const schema = require('./contract/schema');
 const adapt = require('./contract/adapt');
 const { state: csrState } = require('./portal/csr');
 const { createAlarmEngine } = require('./alarms/engine');
+const { createPortalLink } = require('./alarms/portal-link');
 const { jsonStore } = require('./alarms/store');
 
 // Contract minor this Probe speaks (§0, D-10); the Portal also accepts 1.0.
@@ -98,6 +99,13 @@ function createForwarder(o) {
   let apiVersionSeen = null;      // X-CFlex-API-Version it answered with
   const stats = { sent: 0, rejected: 0, retried: 0, invalid: 0, blocked_keys: 0, unmapped_alerts: 0, notify_errors: 0, last_error: null };
 
+  // 포털 링크 알람. 계약 부록 B 의 PORTAL_LINK_DOWN (P3) 을 올리는 쪽이 여태
+  // 없었다 — 끊기면 조용히 큐만 쌓였다. 임계값과 청중 구분은 모듈 머리말에.
+  const link = createPortalLink({
+    endpoint: portal.url, siteId: portal.siteId, now,
+    ...(o.linkAlarm || {}),
+  });
+
   /**
    * This node's device certificate, as it is on disk right now.
    *
@@ -160,12 +168,34 @@ function createForwarder(o) {
     queue.enqueue('portal', { name, method, path: PATHS[name], key: crypto.randomUUID(), body });
   }
 
+  /**
+   * 왜 거절됐는지를 본문에서 꺼낸다. 상태 코드만으로는 401 이 토큰 문제인지
+   * 장치 인증서 문제인지 구분되지 않고, 그 둘은 조치가 완전히 다르다 —
+   * 포털은 mtls_certificate_required 처럼 코드를 돌려준다.
+   */
+  function errorReason(r) {
+    const j = r.json?.error;
+    const code = typeof j === 'string' ? j : (j?.code || j?.message || '');
+    const text = code || String(r.text ?? r.body ?? '').slice(0, 120);
+    return `HTTP ${r.status}${text ? ` ${text}` : ''}`;
+  }
+
   async function call(method, path, body, key) {
     const buf = Buffer.from(JSON.stringify(body));
-    const r = await request({
-      method, url: portal.url.replace(/\/+$/, '') + path, headers: headers(key, buf.length), body: buf,
-      tls: portal.tls, proxy: portal.proxy, noProxy: portal.noProxy, timeoutMs: portal.timeoutMs,
-    });
+    let r;
+    try {
+      r = await request({
+        method, url: portal.url.replace(/\/+$/, '') + path, headers: headers(key, buf.length), body: buf,
+        tls: portal.tls, proxy: portal.proxy, noProxy: portal.noProxy, timeoutMs: portal.timeoutMs,
+      });
+    } catch (e) {
+      // A thrown request is a link failure too — DNS, TLS, a refused socket.
+      // Recorded before rethrowing, or the alarm would only ever see HTTP
+      // statuses and never the outages that produce no response at all.
+      link.record({ ok: false, status: 0, error: e.message });
+      throw e;
+    }
+    link.record({ ok: r.status < 300, status: r.status ?? 0, error: r.status < 300 ? null : errorReason(r) });
     // Remembered for the console's 연동 page. A status alone cannot say
     // whether the far side is the Portal at all; the version header it
     // answers with can, and a node pointed at the wrong host shows up here
@@ -402,6 +432,32 @@ function createForwarder(o) {
     return { ok: true, queued: true };
   }
 
+  /**
+   * 링크 상태를 보고, 올릴·내릴 알람이 있으면 보낸다.
+   *
+   * emit() 이어야 한다. postEvents() 는 포털 큐에만 넣으므로 링크가 끊긴
+   * 동안에는 아무에게도 전달되지 않고 복구된 뒤에야 도착한다 — "포털이 안
+   * 보인다" 는 알람이 포털을 거쳐야만 전달된다면 쓸모가 없다. emit() 은
+   * 로컬 통지(콘솔/메일/Teams/ITSM)를 먼저 하고 포털에는 큐로 넣는다.
+   */
+  async function assessLink() {
+    try { return await assessLinkInner(); } catch (e) {
+      // 알람이 수집·전송을 멈추게 할 수는 없다.
+      stats.notify_errors++;
+      log.error(`[forwarder] portal link alarm: ${e.message}`);
+      return [];
+    }
+  }
+
+  async function assessLinkInner() {
+    let installedAt = null;
+    const c = certState();
+    if (c.from) { const t = Date.parse(c.from); if (Number.isFinite(t)) installedAt = t; }
+    const { items } = link.assess({ queueDepth: queue.stats().pending, installedAt });
+    if (items.length) await emit(items);
+    return items;
+  }
+
   async function checkClock(dateHeader) {
     const t = Date.parse(dateHeader || '');
     if (!Number.isFinite(t)) return;
@@ -460,6 +516,10 @@ function createForwarder(o) {
           proxy: portal.proxy ? String(portal.proxy).replace(/\/\/[^@]*@/, '//***@') : null,
           last_status: lastStatus,
           api_version_seen: apiVersionSeen,
+          // 연결 상태를 화면이 따로 계산하지 않는다. 알람을 올릴지 말지
+          // 판단한 그 상태기계가 그대로 보고한다 — 화면은 '정상', 알람은
+          // '끊김' 으로 갈리는 일이 없도록.
+          link: link.state(),
         },
         // What this node holds on disk, so the console can tell "a certificate
         // is registered" from "the node actually installed it". Those are
@@ -488,10 +548,12 @@ function createForwarder(o) {
       const r = await call('POST', PATHS.heartbeat, body, crypto.randomUUID());
       if (r.status >= 300) {
         stats.last_error = `heartbeat → HTTP ${r.status}`;
+        await assessLink();
         return { ok: false, status: r.status, ...results };
       }
       lastReachable = now();
       commandsPending = r.json?.commands_pending || 0;
+      await assessLink();
       await checkClock(r.headers.date);
       // The link is up: whatever was waiting out an outage can go now. A 429
       // wait stands — the Portal asked for it.
@@ -500,6 +562,9 @@ function createForwarder(o) {
       return { ok: true, data: r.json, ...results };
     } catch (e) {
       stats.last_error = e.message;
+      // 던져진 요청이야말로 전형적인 끊김이다 — DNS, TLS, 거부된 소켓.
+      // 여기서 평가하지 않으면 알람은 HTTP 상태가 돌아오는 경우만 보게 된다.
+      await assessLink();
       return { ok: false, error: e.message, ...results };
     }
   }
@@ -514,6 +579,8 @@ function createForwarder(o) {
     stats: () => ({ ...stats, queued_points: points.length, commands_pending: commandsPending, next_attempt_at: nextAt || null,
       ...(consoleLink ? { console: consoleLink.stats() } : {}) }),
     lastReachable: () => lastReachable,
+    link: link.state,
+    assessLink,
     alarms: engine,
     notifier,
     console: consoleLink,

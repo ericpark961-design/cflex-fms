@@ -43,3 +43,21 @@ th { color: var(--muted); font-weight: 500; }
 .pill { display: inline-block; padding: 1px 6px; font-size: 11px; background: #393939; }
 .pill.ok { background: #0e6027; } .pill.warn { background: #8e6a00; } .pill.crit { background: #a2191f; }
 pre { white-space: pre-wrap; background: #161616; padding: 8px; border: 1px solid var(--line); font-size: 12px; }
+
+/* 연동 서버 카드 — 기본 화면 맨 위. 단계 사다리(포털 연동 탭)와 같은
+   어휘를 쓴다: bad 는 조치가 필요한 상태, muted 는 판단할 근거가 없는 상태.
+   crit 는 기존 이름이라 그대로 두고 bad 를 같은 색으로 맞춘다. */
+.pill.bad { background: #a2191f; }
+.pill.muted { background: #525252; }
+
+.cardhead { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.cardhead strong { font-size: 15px; letter-spacing: .01em; }
+
+/* 라벨과 값. 지문·CN·엔드포인트는 눈으로 비교하므로 값 열을 흘리지 않는다. */
+dl.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 20px; margin: 0; }
+dl.kv dt { color: var(--muted, #8d8d8d); font-size: 12px; }
+dl.kv dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+
+.note { margin: 12px 0 0; padding: 8px 10px; border-left: 3px solid var(--line); font-size: 12px; }
+.note.bad { border-left-color: #a2191f; }
+.small { font-size: 11px; }

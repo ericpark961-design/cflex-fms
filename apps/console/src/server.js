@@ -292,8 +292,17 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
     return {
       ok: true, node: config.nodeId, redis: redisOk, secret_key: sealer.available,
       collectors: collectors.map(c => ({ ...c, stale: !c.last_seen || now() - c.last_seen > 5 * 60e3 })),
-      // The Portal link as the collectors last reported it (their forwarder owns that connection).
-      portal: collectors.map(c => ({ node_id: c.node_id, ...(c.heartbeat?.portal || {}) })),
+      // The Portal link as the collectors last reported it (their forwarder owns
+      // that connection). `as_of`/`stale` ride along because a self-report that
+      // stopped arriving must not read as "connected" — it is unknown, and the
+      // screen has to be able to say so.
+      portal: collectors.map(c => ({
+        node_id: c.node_id,
+        as_of: c.last_seen || null,
+        stale: !c.last_seen || now() - c.last_seen > 5 * 60e3,
+        ...(c.heartbeat?.portal || {}),
+        cert: c.heartbeat?.cert || null,
+      })),
     };
   });
   R('GET', '/v1/console/audit', 'admin', (c) => ({
