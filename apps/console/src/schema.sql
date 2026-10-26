@@ -187,5 +187,31 @@ CREATE TABLE IF NOT EXISTS enrollments (
   -- not-yet-deployed are different problems and the page has to tell them apart.
   site_id       TEXT,
   role          TEXT,
-  added_by      TEXT
+  added_by      TEXT,
+  -- Which site codes this node may send for. Collector ID and Site ID are
+  -- separate things: one collector can reach devices at several sites, and the
+  -- server must not take the node's word for which. JSON array; NULL means
+  -- "only site_id", and an empty array means nothing is accepted.
+  allowed_sites TEXT
 );
+
+-- One-time enrolment tokens (최초 등록 자격).
+--
+-- The collector key authenticates ongoing calls, but it is permanent and
+-- reusable: a leaked one would let anyone re-enrol that node with a NEW key
+-- pair for ever, taking over its identity. So first enrolment — and every
+-- re-enrolment, which is the same act — needs a separate credential that is
+-- node-scoped, time-limited and consumed on use.
+--
+-- Only the hash is stored. The token is shown once, at issue.
+CREATE TABLE IF NOT EXISTS enroll_tokens (
+  token_hash  TEXT PRIMARY KEY,
+  tenant      TEXT NOT NULL,
+  node_id     TEXT NOT NULL,
+  expires_at  INTEGER NOT NULL,
+  used_at     INTEGER,
+  used_by_csr TEXT,
+  issued_by   TEXT,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_enroll_tokens_node ON enroll_tokens (node_id, used_at);

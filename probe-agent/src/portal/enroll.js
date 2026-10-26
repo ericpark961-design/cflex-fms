@@ -31,21 +31,23 @@ const csr = require('./csr');
  * @param {Function} o.request    transport.request, injectable
  * @param {object} [o.log]
  * @param {Array<Buffer>} [o.ca]  CA for verifying the console's TLS
+ * @param {string} [o.enrollToken]  one-time, node-scoped, issued by an operator
  */
-function createEnroller({ consoleUrl, nodeId, tenant, token, dir, request, log = console, ca = [] }) {
+function createEnroller({ consoleUrl, nodeId, tenant, token, dir, request, log = console, ca = [], enrollToken = '' }) {
   const base = String(consoleUrl || '').replace(/\/+$/, '');
   let lastError = null;
   let posted = false;        // this process has already handed over the CSR
 
-  const call = (method, path, body) => request({
+  const call = (method, path, body, extra = {}) => request({
     method,
     url: `${base}${path}`,
     body: body ? Buffer.from(JSON.stringify(body)) : undefined,
     headers: {
       'Content-Type': 'application/json',
       'X-CFlex-Node': nodeId,
-      'X-Collector-Key': token,
+      Authorization: `Bearer ${token}`,
       ...(body ? { 'Content-Length': String(Buffer.byteLength(JSON.stringify(body))) } : {}),
+      ...extra,
     },
     tls: { ca },
   });
@@ -90,11 +92,18 @@ function createEnroller({ consoleUrl, nodeId, tenant, token, dir, request, log =
 
       // 2. hand the CSR to the console so an operator can see it
       if (!posted || mine.created) {
+        // The one-time token travels in a header, not the body: a token in a
+        // logged body is a token in the logs. It is only needed for a NEW key
+        // pair — re-posting the same CSR after a restart is not an identity
+        // change and must not wait on an operator.
         const r = await call('POST', '/collector/v1/enroll', {
           csr: mine.csr, pubkey_sha256: mine.pubkey_sha256,
-        });
+        }, enrollToken ? { 'X-Enroll-Token': enrollToken } : {});
         if (r.status >= 300) {
-          out.error = lastError = `enroll → HTTP ${r.status}`;
+          const code = r.json?.error || '';
+          out.error = lastError = /enroll_token/.test(code)
+            ? `enroll → ${code}: 콘솔 "포털 연동"에서 ${nodeId} 의 1회용 등록 토큰을 발급해 CFLEX_ENROLL_TOKEN 에 넣어라`
+            : `enroll → HTTP ${r.status}${code ? ` ${code}` : ''}`;
           return out;
         }
         const j = jsonOf(r, 'enroll');

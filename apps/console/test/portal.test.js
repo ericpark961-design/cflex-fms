@@ -39,7 +39,16 @@ function fresh() {
       _opts: opts,
     }),
   });
-  return { db, portal, tick: (ms) => { t += ms; } };
+  // Enrolling now costs a one-time token, so the harness issues one the way
+  // an operator would. Helper rather than inline: every enrolment test needs it.
+  const enrol = (node, body) => {
+    if (!portal.listEnrollments().some(e => e.node_id === node)) {
+      portal.addNode({ node_id: node, site_id: 'TEST-SITE', role: 'collector' }, 'admin');
+    }
+    const { token } = portal.issueEnrollToken(node, {}, 'admin');
+    return portal.enroll(node, { ...body, enroll_token: token });
+  };
+  return { db, portal, enrol, tick: (ms) => { t += ms; } };
 }
 
 /** A CA and a node certificate, the way the Portal would issue them. */
@@ -81,7 +90,7 @@ function issue({ cn = 'HAEA.cap01', days = 730, clientAuth = true, key = null } 
 // ── configuration ───────────────────────────────────────────────────
 
 test('defaults are the contract numbers, not guesses', () => {
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   const c = portal.get();
   assert.strictEqual(c.url, 'https://cflex.fms.support');     // 계약 §1
   assert.strictEqual(c.ip_pin, '40.114.79.164');              // 계약 §1
@@ -91,7 +100,7 @@ test('defaults are the contract numbers, not guesses', () => {
 });
 
 test('http:// is refused — a device cert and telemetry in the clear', () => {
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   // Asserted on `code`, not the message: the code is the stable contract the
   // screen branches on, the message is human text that will get reworded.
   const code = (fn) => { try { fn(); return null; } catch (e) { return e.code; } };
@@ -103,7 +112,7 @@ test('http:// is refused — a device cert and telemetry in the clear', () => {
 });
 
 test('polling is floored at 10s — below that a 48-device cycle never finishes', () => {
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   assert.strictEqual(portal.put({ poll_ms: 1 }).poll_ms, 10_000);      // spec 01 §2.1
   assert.strictEqual(portal.put({ poll_ms: 'abc' }).poll_ms, 60_000);  // falls back, not NaN
   assert.strictEqual(portal.put({ heartbeat_ms: 1 }).heartbeat_ms, 30_000);
@@ -111,7 +120,7 @@ test('polling is floored at 10s — below that a 48-device cycle never finishes'
 });
 
 test('the proxy password is sealed, and never returned to the screen', () => {
-  const { db, portal } = fresh();
+  const { db, portal, enrol } = fresh();
   portal.put({ proxy: 'http://proxy.haeaus.com:8080', proxy_password: 's3cret' }, 'admin');
 
   const shown = portal.get();
@@ -132,11 +141,11 @@ test('the proxy password is sealed, and never returned to the screen', () => {
 // ── enrolment ───────────────────────────────────────────────────────
 
 test('a collector posts its CSR, an admin installs the signed certificate', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   const m = issue({ cn: 'HAEA.cap01' });
   try {
     // 1. the collector enrols. The key is not in this call.
-    const e1 = portal.enroll('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
+    const e1 = enrol('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
     assert.strictEqual(e1.state, 'pending');
     assert.ok(!/PRIVATE KEY/.test(m.csr), 'a CSR must not carry the key');
 
@@ -160,11 +169,11 @@ test('a collector posts its CSR, an admin installs the signed certificate', { sk
 test('the wrong node\'s certificate is refused by public key', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
   // The failure this prevents: cap01's row gets app01's certificate, the
   // collector installs it, every Portal call 401s, and the screen looks fine.
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   const mine = issue({ cn: 'HAEA.cap01' });
   const theirs = issue({ cn: 'HAEA.cap01' });   // same CN, different key pair
   try {
-    portal.enroll('cap01', { csr: mine.csr, pubkey_sha256: pub(mine.csr) });
+    enrol('cap01', { csr: mine.csr, pubkey_sha256: pub(mine.csr) });
     assert.throws(() => portal.signCert('cap01', { cert: theirs.cert }, 'admin'),
       (e) => e.code === 'key_mismatch' && /공개키/.test(e.message));
     assert.deepStrictEqual(portal.certsFor('cap01'), { pending: true }, 'a refused cert must not land');
@@ -172,26 +181,26 @@ test('the wrong node\'s certificate is refused by public key', { skip: !hasOpens
 });
 
 test('CN must be tenant.node, and clientAuth is required', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   const wrongCn = issue({ cn: 'HAEA.app99' });
   try {
-    portal.enroll('cap01', { csr: wrongCn.csr, pubkey_sha256: pub(wrongCn.csr) });
+    enrol('cap01', { csr: wrongCn.csr, pubkey_sha256: pub(wrongCn.csr) });
     assert.throws(() => portal.signCert('cap01', { cert: wrongCn.cert }, 'admin'),
       (e) => e.code === 'cn_mismatch' && /HAEA\.cap01/.test(e.message));
   } finally { wrongCn.cleanup(); }
 
   const noEku = issue({ cn: 'HAEA.cap02', clientAuth: false });
   try {
-    portal.enroll('cap02', { csr: noEku.csr, pubkey_sha256: pub(noEku.csr) });
+    enrol('cap02', { csr: noEku.csr, pubkey_sha256: pub(noEku.csr) });
     assert.throws(() => portal.signCert('cap02', { cert: noEku.cert }, 'admin'),
       (e) => e.code === 'no_client_auth');
   } finally { noEku.cleanup(); }
 });
 
 test('garbage and oversized input are refused before parsing', () => {
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   const code = (fn) => { try { fn(); return null; } catch (e) { return e.code; } };
-  assert.strictEqual(code(() => portal.enroll('cap01', { csr: 'hello' })), 'invalid_csr');
+  assert.strictEqual(code(() => enrol('cap01', { csr: 'hello' })), 'invalid_csr');
   assert.strictEqual(code(() => portal.enroll('cap01', { csr: `-----BEGIN CERTIFICATE REQUEST-----\n${'A'.repeat(9000)}\n-----END CERTIFICATE REQUEST-----` })), 'invalid_csr');
   assert.strictEqual(code(() => portal.enroll('', { csr: 'x' })), 'node_required');
   assert.strictEqual(code(() => portal.signCert('nope', { cert: 'x' })), 'no_enrollment');
@@ -200,31 +209,31 @@ test('garbage and oversized input are refused before parsing', () => {
 });
 
 test('a re-posted CSR is a no-op; a NEW CSR drops the certificate', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   const a = issue({ cn: 'HAEA.cap01' });
   const b = issue({ cn: 'HAEA.cap01' });     // re-enrolment: new key pair
   try {
-    portal.enroll('cap01', { csr: a.csr, pubkey_sha256: pub(a.csr) });
+    enrol('cap01', { csr: a.csr, pubkey_sha256: pub(a.csr) });
     portal.signCert('cap01', { cert: a.cert, ca: a.ca }, 'admin');
     assert.strictEqual(portal.certsFor('cap01').pending, false);
 
     // Same CSR again — the collector restarted, nothing changed.
-    const same = portal.enroll('cap01', { csr: a.csr, pubkey_sha256: pub(a.csr) });
+    const same = enrol('cap01', { csr: a.csr, pubkey_sha256: pub(a.csr) });
     assert.strictEqual(same.unchanged, true);
     assert.strictEqual(portal.certsFor('cap01').pending, false, 'a restart must not drop the cert');
 
     // A new key pair makes the held certificate dead, so it must go.
-    portal.enroll('cap01', { csr: b.csr, pubkey_sha256: pub(b.csr) });
+    enrol('cap01', { csr: b.csr, pubkey_sha256: pub(b.csr) });
     assert.deepStrictEqual(portal.certsFor('cap01'), { pending: true },
       'a new CSR left the old certificate in place');
   } finally { a.cleanup(); b.cleanup(); }
 });
 
 test('revoking keeps the CSR so the node can be re-signed', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   const m = issue({ cn: 'HAEA.cap01' });
   try {
-    portal.enroll('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
+    enrol('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
     portal.signCert('cap01', { cert: m.cert, ca: m.ca }, 'admin');
     const r = portal.revoke('cap01', 'admin');
     assert.strictEqual(r.state, 'pending');
@@ -235,10 +244,10 @@ test('revoking keeps the CSR so the node can be re-signed', { skip: !hasOpenssl(
 });
 
 test('an expired certificate is refused', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
-  const { portal, tick } = fresh();
+  const { portal, enrol, tick } = fresh();
   const m = issue({ cn: 'HAEA.cap01', days: 1 });
   try {
-    portal.enroll('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
+    enrol('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
     tick(3 * 86_400_000);
     assert.throws(() => portal.signCert('cap01', { cert: m.cert }, 'admin'),
       (e) => e.code === 'expired');
@@ -246,10 +255,10 @@ test('an expired certificate is refused', { skip: !hasOpenssl() && 'openssl 없�
 });
 
 test('renew_due flags a certificate inside the 60-day window', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
-  const { portal, tick } = fresh();
+  const { portal, enrol, tick } = fresh();
   const m = issue({ cn: 'HAEA.cap01', days: 80 });
   try {
-    portal.enroll('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
+    enrol('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
     portal.signCert('cap01', { cert: m.cert }, 'admin');
     assert.strictEqual(portal.listEnrollments()[0].renew_due, false);
     tick(30 * 86_400_000);                      // 50일 남음
@@ -260,10 +269,10 @@ test('renew_due flags a certificate inside the 60-day window', { skip: !hasOpens
 // ── the private key is nowhere near this ────────────────────────────
 
 test('no private key reaches the database or the listing', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
-  const { db, portal } = fresh();
+  const { db, portal, enrol } = fresh();
   const m = issue({ cn: 'HAEA.cap01' });
   try {
-    portal.enroll('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
+    enrol('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
     portal.signCert('cap01', { cert: m.cert, ca: m.ca }, 'admin');
 
     const dump = JSON.stringify(db.prepare('SELECT * FROM enrollments').all())
@@ -281,11 +290,11 @@ test('no private key reaches the database or the listing', { skip: !hasOpenssl()
 // ── the check ───────────────────────────────────────────────────────
 
 test('check passes the stored settings and the held certificate through', { skip: !hasOpenssl() && 'openssl 없음' }, async () => {
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   const m = issue({ cn: 'HAEA.cap01' });
   try {
     portal.put({ url: 'https://portal.test', ip_pin: null, proxy: 'http://p:8080' }, 'admin');
-    portal.enroll('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
+    enrol('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
     portal.signCert('cap01', { cert: m.cert, ca: m.ca }, 'admin');
 
     const r = await portal.check({ node_id: 'cap01' });
@@ -303,7 +312,7 @@ test('check passes the stored settings and the held certificate through', { skip
 });
 
 test('check without a certificate says so instead of looking fine', async () => {
-  const { portal } = fresh();
+  const { portal, enrol } = fresh();
   const r = await portal.check({});
   assert.strictEqual(r._opts.tls.cert, undefined);
   assert.match(r.note, /익명/);
@@ -316,3 +325,120 @@ function pub(csrPem) {
     .update(require('node:crypto').createPublicKey(spki).export({ type: 'spki', format: 'der' }))
     .digest('hex');
 }
+
+// ── first-registration credential ───────────────────────────────────
+// The collector key authenticates ongoing calls but is permanent and
+// reusable: a leaked one would let anyone replace that node's key pair for
+// ever, taking over its identity while every call still authenticates. So
+// enrolling — and re-enrolling, which is the same act — costs a separate
+// credential that is node-scoped, expiring and consumed on use.
+
+test('enrolling without a token is refused', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
+  const { portal } = fresh();
+  const m = issue({ cn: 'HAEA.cap01' });
+  try {
+    portal.addNode({ node_id: 'cap01', site_id: 'TEST-SITE' }, 'admin');
+    assert.throws(() => portal.enroll('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) }),
+      (e) => e.code === 'enroll_token_required');
+    assert.deepStrictEqual(portal.certsFor('cap01'), { pending: true });
+  } finally { m.cleanup(); }
+});
+
+test('a token is single use', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
+  const { portal } = fresh();
+  const a = issue({ cn: 'HAEA.cap01' });
+  const b = issue({ cn: 'HAEA.cap01' });
+  try {
+    portal.addNode({ node_id: 'cap01', site_id: 'TEST-SITE' }, 'admin');
+    const { token } = portal.issueEnrollToken('cap01', {}, 'admin');
+    portal.enroll('cap01', { csr: a.csr, pubkey_sha256: pub(a.csr), enroll_token: token });
+
+    // The same token cannot install a different key pair afterwards — that is
+    // exactly the identity takeover this is for.
+    assert.throws(() => portal.enroll('cap01', { csr: b.csr, pubkey_sha256: pub(b.csr), enroll_token: token }),
+      (e) => e.code === 'enroll_token_invalid');
+    assert.strictEqual(portal.listEnrollTokens()[0].state, 'used');
+  } finally { a.cleanup(); b.cleanup(); }
+});
+
+test('a restart re-posting the same CSR needs no token', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
+  // Otherwise every collector reboot would wait on an operator.
+  const { portal } = fresh();
+  const m = issue({ cn: 'HAEA.cap01' });
+  try {
+    portal.addNode({ node_id: 'cap01', site_id: 'TEST-SITE' }, 'admin');
+    const { token } = portal.issueEnrollToken('cap01', {}, 'admin');
+    portal.enroll('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr), enroll_token: token });
+    const again = portal.enroll('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr) });
+    assert.strictEqual(again.unchanged, true);
+  } finally { m.cleanup(); }
+});
+
+test('a token is scoped to one node and one tenant', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
+  const { portal } = fresh();
+  const m = issue({ cn: 'HAEA.cap02' });
+  try {
+    portal.addNode({ node_id: 'cap01', site_id: 'TEST-SITE' }, 'admin');
+    portal.addNode({ node_id: 'cap02', site_id: 'TEST-SITE' }, 'admin');
+    const { token } = portal.issueEnrollToken('cap01', {}, 'admin');
+    // cap02 presenting cap01's token
+    assert.throws(() => portal.enroll('cap02', { csr: m.csr, pubkey_sha256: pub(m.csr), enroll_token: token }),
+      (e) => e.code === 'enroll_token_invalid');
+    // and the refusal says nothing about whose token it was: an attacker must
+    // not learn whether a token exists or belongs elsewhere.
+    try { portal.enroll('cap02', { csr: m.csr, enroll_token: token }); } catch (e) {
+      assert.ok(!/cap01/.test(e.message), 'the error disclosed the token owner');
+    }
+  } finally { m.cleanup(); }
+});
+
+test('a token expires', { skip: !hasOpenssl() && 'openssl 없음' }, () => {
+  const { portal, tick } = fresh();
+  const m = issue({ cn: 'HAEA.cap01' });
+  try {
+    portal.addNode({ node_id: 'cap01', site_id: 'TEST-SITE' }, 'admin');
+    const t = portal.issueEnrollToken('cap01', { ttlMinutes: 10 }, 'admin');
+    tick(11 * 60_000);
+    assert.throws(() => portal.enroll('cap01', { csr: m.csr, pubkey_sha256: pub(m.csr), enroll_token: t.token }),
+      (e) => e.code === 'enroll_token_invalid');
+    assert.strictEqual(portal.listEnrollTokens()[0].state, 'expired');
+  } finally { m.cleanup(); }
+});
+
+test('only the hash is stored', () => {
+  const { db, portal } = fresh();
+  portal.addNode({ node_id: 'cap01', site_id: 'TEST-SITE' }, 'admin');
+  const { token } = portal.issueEnrollToken('cap01', {}, 'admin');
+  const dump = JSON.stringify(db.prepare('SELECT * FROM enroll_tokens').all())
+    + JSON.stringify(portal.listEnrollTokens());
+  assert.ok(!dump.includes(token), 'the token itself is recoverable from the database');
+});
+
+// ── collector id vs site id ─────────────────────────────────────────
+
+test('allowed sites are checked server-side, not taken from the payload', () => {
+  const { portal } = fresh();
+  portal.addNode({ node_id: 'cap01', site_id: 'HMA-FV', allowed_sites: ['HMA-FV', 'KUS-IRV'] }, 'admin');
+
+  assert.ok(portal.assertSite('cap01', 'HMA-FV'));
+  assert.ok(portal.assertSite('cap01', 'KUS-IRV'));
+  assert.throws(() => portal.assertSite('cap01', 'HAEA-HQ'), (e) => e.code === 'site_not_allowed');
+  assert.throws(() => portal.assertSite('cap01', ''), (e) => e.code === 'site_required');
+  // An unregistered collector is refused outright rather than defaulted in.
+  assert.throws(() => portal.assertSite('ghost', 'HMA-FV'), (e) => e.code === 'node_not_registered');
+});
+
+test('a node with no explicit list may only use its own site', () => {
+  const { portal } = fresh();
+  portal.addNode({ node_id: 'cap01', site_id: 'HMA-FV' }, 'admin');
+  assert.deepStrictEqual(portal.listEnrollments()[0].allowed_sites, ['HMA-FV']);
+  assert.throws(() => portal.assertSite('cap01', 'KUS-IRV'), (e) => e.code === 'site_not_allowed');
+
+  portal.setAllowedSites('cap01', ['HMA-FV', 'KUS-IRV'], 'admin');
+  assert.ok(portal.assertSite('cap01', 'KUS-IRV'));
+  // An empty list accepts nothing — a node that may send nowhere is a valid
+  // state (suspended), and silently meaning "anywhere" would be the opposite.
+  portal.setAllowedSites('cap01', [], 'admin');
+  assert.throws(() => portal.assertSite('cap01', 'HMA-FV'), (e) => e.code === 'site_not_allowed');
+  assert.throws(() => portal.setAllowedSites('cap01', ['bad-lower'], 'admin'), (e) => e.code === 'invalid_site_id');
+});

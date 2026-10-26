@@ -216,6 +216,14 @@ const col = (method, p, body) => fetch(urlB + p, {
 }).then(async r => ({ status: r.status, json: await r.json() }));
 
 test('collector: key-authenticated pull of devices (with opened credentials) and config', async () => {
+  // cap01 has to be a REGISTERED node now: site isolation is enforced against
+  // its allowed-site list rather than trusted from the payload, so an
+  // unregistered collector is refused outright.
+  const reg = await admin.req('POST', '/v1/console/portal/nodes',
+    { node_id: 'cap01', site_id: 'HMA-FV', role: 'collector', allowed_sites: ['HMA-FV', 'KUS-IRV'] });
+  assert.strictEqual(reg.status, 201, JSON.stringify(reg.json));
+  assert.deepStrictEqual(reg.json.enrollment.allowed_sites, ['HMA-FV', 'KUS-IRV']);
+
   const k = await admin.req('POST', '/v1/console/collectors/cap01/key');
   collectorKey = k.json.key;
   assert.ok(collectorKey.length >= 40);
@@ -264,6 +272,35 @@ test('collector → console: telemetry and an On-Battery P1 become a critical de
   assert.deepStrictEqual([al.priority, al.code, al.device_id, al.device_label, al.state, al.local_notified.itsm], ['P1', 'UPS_ON_BATTERY', `ups-${ups.id}`, 'HMA-UPS-1W-B', 'open', 'INC0012345']);
   assert.strictEqual((await viewer.req('GET', '/v1/fms/alerts?priority=P2')).json.alerts.length, 0, 'priority filter');
   assert.strictEqual((await viewer.req('GET', '/v1/fms/alerts?cbu=KUS-IRV')).json.alerts.length, 0, 'site filter');
+});
+
+test('collector: a site it is not allowed to send for is refused', async () => {
+  // The failure this prevents: one site's collector writing another site's
+  // devices. The node names site_id itself, so the server cannot take its word.
+  const r = await col('POST', '/collector/v1/events', {
+    events: [{
+      event_id: crypto.randomUUID(), alarm_id: crypto.randomUUID(),
+      device_id: 'deadbeefdeadbeef', site_id: 'HAEA-HQ',   // not in cap01's list
+      ts: new Date().toISOString(), kind: 'alarm_raise', severity: 'P2',
+      code: 'UPS_OVERLOAD', title: 'wrong site', source: 'rule',
+    }],
+  });
+  assert.strictEqual(r.status, 400, `body: ${JSON.stringify(r.json)}`);
+  // The server puts the code in `error` and the specifics in `details`.
+  assert.strictEqual(r.json.error, 'site_not_allowed');
+  assert.match(r.json.message, /HAEA-HQ/);
+  assert.deepStrictEqual(r.json.details.allowed, ['HMA-FV', 'KUS-IRV']);
+
+  // And an allowed site still goes through, so this is isolation and not a wall.
+  const ok = await col('POST', '/collector/v1/events', {
+    events: [{
+      event_id: crypto.randomUUID(), alarm_id: crypto.randomUUID(),
+      device_id: 'deadbeefdeadbeef', site_id: 'KUS-IRV',
+      ts: new Date().toISOString(), kind: 'info', severity: 'P4',
+      code: 'UPS_SELFTEST_OK', title: 'allowed site', source: 'rule',
+    }],
+  });
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.json));
 });
 
 test('alarms: Operator ACKs and comments (on the other node); detail shows history; clear closes it', async () => {

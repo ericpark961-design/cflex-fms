@@ -209,7 +209,10 @@
       } catch (err) {
         // The server's reasons are specific on purpose (CN mismatch, wrong
         // public key, no clientAuth) — show them rather than "실패".
-        msg(err.body?.extra ? `${err.message} — ${JSON.stringify(err.body.extra)}` : err.message);
+        // `details`, not `extra`: the server puts the code in `error` and the
+        // specifics in `details`, so the first version of this line showed
+        // nothing useful no matter what went wrong.
+        msg(err.body?.details ? `${err.message} — ${JSON.stringify(err.body.details)}` : err.message);
       }
     } } },
       el('h2', {}, '서명된 인증서 등록'),

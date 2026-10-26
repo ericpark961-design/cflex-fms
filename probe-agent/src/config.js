@@ -62,6 +62,9 @@ const cfg = {
     pkiDir: process.env.CFLEX_PKI_DIR || '/etc/cflex/pki',
     enrollIntervalMs: parseInt(process.env.CFLEX_ENROLL_INTERVAL_MS || '60000', 10),
     caPath: process.env.CFLEX_CONSOLE_CA || '',
+    // One-time, node-scoped, issued by an operator in the console. Needed only
+    // for a NEW key pair; a restart re-posting the same CSR does not use it.
+    enrollToken: process.env.CFLEX_ENROLL_TOKEN || '',
   },
 
   // Local notification (HAEA SMTP relay / Teams / ServiceNow). The file holds

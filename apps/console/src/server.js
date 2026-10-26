@@ -302,7 +302,16 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
   // ── collector (key auth) ─────────────────────────────────────────────────
   R('POST', '/collector/v1/heartbeat', 'collector', (c) => ingest.heartbeat(c.collector.node_id, c.body));
   R('POST', '/collector/v1/telemetry', 'collector', (c) => ingest.telemetry(c.body));
-  R('POST', '/collector/v1/events', 'collector', (c) => ingest.events(c.body));
+  R('POST', '/collector/v1/events', 'collector', (c) => {
+    // Site isolation is enforced here, not trusted from the payload: the node
+    // supplies site_id itself, and one site's collector must not be able to
+    // write another site's devices. Collector ID and Site ID are separate
+    // things, and the allowed set lives on the registration.
+    for (const site of new Set((c.body?.events || []).map(e => e?.site_id).filter(Boolean))) {
+      portal.assertSite(c.collector.node_id, site);
+    }
+    return ingest.events(c.body);
+  });
   R('GET', '/collector/v1/devices', 'collector', () => ({ ok: true, devices: settings.collectorDevices() }));
   // ── 포털 연동 (managed service) ─────────────────────────────────────
   // The Portal connection belongs to the collector; this page configures it
@@ -358,9 +367,26 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
     return { ok: true, enrollment: e };
   });
 
+  R('POST', '/v1/console/portal/enrollments/:node/enroll-token', 'admin', (c) => {
+    const t = portal.issueEnrollToken(c.params.node, c.body || {}, c.session.username);
+    audit(c, 'portal_enroll_token_issued', t.node_id, { ttl_minutes: t.ttl_minutes });
+    // Shown once. The hash is what is stored.
+    return { ok: true, ...t, note: '1회용. 한 번 쓰면 끝이고 다시 볼 수 없다.' };
+  });
+  R('PUT', '/v1/console/portal/enrollments/:node/sites', 'admin', (c) => {
+    const e = portal.setAllowedSites(c.params.node, c.body?.allowed_sites, c.session.username);
+    audit(c, 'portal_sites_set', c.params.node, { allowed_sites: e.allowed_sites });
+    return { ok: true, enrollment: e };
+  });
+
   // ── collector side of enrolment ────────────────────────────────────
   R('POST', '/collector/v1/enroll', 'collector', (c) => {
-    const r = portal.enroll(c.collector?.node_id || c.body?.node_id, c.body || {});
+    const r = portal.enroll(c.collector?.node_id || c.body?.node_id, {
+      ...(c.body || {}),
+      // The header is the intended carrier: a token in a logged body is a
+      // token in the logs.
+      enroll_token: c.req?.headers?.['x-enroll-token'] || c.body?.enroll_token,
+    });
     return { ok: true, ...r };
   });
   R('GET', '/collector/v1/certs', 'collector', (c) =>

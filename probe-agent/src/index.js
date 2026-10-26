@@ -139,6 +139,7 @@ async function bootstrap() {
       tenant: cfg.tenantId,
       token: cfg.console_.token,
       dir: cfg.console_.pkiDir,
+      enrollToken: cfg.console_.enrollToken,
       request: transport.request,
       ca: cfg.console_.caPath && fs.existsSync(cfg.console_.caPath)
         ? [fs.readFileSync(cfg.console_.caPath)] : [],

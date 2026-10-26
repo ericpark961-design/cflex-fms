@@ -36,15 +36,22 @@ function sign(csrPem, { days = 730, clientAuth = true } = {}) {
 
 /** A console that behaves like apps/console's collector endpoints. */
 function fakeConsole() {
-  const state = { csr: null, pubkey: null, cert: null, ca: null, calls: [], fault: null };
+  const state = { csr: null, pubkey: null, cert: null, ca: null, calls: [], fault: null, requireToken: null };
   const request = async ({ method, url, body, headers }) => {
     const p = new URL(url).pathname;
     state.calls.push(`${method} ${p}`);
-    if (!headers['X-CFlex-Node'] || !headers['X-Collector-Key']) return { status: 401, json: { error: 'unauthorized' } };
+    if (!headers['X-CFlex-Node'] || !/^Bearer .+/.test(headers.Authorization || '')) {
+      return { status: 401, json: { error: 'unauthorized' } };
+    }
     if (state.fault) { const f = state.fault; state.fault = null; return { status: f, json: { error: 'fault' } }; }
     if (p === '/collector/v1/enroll') {
       const b = JSON.parse(body.toString());
       const unchanged = state.csr === b.csr;
+      // Mirrors the console: a NEW key pair costs a one-time token, a restart
+      // re-posting the same CSR does not.
+      if (!unchanged && state.requireToken && headers['X-Enroll-Token'] !== state.requireToken) {
+        return { status: 400, json: { ok: false, error: 'enroll_token_invalid' } };
+      }
       if (!unchanged) { state.csr = b.csr; state.pubkey = b.pubkey_sha256; state.cert = null; state.ca = null; }
       return { status: 200, json: { ok: true, unchanged } };
     }
@@ -243,5 +250,41 @@ test('an HTML catch-all is not mistaken for "no certificate yet"', { skip }, asy
     assert.strictEqual(r.installed, false);
     assert.match(r.error, /body is not JSON/);
     assert.match(r.error, /CFLEX_CONSOLE_URL/, 'the message should name what to fix');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a new key pair needs the one-time token, and the message says where to get it', { skip }, async () => {
+  const dir = tmp();
+  const c = fakeConsole();
+  c.state.requireToken = 'one-time-abc';
+  try {
+    const without = enroller(dir, c);
+    let r = await without.tick();
+    assert.strictEqual(r.posted, false);
+    assert.match(r.error, /enroll_token_invalid/);
+    // The common first-run failure: say what to do rather than the status code.
+    assert.match(r.error, /CFLEX_ENROLL_TOKEN/);
+
+    const with_ = enroller(dir, c, { enrollToken: 'one-time-abc' });
+    r = await with_.tick();
+    assert.strictEqual(r.posted, true);
+    assert.ok(c.state.csr.includes('CERTIFICATE REQUEST'));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the token is sent as a header, never in the body', { skip }, async () => {
+  // A token in a logged body is a token in the logs.
+  const dir = tmp();
+  const seen = [];
+  try {
+    const e = createEnroller({
+      consoleUrl: 'https://app01.test', nodeId: 'cap01', tenant: 'HAEA', token: 'k',
+      dir, log: quiet, enrollToken: 'secret-token',
+      request: async (o) => { seen.push(o); return { status: 200, json: { ok: true, unchanged: false } }; },
+    });
+    await e.tick();
+    const post = seen.find(o => o.method === 'POST');
+    assert.strictEqual(post.headers['X-Enroll-Token'], 'secret-token');
+    assert.ok(!post.body.toString().includes('secret-token'), 'the token went into the body');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

@@ -29,6 +29,7 @@ const { runChecks, certInfo } = require('../../../probe-agent/src/portal/check')
 const bad = (code, message, extra) =>
   Object.assign(new Error(message || code), { status: 400, code, extra });
 
+const sha = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
 const clean = (v, n = 256) => (v == null || String(v).trim() === '' ? null : String(v).trim().slice(0, n));
 const int = (v, lo, hi, d) => {
   const n = parseInt(v, 10);
@@ -126,8 +127,14 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
 
   const PEM = (label) => new RegExp(`-----BEGIN ${label}-----[\\s\\S]+-----END ${label}-----`);
 
-  /** The collector posts its CSR. Idempotent: the same CSR re-posted is a no-op. */
-  function enroll(nodeId, { csr, pubkey_sha256 } = {}) {
+  /**
+   * The collector posts its CSR. Idempotent: the same CSR re-posted is a no-op.
+   *
+   * A NEW CSR — first enrolment or a new key pair — additionally requires a
+   * one-time token (see issueEnrollToken). Re-posting the same CSR does not:
+   * a collector restart must not need an operator.
+   */
+  function enroll(nodeId, { csr, pubkey_sha256, enroll_token } = {}) {
     const node = clean(nodeId, 64);
     if (!node) throw bad('node_required');
     const pem = String(csr || '').trim();
@@ -138,6 +145,9 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
     if (row && row.csr === pem) return { node_id: node, unchanged: true, state: state(row) };
     // An operator may have pre-registered this node (state 'expected', empty
     // csr). The collector's CSR fills that row in; it is not a conflict.
+    //
+    // But a new key pair is an identity change, so it costs a token.
+    consumeEnrollToken(node, enroll_token, pem);
 
     // A new CSR means a new key pair, so any certificate we hold is dead.
     db.prepare(
@@ -227,10 +237,18 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
     if (db.prepare('SELECT node_id FROM enrollments WHERE node_id = ?').get(node)) {
       throw bad('exists', `${node} 는 이미 등록돼 있다`);
     }
+    // Collector ID and Site ID are separate. A collector may reach devices at
+    // several sites, and the server must not take the node's word for which —
+    // so the allowed set is recorded here and checked on every submission.
+    const allowed = Array.isArray(b.allowed_sites) ? b.allowed_sites : (site ? [site] : []);
+    const sites = [...new Set(allowed.map(x => clean(x, 32)).filter(Boolean))];
+    for (const x of sites) {
+      if (!/^[A-Z0-9][A-Z0-9-]{0,31}$/.test(x)) throw bad('invalid_site_id', x);
+    }
     db.prepare(
-      `INSERT INTO enrollments (node_id, csr, pubkey_sha256, requested_at, site_id, role, added_by)
-         VALUES (?, '', NULL, ?, ?, ?, ?)`,
-    ).run(node, now(), site, role, clean(by, 64));
+      `INSERT INTO enrollments (node_id, csr, pubkey_sha256, requested_at, site_id, role, added_by, allowed_sites)
+         VALUES (?, '', NULL, ?, ?, ?, ?, ?)`,
+    ).run(node, now(), site, role, clean(by, 64), JSON.stringify(sites));
     return listEnrollments().find(e => e.node_id === node);
   }
 
@@ -255,6 +273,7 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
         node_id: r.node_id,
         state: state(r),
         site_id: r.site_id || null,
+        allowed_sites: sitesOf(r),
         role: r.role || null,
         added_by: r.added_by || null,
         requested_at: r.requested_at,
@@ -283,6 +302,102 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
       .run(clean(by, 64), node);
     return listEnrollments().find(e => e.node_id === node);
   }
+
+
+  // ── allowed sites ───────────────────────────────────────────────
+
+  const sitesOf = (r) => {
+    try {
+      const a = JSON.parse(r?.allowed_sites || 'null');
+      if (Array.isArray(a)) return a;
+    } catch { /* fall through */ }
+    return r?.site_id ? [r.site_id] : [];
+  };
+
+  /**
+   * May this node submit data for this site?
+   *
+   * Enforced server-side because the node supplies `site_id` in its own
+   * payloads: trusting it would let one site's collector write another site's
+   * devices, and multi-site isolation is the thing the registration exists to
+   * guarantee. An unregistered node is refused outright.
+   */
+  function assertSite(nodeId, siteId) {
+    const node = clean(nodeId, 32);
+    const site = clean(siteId, 32);
+    const r = db.prepare('SELECT site_id, allowed_sites FROM enrollments WHERE node_id = ?').get(node);
+    if (!r) throw bad('node_not_registered', `${node} 는 등록돼 있지 않다`);
+    const allowed = sitesOf(r);
+    if (!site) throw bad('site_required', 'site_id 가 없다');
+    if (!allowed.includes(site)) {
+      throw bad('site_not_allowed',
+        `${node} 는 ${site} 로 보낼 수 없다 (허용: ${allowed.join(', ') || '없음'})`,
+        { node_id: node, site_id: site, allowed });
+    }
+    return { node_id: node, site_id: site, allowed };
+  }
+
+  function setAllowedSites(nodeId, list, by) {
+    const node = clean(nodeId, 32);
+    if (!db.prepare('SELECT node_id FROM enrollments WHERE node_id = ?').get(node)) throw bad('no_enrollment', node);
+    const sites = [...new Set((Array.isArray(list) ? list : []).map(x => clean(x, 32)).filter(Boolean))];
+    for (const x of sites) if (!/^[A-Z0-9][A-Z0-9-]{0,31}$/.test(x)) throw bad('invalid_site_id', x);
+    db.prepare('UPDATE enrollments SET allowed_sites = ? WHERE node_id = ?').run(JSON.stringify(sites), node);
+    return listEnrollments().find(e => e.node_id === node);
+  }
+
+  // ── one-time enrolment tokens ───────────────────────────────────
+
+  /**
+   * The credential a node needs to enrol, or to RE-enrol with a new key pair.
+   *
+   * Scoped to one node, expiring, and consumed on first use. The collector key
+   * is not enough on its own: it is permanent and reusable, so a leaked one
+   * would let anyone replace that node's key pair for ever — taking over its
+   * identity while every call still authenticates.
+   */
+  function issueEnrollToken(nodeId, { ttlMinutes = 60 } = {}, by) {
+    const node = clean(nodeId, 32);
+    if (!db.prepare('SELECT node_id FROM enrollments WHERE node_id = ?').get(node)) {
+      throw bad('no_enrollment', `${node} 를 먼저 등록하라 (노드 추가)`);
+    }
+    const ttl = Math.min(1440, Math.max(5, parseInt(ttlMinutes, 10) || 60));
+    const token = crypto.randomBytes(32).toString('base64url');
+    // Only the hash is kept. The token is shown once and cannot be recovered.
+    db.prepare(
+      `INSERT INTO enroll_tokens (token_hash, tenant, node_id, expires_at, issued_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(sha(token), tenant, node, now() + ttl * 60_000, clean(by, 64), now());
+    return { node_id: node, token, expires_at: now() + ttl * 60_000, ttl_minutes: ttl };
+  }
+
+  /** Consume a token for this node, or throw. Single use, enforced by the write. */
+  function consumeEnrollToken(nodeId, token, csrPem) {
+    const node = clean(nodeId, 32);
+    if (!token) throw bad('enroll_token_required', '최초/재등록에는 1회용 등록 토큰이 필요하다');
+    const row = db.prepare('SELECT * FROM enroll_tokens WHERE token_hash = ?').get(sha(String(token)));
+    // The same message for every failure mode on purpose: an attacker must not
+    // learn whether a token exists, belongs to another node, or is spent.
+    const refuse = () => { throw bad('enroll_token_invalid', '등록 토큰이 유효하지 않다'); };
+    if (!row) refuse();
+    if (row.node_id !== node) refuse();
+    if (row.tenant !== tenant) refuse();
+    if (row.used_at) refuse();
+    if (row.expires_at <= now()) refuse();
+    const r = db.prepare('UPDATE enroll_tokens SET used_at = ?, used_by_csr = ? WHERE token_hash = ? AND used_at IS NULL')
+      .run(now(), csrPem ? sha(csrPem).slice(0, 16) : null, row.token_hash);
+    // Lost the race with a concurrent use: the token was single-use and the
+    // other caller got it.
+    if (!r.changes) refuse();
+    return { node_id: node, consumed_at: now() };
+  }
+
+  const listEnrollTokens = () => db.prepare(
+    'SELECT node_id, expires_at, used_at, issued_by, created_at FROM enroll_tokens ORDER BY created_at DESC LIMIT 50',
+  ).all().map(r => ({
+    ...r,
+    state: r.used_at ? 'used' : (r.expires_at <= now() ? 'expired' : 'open'),
+  }));
 
   // ── the check ───────────────────────────────────────────────────
 
@@ -319,7 +434,12 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
     };
   }
 
-  return { DEFAULTS, get, put, enroll, certsFor, signCert, listEnrollments, addNode, removeNode, revoke, check };
+  return {
+    DEFAULTS, get, put, enroll, certsFor, signCert, listEnrollments,
+    addNode, removeNode, revoke, check,
+    assertSite, setAllowedSites, sitesOf,
+    issueEnrollToken, consumeEnrollToken, listEnrollTokens,
+  };
 }
 
 module.exports = { createPortal, DEFAULTS };
