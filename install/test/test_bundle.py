@@ -83,6 +83,16 @@ class Bundle(unittest.TestCase):
         self.assertIn("net-snmp", [c["name"] for c in sb["components"]])
         self.assertTrue(os.path.exists(os.path.join(root, "install", "cflex-install")))
         self.assertFalse(os.path.exists(os.path.join(root, "install", "test")))
+        # WO-INT-008: the console's schema in db/migrations, listed in order with checksums; pg loads in the app tree.
+        committed = sorted(l.rsplit("/", 1)[-1] for l in subprocess.check_output(
+            ["git", "-C", REPO, "ls-tree", "--name-only", "HEAD", "apps/console/migrations/"], universal_newlines=True).split()
+            if l.endswith(".sql"))
+        self.assertEqual([x["file"] for x in m["migrations"]], committed)
+        for x in m["migrations"]:
+            self.assertEqual(bundle.sha256_file(os.path.join(root, "db", "migrations", x["file"])), x["sha256"])
+        self.assertTrue(os.path.exists(os.path.join(root, "db", "migrations", "README.md")))
+        self.assertIn("require('pg')", runs[1][-1])
+        self.assertNotIn("require('pg')", runs[0][-1], "the collector has no PostgreSQL driver")
         # tamper → detected
         with open(os.path.join(root, m["images"][0]["tar"]), "ab") as f:
             f.write(b"x")

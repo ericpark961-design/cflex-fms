@@ -127,17 +127,67 @@ def _collector_env(site, me, v, profile):
     return fill(template("env/collector.env"), vals, "collector.env")
 
 
+def retention(site):
+    """site.yaml `retention` (spec 01 §2.3 defaults: raw 3 / aggregate 10 / events 10 years)."""
+    def years(key, default):
+        try:
+            n = int(siteconf.get(site, "retention." + key, default))
+        except (TypeError, ValueError):
+            raise RenderError("retention.%s must be a whole number of years" % key)
+        if n < 1:
+            raise RenderError("retention.%s must be at least 1" % key)
+        return n
+    return {"RET_RAW": years("raw_years", 3), "RET_AGG": years("aggregate_years", 10), "RET_EVENTS": years("events_years", 10)}
+
+
 def _app_env(site, me, v, profile):
     rh = siteconf.redis_host(site) or {}
     local_redis = rh.get("id") == me[1]
+    db = siteconf.get(site, "hosts.db") or {}
     vals = dict(v)
     vals.update({
         "CONSOLE_BIND": "127.0.0.1",
         "DATA_DIR": C_DATA if profile == "container" else BASE + "/data",
         "SECRETS_DIR": C_SECRETS if profile == "container" else SECRETS + "/app",
         "REDIS_ADDR": "127.0.0.1" if local_redis else rh.get("ip"),
+        "DB_HOST": db.get("ip"),
+        "DB_PORT": db.get("port", 5432),
     })
+    vals.update(retention(site))
     return fill(template("env/app.env"), vals, "app.env")
+
+
+# db01 (WO-INT-008): where the backups and the WAL archive live, on the host and in the container (same path).
+BACKUP_DIR = "/opt/data/backup"
+WAL_DIR = BACKUP_DIR + "/wal"
+BACKUP_KEEP_DAYS = 14
+BACKUP_SCRIPT = BASE + "/bin/cflex-pg-backup.sh"
+PG_CFG_DIR = CONFIG + "/db/postgresql-cfg"
+
+
+def _db_files(site, me, v, profile, home):
+    """postgresql.conf fragment, the backup script and its daily timer."""
+    vals = dict(v)
+    vals.update({"WAL_DIR": WAL_DIR, "BACKUP_DIR": BACKUP_DIR, "KEEP_DAYS": BACKUP_KEEP_DAYS, "SCRIPT": BACKUP_SCRIPT})
+    files = {
+        PG_CFG_DIR + "/cflex-postgresql.conf": (fill(template("postgres/cflex-postgresql.conf"), vals, "cflex-postgresql.conf"), 0o644),
+        BACKUP_SCRIPT: (template("../scripts/cflex-pg-backup.sh"), 0o755),
+    }
+    if profile == "container":
+        # A user unit of cflex, like the Quadlet ones: pg_basebackup runs inside cflex-postgres.
+        vals.update({"JOURNAL_SCOPE": "--user ", "USER_LINES": "", "PG_EXEC": "/usr/bin/podman exec cflex-postgres",
+                     "AFTER": "Requires=cflex-postgres.service\nAfter=cflex-postgres.service"})
+        ud = os.path.join(home, ".config/systemd/user")
+    else:
+        vals.update({"JOURNAL_SCOPE": "", "USER_LINES": "User=postgres\nGroup=postgres\n", "PG_EXEC": "",
+                     "AFTER": "Requires=postgresql.service\nAfter=postgresql.service"})
+        ud = "/etc/systemd/system"
+        # AppStream postgresql-server keeps its data under /var/lib/pgsql; spec §2.3 puts it on /opt/data.
+        files["/etc/systemd/system/postgresql.service.d/cflex.conf"] = (
+            "# cflex-install %s: PostgreSQL 16 data on /opt/data (spec 01 §2.3).\n[Service]\nEnvironment=PGDATA=/opt/data/pgsql/data\n" % __version__, 0o644)
+    files[os.path.join(ud, "cflex-pg-backup.service")] = (fill(template("systemd/cflex-pg-backup.service"), vals, "cflex-pg-backup.service"), 0o644)
+    files[os.path.join(ud, "cflex-pg-backup.timer")] = (fill(template("systemd/cflex-pg-backup.timer"), vals, "cflex-pg-backup.timer"), 0o644)
+    return files
 
 
 def _nginx(site, me, v, listen_port):
@@ -194,7 +244,9 @@ def render(site, role, me, version, profile="container", podman_version="4.9", p
         else:
             db = siteconf.get(site, "hosts.db") or {}
             v["DB_PORT"] = db.get("port", 5432)
+            v["PG_CFG_DIR"] = PG_CFG_DIR
             files[os.path.join(qd, "cflex-postgres.container")] = (fill(template("quadlet/cflex-postgres.container"), v, "postgres"), 0o644)
+            files.update(_db_files(site, me, v, profile, home))
     else:
         if role == "collector":
             files["/etc/systemd/system/cflex-collector.service"] = (fill(template("systemd/cflex-collector.service"), v, "collector.service"), 0o644)
@@ -203,7 +255,9 @@ def render(site, role, me, version, profile="container", podman_version="4.9", p
             files["/etc/systemd/system/cflex-app.service"] = (fill(template("systemd/cflex-app.service"), v, "app.service"), 0o644)
             files[CONFIG + "/app/app.env"] = (_app_env(site, me, v, profile), 0o600)
             files["/etc/nginx/conf.d/cflex-console.conf"] = (_nginx(site, me, v, 443), 0o644)
-        # bare db: PostgreSQL 16 from AppStream, configured by WO-INT-008.
+        else:
+            # PostgreSQL 16 from AppStream: the same fragment, script and timer (system units, as postgres).
+            files.update(_db_files(site, me, v, profile, home))
     return files
 
 

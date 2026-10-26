@@ -10,7 +10,7 @@ Layout (cflex-bundle-<version>/):
   sbom/VULN-SCAN.txt   scan report placeholder (not performed by this script)
   install/             cflex-install + templates + netmatrix.json
   config/              site.example.yaml, nmc-targets.example.txt
-  db/migrations/       forward + rollback scripts (none yet — WO-INT-008)
+  db/migrations/       apps/console/migrations/NNNN_*.sql — applied by cflex-app at start (WO-INT-008)
   docs/                docs/install/*.md
 """
 
@@ -33,7 +33,7 @@ OWN = [
      "base_var": "UBI8_NODEJS_20", "packages": ["probe-agent", "packages/notify"], "node_tree": "/opt/cflex/probe-agent"},
     {"name": "app", "containerfile": "images/app/Containerfile", "roles": ["app"],
      "base_var": "UBI8_NODEJS_20", "packages": ["apps/console", "probe-agent", "packages/notify", "apps/twin"],
-     "node_tree": "/opt/cflex/apps/console"},
+     "node_tree": "/opt/cflex/apps/console", "requires": ["pg"]},
     {"name": "web", "containerfile": "images/web/Containerfile", "roles": ["app"],
      "base_var": "UBI8_NGINX_122", "packages": []},
 ]
@@ -52,10 +52,15 @@ _NODE_CHECK = ("require('better-sqlite3')(':memory:').close();"
                "console.log(process.versions.node + ' ' + process.versions.modules)")
 
 
-def check_node_abi(runner, podman, ref, tree):
-    """Run the image's node in its tree: better-sqlite3 must load and the ABI be NODE_ABI. → {version, abi}."""
+def node_check(requires=()):
+    # The console's PostgreSQL driver `pg` is pure JS: it only has to be in the tree (WO-INT-008).
+    return "".join("require('%s');" % m for m in requires) + _NODE_CHECK
+
+
+def check_node_abi(runner, podman, ref, tree, requires=()):
+    """Run the image's node in its tree: better-sqlite3 (and `requires`) must load and the ABI be NODE_ABI. → {version, abi}."""
     rc, out, err = runner.run([podman, "run", "--rm", "--network=none", "--entrypoint", "node", "-w", tree,
-                               ref, "-e", _NODE_CHECK], timeout=300)
+                               ref, "-e", node_check(requires)], timeout=300)
     if rc != 0:
         raise RuntimeError("%s: better-sqlite3 does not load in %s: %s" % (ref, tree, (err or out).strip()[-1000:]))
     parts = out.strip().split()
@@ -230,7 +235,7 @@ def build(repo, out_dir, version, runner=None, podman="podman", git="git", git_r
                 if rc != 0:
                     raise RuntimeError("podman build %s: %s" % (spec["name"], err.strip()[-2000:]))
             # Also with --no-build: whatever is tagged locally is what gets packaged.
-            node = check_node_abi(runner, podman, ref, spec["node_tree"]) if spec.get("node_tree") else None
+            node = check_node_abi(runner, podman, ref, spec["node_tree"], spec.get("requires", ())) if spec.get("node_tree") else None
             images.append(dict(spec, ref=ref, base=base_ref, base_digest=base_dg, source="built", node=node))
         for spec in EXTERNAL:
             ref = "localhost/cflex/%s:%s" % (spec["name"], version)
@@ -279,9 +284,7 @@ def build(repo, out_dir, version, runner=None, podman="podman", git="git", git_r
             shutil.copy2(os.path.join(src, "install", fn), os.path.join(root, "config", fn))
         if os.path.isdir(os.path.join(src, "docs", "install")):
             _copytree(os.path.join(src, "docs", "install"), os.path.join(root, "docs"))
-        with io.open(os.path.join(root, "db", "migrations", "README.md"), "w", encoding="utf-8") as f:
-            f.write(u"No migrations in this bundle. PostgreSQL schema/migrations arrive with WO-INT-008\n"
-                    u"as NNN_name.up.sql + NNN_name.down.sql; cflex-install upgrade/rollback runs them.\n")
+        migrations = copy_migrations(src, root)
         with io.open(os.path.join(root, "sbom", "VULN-SCAN.txt"), "w", encoding="utf-8") as f:
             f.write(u"Vulnerability scan: NOT PERFORMED by build-bundle.\n"
                     u"Before delivery, scan every images/*.tar (e.g. `podman image scan`/grype/trivy on the build host)\n"
@@ -295,7 +298,7 @@ def build(repo, out_dir, version, runner=None, podman="podman", git="git", git_r
         "images": manifest_images,
         "bare_trees": {k: "app/" + k for k in sorted(BARE_TREES)},
         "node": {"major": NODE_MAJOR, "abi": NODE_ABI},
-        "migrations": [],
+        "migrations": migrations,
         "sbom_status": "stub", "vuln_scan": "not performed",
         "signature": "gpg:%s" % gpg_key if gpg_key else "unsigned",
         "installer": "install/cflex-install",
@@ -315,6 +318,26 @@ def build(repo, out_dir, version, runner=None, podman="podman", git="git", git_r
         if rc != 0:
             raise RuntimeError("gpg sign: %s" % err.strip())
     return root
+
+
+def copy_migrations(src, root):
+    """apps/console/migrations/NNNN_*.sql → db/migrations/ (+ README). → [{file, sha256}] in order.
+
+    The same files are in the app image; cflex-app applies them at start (schema_migrations,
+    one advisory lock for app01 and app02). They are here so the site can read what the
+    upgrade will do to db01 before it runs.
+    """
+    out = []
+    d = os.path.join(src, "apps", "console", "migrations")
+    for fn in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if fn[:4].isdigit() and fn.endswith(".sql"):
+            shutil.copy2(os.path.join(d, fn), os.path.join(root, "db", "migrations", fn))
+            out.append({"file": fn, "sha256": sha256_file(os.path.join(d, fn))})
+    with io.open(os.path.join(root, "db", "migrations", "README.md"), "w", encoding="utf-8") as f:
+        f.write(u"PostgreSQL 16 schema of the Local Console (db01), in order. cflex-app applies the ones\n"
+                u"not yet in schema_migrations when it starts — both app nodes, one advisory lock, each file once.\n"
+                u"Migrations only add; going back past one is a restore (docs/PG_BACKUP_RESTORE.md).\n")
+    return out
 
 
 def _copytree(src, dst, skip=()):

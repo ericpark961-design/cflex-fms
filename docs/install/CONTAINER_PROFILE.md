@@ -104,7 +104,9 @@ rootless 컨테이너는 1024 미만 포트를 직접 열 수 없다. 두 방법
 - `collector/collector.key`: Local Console의 collector 키. 콘솔에서 `node src/cli.js collector-key cap01`로 발급(한 번만 출력)하고,
   cap01의 `/opt/app/cflex/secrets/collector/collector.key`(0600, cflex)로 옮긴다. 없으면 `verify --role collector`가 FAIL.
   컨테이너: `podman exec -i cflex-console node /opt/cflex/apps/console/src/cli.js collector-key cap01` (app 노드, cflex 사용자).
-- `db/pg.pass`, `db/pg-admin.pass`: Podman secret(`type=env`)으로 컨테이너에 전달.
+- `db/pg.pass`, `db/pg-admin.pass`: db01에서 설치기가 생성, Podman secret(`type=env`)으로 컨테이너에 전달.
+  **`db/pg.pass`는 app01·app02의 `app/pg.pass`로 같은 값을 복사한다**(콘솔이 db01에 접속하는 비밀번호, app.env `CFLEX_DB_PASSWORD_FILE`).
+  없으면 app 설치가 멈춘다. 그래서 순서는 db01 → (복사) → app01 → app02이다(WO-INT-008).
 - 인증서: `certs/console.crt|key`(HAEA 내부 CA — 없으면 설치 중단, 스테이징만 `--self-signed-console-cert`),
   `certs/console-ca.pem`(피어 443 검증), `certs/device.pem|key` + `portal-ca.pem`(포털 mTLS, 키는 노드 밖으로 나가지 않음).
 
@@ -158,7 +160,12 @@ sudo install/cflex-install rollback --role app --yes
 - 이미지 태그만 바꿔 다시 렌더링 → 재시작 → HEALTHCHECK 대기(최대 300초). 실패하면 **자동으로 이전 태그로 되돌린다**(exit 3).
   이전 이미지는 지우지 않으므로 롤백에 번들이 필요 없다.
 - Active 노드는 `--standby-done` 없이는 업그레이드를 거부한다.
-- DB 마이그레이션 훅은 자리만 있다(번들 `db/migrations/`, 현재 0개 — WO-INT-008).
+- DB 스키마: 번들 `db/migrations/`(= 이미지 안 `apps/console/migrations/`)를 **cflex-app이 기동할 때** 적용한다.
+  `schema_migrations`에 기록하고, 두 노드에서 advisory lock으로 한 번만 돈다. 마이그레이션은 추가만 하므로
+  롤백해도 이전 콘솔이 새 스키마에서 그대로 돈다. 스키마까지 되돌리려면 복구한다(`PG_BACKUP_RESTORE.md` §3).
+- **SQLite 콘솔(WO-INT-008 이전)에서 올릴 때 1회:** app01에서
+  `podman exec cflex-console node /opt/cflex/apps/console/bin/cflex-migrate-sqlite.js --dry-run`으로 행 수를 확인한다.
+  그다음 같은 명령을 `--dry-run` 없이 돌린다(멱등). 상세: `PG_BACKUP_RESTORE.md` §5.
 
 ## 9. 번들 빌드 (RingOn, 빌드 호스트)
 ```
@@ -169,7 +176,8 @@ install/build-bundle --version 2.0.0 --out /srv/bundles --gpg-key <KEYID> --tar
 - `podman build --format docker`: OCI 포맷은 HEALTHCHECK를 버린다. Quadlet 유닛에도 `Health*`를 같이 넣었다.
 - 산출물: `MANIFEST.json`, `SHA256SUMS`(+`.asc`), `images/*.tar`(podman save), `app/{collector,console}`(이미지에서 꺼낸 같은 트리 — 베어용),
   `sbom/*.cdx.json`(**스텁**: package.json의 선언 범위 + 베이스 이미지만. 납품 전 syft/cdxgen 등으로 교체), `sbom/VULN-SCAN.txt`(**미수행** 표시),
-  `install/`, `config/`, `db/migrations/`, `docs/`.
+  `install/`, `config/`, `db/migrations/`(콘솔 스키마 `NNNN_*.sql`, MANIFEST `migrations`에 sha256), `docs/`.
+- app 이미지 검사에서는 better-sqlite3와 함께 `require('pg')`도 확인한다(PostgreSQL 드라이버, 순수 JS — 네이티브 빌드 없음).
 
 ## 10. 이미지 내부 패치 (§3.1)
 RingOn 월 1회 + CVE 발생 시: 베이스 다이제스트 갱신 → `build-bundle` → 서명 → 업그레이드 절차(8장)로 배포. 현장은 `podman load`만 한다(`Pull=never`).
@@ -177,6 +185,9 @@ RingOn 월 1회 + CVE 발생 시: 베이스 다이제스트 갱신 → `build-bu
 ## 11. 알려진 한계 (이 버전)
 - 이 저장소의 Mac에는 Podman이 없어 **`podman build`·컨테이너 기동·`podman healthcheck`는 수행하지 않았다**. 첫 UBI8/RHEL 빌드 호스트에서 확인 필요.
 - 설치기(Python) 단위 테스트(`python3 -m unittest discover -s install/test`)는 관리자 재실행(WO-INT-005)과 WO-INT-004c에서 통과.
+- PostgreSQL(WO-INT-008): 개발 Mac에서는 embedded-postgres(PG 16)로 콘솔 통합 테스트를 했다. 다음은 미확인이다.
+  rhel8/postgresql-16 이미지가 `postgresql-cfg/` 조각을 읽는지, 컨테이너 안 `pg_basebackup`이 로컬 소켓으로 replication에 붙는지,
+  백업·복구의 실제 실행. 모두 SAT 7 항목이다(`PG_BACKUP_RESTORE.md` §6).
 - 읽기 전용 루트에서 rhel8/redis-6·rhel8/postgresql-16의 기동은 미확인(redis는 이미지의 실행 스크립트 대신 `redis-server <conf>`로 띄운다).
   Redis 복제(`replicaof`)·`promote`의 실제 동작도 Podman이 있는 호스트에서 확인 필요(단위 테스트는 명령·파일·상태만 검사).
 - trap 리스너 자체는 WO-INT-006. 포트·방화벽·전달은 이 WO에서 준비했다.

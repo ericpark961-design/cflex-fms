@@ -1,0 +1,14 @@
+# C-Flex daily PostgreSQL base backup (db01, spec 01 §2.3). Rendered by cflex-install @@INSTALLER_VERSION@@.
+# Started by cflex-pg-backup.timer. Result: journalctl @@JOURNAL_SCOPE@@-u cflex-pg-backup, and @@BACKUP_DIR@@/backup.log.
+[Unit]
+Description=C-Flex PostgreSQL base backup (@@NODE_ID@@)
+@@AFTER@@
+
+[Service]
+Type=oneshot
+@@USER_LINES@@Environment=CFLEX_BACKUP_DIR=@@BACKUP_DIR@@
+Environment=CFLEX_BACKUP_KEEP_DAYS=@@KEEP_DAYS@@
+Environment="CFLEX_PG_EXEC=@@PG_EXEC@@"
+ExecStart=/bin/bash @@SCRIPT@@
+Nice=10
+IOSchedulingClass=idle

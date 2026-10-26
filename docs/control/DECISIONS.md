@@ -325,3 +325,37 @@ SAT 체크리스트에 "HAEA NMC 펌웨어 PowerNet-MIB와 `apc-mib.js` trap 번
 
 ### 답 Q-2026-10-26-07 → **(A)** (관리자, 2026-10-26)
 Containerfile의 `npm_config_build_from_source=true` + 빌드 직후 로드 검사 + `build-bundle` ABI 115 검사 구조를 유지한다. 첫 `podman build`(RingOn 빌드 호스트, D-11 시점)에서 node-gyp/Python 3.6 문제가 나오면 build 단계에만 `python39` 추가. WO-INT-007 완료(PR #8).
+
+### Q-2026-10-26-08 — 집계 표 범위: 보존 "집계 10년"의 대상 표가 없다 (Claude Code, WO-INT-008)
+명세 §2.3의 보존은 raw 3년 / 집계 10년 / 이벤트·감사 10년이다. 콘솔에는 지금 집계(시간·일 평균) 표가 없다. 트렌드는 raw `telemetry`를 조회할 때 버킷 평균으로 계산한다.
+- **(A)** 집계 표를 만들지 않는다(D-12a 기능 추가 금지). 보존 설정 `CFLEX_RETENTION_AGGREGATE_YEARS`(site.yaml `retention.aggregate_years`, 기본 10)만 자리를 잡아 둔다.
+  raw 3년이 지난 트렌드는 볼 수 없다. 장기 리포트는 포털(WO-PTL-006)이 한다 — **권고, 이대로 진행했다.**
+- **(B)** 시간 평균 표(`telemetry_hourly`, 월 파티션)와 롤업 작업을 추가한다. 화면은 그대로 둔다. 기능 추가에 해당한다.
+
+### Q-2026-10-26-09 — 월 파티션 선행 개수와 주기 (Claude Code, WO-INT-008)
+- **(A)** 이번 달 + **3개월 앞**(`CFLEX_PARTITION_AHEAD_MONTHS=3`)을 만든다. 기동할 때와 **6시간마다** 돈다(`CFLEX_PARTITION_INTERVAL_H=6`). 두 노드 중 advisory lock을 잡은 쪽만 한다.
+  두 노드가 석 달 동안 모두 내려가 있지 않는 한 파티션이 모자라지 않는다. 그래도 모자라면 DEFAULT 파티션이 받고, 그 달을 만들 때 옮긴다 — **권고, 이대로 진행했다.**
+- **(B)** 12개월 앞(빈 파티션이 표당 12개).
+
+### Q-2026-10-26-10 — 베어 프로파일 db01: initdb·계정·pg_hba를 설치기가 하지 않는다 (Claude Code, WO-INT-008)
+컨테이너 프로파일(기본)은 rhel8/postgresql-16 이미지가 initdb·계정·DB를 만든다. 설치기는 설정 조각·백업 스크립트·타이머를 렌더한다.
+베어 프로파일도 설치기가 AppStream 설치와 조각·타이머·`PGDATA=/opt/data/pgsql/data` 드롭인까지는 한다. initdb, `cflex` 계정·DB, `pg_hba`(app 2대 /32), include 줄은 수동이다(`PG_BACKUP_RESTORE.md` §1.1).
+- **(A)** 문서 절차로 둔다. HAEA가 Podman을 거절해 베어로 가게 되면 그때 별도 WO(반 세션)로 자동화한다 — **권고.**
+- **(B)** 지금 `deploy.py`에 베어 db 단계를 추가한다(검증할 RHEL 호스트 없음).
+
+### Q-2026-10-26-11 — `pg` 의존성의 번들 방식 (Claude Code, WO-INT-008)
+`pg`는 순수 JS이다(네이티브 빌드 없음). app 이미지 deps 단계의 `npm install --omit=dev`로 `apps/console/node_modules`에 들어간다.
+베어 트리는 이미지에서 꺼낸 같은 트리라 그대로 따라간다. `build-bundle`은 app 이미지에서 `require('pg')`도 확인한다. embedded-postgres(테스트용 PG 16)는 devDependency라 이미지·번들에 들어가지 않는다.
+- **(A)** 이대로 간다. lockfile은 지금처럼 커밋하지 않는다(버전 고정은 `^8.13.0` 범위 — SBOM 스텁 그대로) — **권고, 이대로 진행했다.**
+- **(B)** `apps/console/package-lock.json`을 커밋해 빌드 재현성을 고정한다(collector·app 공통 정책 변경이라 관리자 결정 사항).
+
+### Q-2026-10-26-12 — 명세 §3.3 "DB 마이그레이션(전방향+롤백 스크립트)": 롤백 스크립트를 두지 않았다 (Claude Code, WO-INT-008)
+- **(A)** 마이그레이션은 **추가만** 한다(표·열·파티션 추가. 삭제·변경 없음). 그러면 `rollback`은 이미지만 되돌려도 이전 콘솔이 새 스키마에서 돈다.
+  설치기 `rollback`은 "schema kept"를 출력한다. 스키마까지 되돌려야 하면 복구한다(`PG_BACKUP_RESTORE.md` §3·§4) — **권고, 이대로 진행했다.**
+- **(B)** 파일마다 `NNNN_*.down.sql`을 두고 `rollback`이 실행하게 한다(0001의 down = 전체 삭제라 운영 데이터 소실 위험).
+
+### Q-2026-10-26-13 — SQLite 이관 원본 경로: 지시는 `/var/lib/cflex/console.db`, 실제 설치 경로는 `/opt/app/cflex/data/console.db` (Claude Code, WO-INT-008)
+설치기(app.env `CONSOLE_DB`)와 app 이미지가 쓰던 경로는 `/opt/app/cflex/data/console.db`이다. 레포에 `/var/lib/cflex`는 없다.
+- **(A)** `cflex-migrate-sqlite`의 기본값을 `$CONSOLE_DB`로 하고, 없으면 `/opt/app/cflex/data/console.db`로 한다. 다른 경로는 `--sqlite <file>`로 지정한다 — **권고, 이대로 진행했다.**
+- 함께 기록: 옮기는 것은 사용자·설정·장비·크리덴셜·유지보수 창·열린 알람(+코멘트·ServiceNow 매핑)·최근 90일 이벤트(`--events-days`)이다.
+  지시 범위 밖이지만 **감사로그 전부**도 옮긴다(append-only 10년 보존 — 업그레이드로 감사 기록이 끊기지 않게). 텔레메트리는 옮기지 않는다.

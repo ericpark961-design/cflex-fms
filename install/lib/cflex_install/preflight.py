@@ -135,6 +135,9 @@ def run(site, role, profile, runner, host_id=None, bundle=None):
             v = "FAIL"
         add("mount " + path, v, detail)
 
+    if role == "db":
+        _db_checks(site, runner, add)
+
     rc_id, uid, _ = runner.run(["id", "-u", "cflex"])
     add("user cflex", "PASS" if rc_id == 0 else "WARN", "uid %s" % uid.strip() if rc_id == 0 else "will be created")
 
@@ -195,6 +198,34 @@ def run(site, role, profile, runner, host_id=None, bundle=None):
             add("bundle images", "FAIL" if missing else "PASS",
                 "missing: " + ", ".join(i["name"] for i in missing) if missing else ", ".join(i["name"] for i in bundle.images_for(role)))
     return C, me, facts
+
+
+_IPV4 = re.compile(r"^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$")
+
+
+def _db_checks(site, runner, add):
+    """db01 (WO-INT-008): /opt/data writable and not someone else's, and who may reach 5432."""
+    rc, opts, _ = runner.run(["findmnt", "-n", "-o", "OPTIONS", "--target", "/opt/data"])
+    ro = rc == 0 and "ro" in opts.strip().split(",")
+    add("/opt/data writable", "FAIL" if ro else "PASS", "mounted read-only (%s)" % opts.strip() if ro else (opts.strip() or "mount options n/a"))
+    # Existing data directories must already be cflex's (rootless Podman maps cflex to the image's postgres, UID 26).
+    for path, want in (("/opt/data/pgsql", "700"), ("/opt/data/backup", "750")):
+        rc, out, _ = runner.run(["stat", "-c", "%U %a", path])
+        if rc != 0:
+            add("perm " + path, "PASS", "absent — install creates it (cflex, %s)" % want)
+            continue
+        owner, _, mode = out.strip().partition(" ")
+        good = owner == "cflex"
+        add("perm " + path, "PASS" if good and mode == want else "WARN",
+            "%s %s%s" % (owner, mode, "" if good and mode == want else " — install sets cflex %s; data owned by someone else is not taken over silently, check it" % want))
+    # 5432 opens to each app node as a single host (rich rule source <ip>/32, FW-7), nothing wider.
+    apps = siteconf.get(site, "hosts.app") or []
+    bad = [str(a.get("ip")) for a in apps if not _IPV4.match(str(a.get("ip") or ""))]
+    port = (siteconf.get(site, "hosts.db") or {}).get("port", 5432)
+    if not apps or bad:
+        add("5432 peers", "FAIL", "hosts.app must list each app node as one IPv4 address (got %s)" % (", ".join(bad) or "none"))
+    else:
+        add("5432 peers", "PASS", "tcp/%s ← %s only" % (port, ", ".join("%s/32 (%s)" % (a["ip"], a.get("id")) for a in apps)))
 
 
 def _ports_for(role, mode, site, me):

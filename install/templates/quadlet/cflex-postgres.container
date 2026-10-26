@@ -1,5 +1,7 @@
 # C-Flex PostgreSQL 16 (db01) — Red Hat image rhel8/postgresql-16, unmodified. Rendered by cflex-install @@INSTALLER_VERSION@@.
-# Schema, partitions, wal_level=replica and backups belong to WO-INT-008; this unit only runs the server.
+# The schema and its month partitions are the console's (apps/console migrations, partitions.js);
+# wal_level=replica + WAL archiving come from cflex-postgresql.conf below; the daily base backup is
+# cflex-pg-backup.timer (WO-INT-008, docs/install/PG_BACKUP_RESTORE.md).
 [Unit]
 Description=C-Flex PostgreSQL @@VERSION@@ (@@NODE_ID@@)
 Wants=network-online.target
@@ -21,6 +23,8 @@ Secret=cflex-pg-password,type=env,target=POSTGRESQL_PASSWORD
 Secret=cflex-pg-admin-password,type=env,target=POSTGRESQL_ADMIN_PASSWORD
 Volume=/opt/data/pgsql:/var/lib/pgsql/data:Z
 Volume=/opt/data/backup:/opt/data/backup:Z
+# *.conf here is appended to postgresql.conf by the image (wal_level, archive_mode, archive_command).
+Volume=@@PG_CFG_DIR@@:/opt/app-root/src/postgresql-cfg:ro,Z
 LogDriver=journald
 HealthCmd=pg_isready -h 127.0.0.1 -p 5432
 HealthInterval=30s
