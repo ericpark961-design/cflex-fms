@@ -1,6 +1,6 @@
 // health.js — the collector's liveness mark for the container HEALTHCHECK.
 //
-// The collector has no listener of its own (trap 162 comes with WO-INT-006),
+// The collector's only listener is the UDP trap port (trap/listener.js),
 // so "is it healthy" cannot be an HTTP probe. What matters is that the poll
 // loop still turns: each finished cycle stamps a small file, and
 // bin/cflex-healthcheck.js fails when the stamp is older than a few intervals.

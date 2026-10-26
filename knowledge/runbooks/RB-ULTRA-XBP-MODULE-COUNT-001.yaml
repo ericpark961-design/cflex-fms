@@ -1,0 +1,54 @@
+# schema: knowledge/schemas/runbook.schema.json
+id: RB-ULTRA-XBP-MODULE-COUNT-001
+title: "Smart-UPS Ultra 20kW: 배터리 모듈 14개 구성인데 NMC에 11개만 등록 (\"ONLY 11 BATTERY MODULES REGISTERED\")"
+status: approved
+applies_to:
+  models: [SRYLF20KRMT, SRYLFXBPRM4]
+  nmc: [embedded]
+  firmware: "UPS 17.0 (ID1225) 기준 — 다른 펌웨어는 K1 릴리스노트 대조"
+triggers:
+  alarm_codes: []                        # 부록 B에 직접 코드 없음 → 기록만(Q-2026-10-26-04/05). inventory diff로 감지 가능
+  apc_events: ["Battery: Battery module missing", "Battery: Number of battery modules changed", "Battery pack communication lost"]
+  pm_findings: ["ONLY 11 BATTERY MODULES REGISTERED", "BATTERY MODULES REGISTERED"]
+  telemetry_rules: ["battery.modules_registered < sitebook.build_up.battery.modules_expected"]
+symptoms:
+  - "PM 보고서 기준 배터리 스트링 14, NMC 등록 모듈 11 (HAEA HQ MDF 1F UPS A, 2026-10-02). 상태는 GOOD 100%, 199V, N+2, 런타임 2시간@3kW"
+  - "등록 누락 모듈은 충·방전과 런타임 계산에서 빠짐 → 실제 런타임이 표시값보다 길 수도, 모듈 고장이면 짧을 수도 있음 — 어느 쪽인지 확인 전까지 런타임 수치를 신뢰하지 않는다"
+causes:
+  - cause: "XBP(외장 배터리팩) ↔ UPS 통신 케이블 또는 팩 체인 연결 순서 문제로 뒤쪽 팩/모듈 미인식"
+    likelihood: high
+  - cause: "모듈 3개 미삽입·슬롯 접촉 불량·모듈 자체 BMS 통신 불량"
+    likelihood: medium
+  - cause: "펌웨어가 인식하는 최대 모듈 수/팩 수 제한 또는 펌웨어 버그(릴리스노트 확인)"
+    likelihood: low
+  - cause: "PM 보고서의 '14'가 설치 도면 기준이고 실제 설치가 11일 가능성(납품 수량 대조 필요)"
+    likelihood: medium
+checks:
+  - step: "NMC → Status → Battery: 팩/모듈 목록(시리얼·슬롯·상태) 캡처 → 어느 팩의 어느 슬롯이 비는지 식별"
+    read_only: true
+  - step: "납품서/설치 도면의 XBP 수량·모듈 수와 대조 (RingOn 설치 기록)"
+    read_only: true
+  - step: "현장 육안: XBP 팩 전면 LED, 모듈 삽입 상태, 팩 간 통신 케이블 연결"
+    read_only: true
+actions:
+  - step: "미인식 모듈 재삽입·팩 통신 케이블 재연결 (UPS 온라인 상태에서 가능 여부는 매뉴얼 절차 따름; 불확실하면 유지보수 바이패스 후 작업)"
+    impact: medium
+    who: "FSE"
+    rollback: "원 상태 복원"
+  - step: "재연결 후에도 미등록 → 모듈/팩 보증 교체"
+    impact: medium
+    who: "RingOn 서비스 (보증)"
+    rollback: "n/a"
+verification:
+  - "NMC 등록 모듈 수 = 14, 상태 GOOD, 런타임 재계산값을 Site Book baseline에 갱신"
+  - "포털 inventory에 배터리 모듈 수 반영(가능한 OID면), 변경 이력 기록"
+escalate_if:
+  - "등록 수가 더 줄어듦 또는 배터리 알람 동반 → P2로 상향, 당일 출동"
+sources:
+  - { grade: A, ref: "APC Smart-UPS Ultra On-Line 20kW (SRYLF20KRMT) 설치·운영 매뉴얼 — External Battery Pack 연결/등록", doc_id: "TBD-K1" }
+  - { grade: A, ref: "SRYLFXBPRM4 배터리팩 설치 가이드", doc_id: "TBD-K1" }
+  - { grade: B, ref: "RingOn PM 2026-10-02 HAEA HQ MDF 1F UPS (A) — 14 strings, 11 registered, 199V N+2, 2h runtime @ 3.0kW", file: "knowledge/sitebook/HAEA/HQ/HAEA-HQ-MDF-1F-UPS-A.yaml" }
+severity_hint: P3
+customer_visible: true
+last_reviewed: "2026-10-26"
+reviewed_by: PM

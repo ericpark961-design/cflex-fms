@@ -113,4 +113,4 @@ function createSession(device, opts = {}) {
   });
 }
 
-module.exports = { createSession, OID_UPS_MIB, OID_APC_POWERNET, selectOidProfile, isApcVendor };
+module.exports = { createSession, OID_UPS_MIB, OID_APC_POWERNET, selectOidProfile, isApcVendor, authProtocolOf, privProtocolOf };

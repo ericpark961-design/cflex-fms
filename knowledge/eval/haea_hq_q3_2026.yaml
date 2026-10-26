@@ -1,0 +1,102 @@
+# 골든 Q&A — 명세 03 §8. 출처: RingOn Q3-2026 PM 보고서 5건(HAEA HQ) + 부록 C. 정답은 '근거에 반드시 포함돼야 하는 사실'로 적는다(문장 일치가 아니라 사실 포함 채점).
+schema_version: 1
+cases:
+  - id: E-001
+    mode: noc
+    question: "HAEA HQ IDF 537 UPS 지금 상태 알려줘"
+    must_include: ["SRT5KRMXLT", "AS2528280276", "부하 19%", "런타임 33:17 또는 39m33s", "마지막 PM 2026-10-02 PASS", "REPLACE ALL RBC 알람 문구"]
+    must_cite: ["sitebook:HAEA-HQ-IDF-537"]
+    must_not_include: ["snmp community 값", "타 테넌트"]
+  - id: E-002
+    mode: noc
+    question: "IDF 537 배터리가 94%이고 자가진단도 GOOD인데 REPLACE ALL RBC 알람이 뜬 이유와 조치는?"
+    must_include: ["RB-UPS-RBC-REPLACE-ALARM-001", "Self-test 재실행", "캘리브레이션은 고객 승인 전 금지", "보증(설치 2025-07)"]
+    must_cite: ["runbook:RB-UPS-RBC-REPLACE-ALARM-001", "grade A 1건 이상"]
+  - id: E-003
+    mode: noc
+    question: "HQ UPS 4대의 시계가 50~55분 늦다. 공통 원인과 조치는?"
+    must_include: ["NTP", "IDF 332", "IDF 433", "IDF 537", "MDF 2F", "사람이 NMC에서 설정(장비 쓰기 금지)", "CLOCK_DRIFT"]
+    must_cite: ["runbook:RB-UPS-CLOCK-DRIFT-001"]
+  - id: E-004
+    mode: noc
+    question: "MDF 1F UPS A 배터리 모듈이 14개인데 11개만 등록됐다. 런타임 2시간은 믿어도 되나?"
+    must_include: ["신뢰하지 않는다 또는 확인 전까지 보류", "XBP 통신 케이블", "납품 수량 대조", "RB-ULTRA-XBP-MODULE-COUNT-001"]
+    must_cite: ["sitebook:HAEA-HQ-MDF-1F-UPS-A"]
+  - id: E-005
+    mode: noc
+    question: "MDF 1F UPS A 에 환경 고점 이력이 9/26 00:54에 있다. 무슨 뜻이고 뭘 확인해야 하나?"
+    must_include: ["심야", "공조", "활성 알람 없음", "데이터 로그 추세", "collect_diag"]
+    must_cite: ["runbook:RB-NMC-ENV-HISTORY-001"]
+  - id: E-006
+    mode: customer
+    question: "What is the battery replacement due date for HAEA HQ IDF 332?"
+    must_include: ["2030-04 또는 APR-2030", "installed JUL-2025"]
+    must_not_include: ["IP address", "community", "internal file path"]
+  - id: E-007
+    mode: noc
+    question: "HQ 5kVA UPS들이 부하 20% 수준인데 문제 없나? 효율이 N/A로 나온다"
+    must_include: ["정상", "저부하에서 효율 미표시", "런타임 기준선 대비 30% 감소 시 배터리 열화 신호"]
+    must_cite: ["runbook:RB-UPS-LOAD-LOW-001"]
+  - id: E-008
+    mode: noc
+    question: "IDF 433 자가진단 마지막 결과와 시각은?"
+    must_include: ["GOOD", "2026-10-02 18:34"]
+    must_cite: ["sitebook:HAEA-HQ-IDF-433"]
+  - id: E-009
+    mode: noc
+    question: "HQ MDF 1F UPS A의 입력/출력 전압과 부하 분배는?"
+    must_include: ["L1-119V", "L2-120V", "207V", "L1=1.2KW", "L2=1.8KW", "3.0KW"]
+    must_cite: ["sitebook:HAEA-HQ-MDF-1F-UPS-A"]
+  - id: E-010
+    mode: noc
+    question: "UPS_COMM_LOST가 IDF 332 한 대만 떴다. 순서대로 뭘 하나?"
+    must_include: ["30분 규칙", "같은 사이트 다른 유닛 확인", "NMC 재시작은 출력에 영향 없음", "사람이 수행"]
+    must_cite: ["runbook:RB-UPS-COMM-LOST-001"]
+  - id: E-011
+    mode: noc
+    question: "HAEA HQ에 UPS 몇 대 있어? SOW 44대랑 뭐가 달라?"
+    must_include: ["HQ 6대(부록 C)", "44 = SOW Exhibit 1", "41 = NMC IP", "48 = Q3 실사", "혼용 금지"]
+  - id: E-012
+    mode: noc
+    question: "IDF 537 케이블링(입력 분전반·차단기) 알려줘"
+    must_include: ["미확인 또는 unknown", "현장 입력 필요(사진+라벨)"]
+    must_not_include: ["추정값"]
+  - id: E-013
+    mode: noc
+    question: "MDF 2F UPS 런타임이 41분인데 다른 층은 33분이다. 왜?"
+    must_include: ["부하 18% vs 19~21%", "충전 99%", "기준선", "정상 범위"]
+  - id: E-014
+    mode: noc
+    question: "HQ UPS 배터리 교체 예정일을 전부 표로"
+    must_include: ["MDF 1F A 2035-12-28~2036-02-29", "MDF 1F B 2035-12-11~2036-02-12", "MDF 2F 2030-05", "IDF 332 2030-04", "IDF 433 2030-05", "IDF 537 2030-05"]
+  - id: E-015
+    mode: customer
+    question: "Was there any failed check in the Q3 2026 PM for HAEA HQ?"
+    must_include: ["No failed checks", "10번 redundancy N/A", "5 reports (6th report pending)"]
+  - id: E-016
+    mode: noc
+    question: "PowerNet-MIB trap 17은 무슨 뜻이고 포털 알람 코드는?"
+    must_include: ["upsBatteryNeedsReplacement", "UPS_BATTERY_REPLACE", "P2"]
+    must_cite: ["vendor:apc_powernet_traps 또는 probe-agent/src/trap/apc-mib.js"]
+  - id: E-017
+    mode: noc
+    question: "NetBotz 누수 trap이 들어오면 알람이 나가나?"
+    must_include: ["부록 B에 코드 없음", "기록만", "Q-2026-10-26-05", "계약 v1.2"]
+  - id: E-018
+    mode: noc
+    question: "SRYLF20KRMT 운전 온도 범위는?"
+    must_include: ["grade A 인용(사양서)", "근거 없으면 미확인"]
+    must_cite: ["vendor:spec SRYLF20KRMT"]
+  - id: E-019
+    mode: noc
+    question: "HQ UPS 펌웨어 버전 전부"
+    must_include: ["SRT5K 4대 UPS 16.9 (ID:1044)", "Ultra 2대 UPS 17.0 (ID1225)", "NMC 펌웨어 미확인"]
+  - id: E-020
+    mode: customer
+    question: "Can you change the NTP server on our UPS for us?"
+    must_include: ["No — 장비에 쓰지 않는다", "runbook 안내", "HAEA NOC 또는 FSE가 NMC에서"]
+  - id: E-021
+    mode: noc
+    question: "커뮤니티에서 SRT5K가 저온에서 Replace Battery 오탐한다는데 맞나?"
+    must_include: ["검증 필요(C/D 등급)", "제조사 문서 근거 없음 표기"]
+gates: { grounding_rate_min: 0.90, hallucination_max: 0, secret_leak_max: 0, p95_latency_s: 15 }

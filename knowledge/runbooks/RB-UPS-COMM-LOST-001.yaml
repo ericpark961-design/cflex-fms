@@ -1,0 +1,33 @@
+# schema: knowledge/schemas/runbook.schema.json
+id: RB-UPS-COMM-LOST-001
+title: "UPS_COMM_LOST — NMC/네트워크와 통신 두절 (30분 규칙 후 P3)"
+status: approved
+applies_to: { models: [any], nmc: [embedded, NMC2, NMC3], firmware: "any" }
+triggers:
+  alarm_codes: [UPS_COMM_LOST, PROBE_OFFLINE, COLLECTOR_DOWN]
+  apc_events: ["communicationLost (trap 1)", "communicationEstablished (trap 8)", "System: Network interface restarted"]
+  telemetry_rules: ["snmp_timeout for 30m (계약 00 부록 B 30분 규칙)"]
+symptoms:
+  - "폴링 타임아웃 30분 지속 또는 trap 1 수신 후 30분 내 trap 8 없음"
+causes:
+  - { cause: "컬렉터(cap01v) 자체 문제 — 여러 장비가 동시에 두절이면 이쪽 (COLLECTOR_DOWN/PROBE_OFFLINE 동반)", likelihood: high }
+  - { cause: "관리 VLAN 스위치 포트/케이블 (Site Book cabling.nmc_port 참조)", likelihood: medium }
+  - { cause: "NMC 행(hang)·재부팅·펌웨어 문제 — UPS 자체는 정상 급전 중", likelihood: medium }
+  - { cause: "SNMP 설정 변경(community/v3 사용자 변경, IP 변경) → UPS_CONFIG_CHANGED·CONFIG_CONFLICT 동반", likelihood: low }
+checks:
+  - { step: "포털: 같은 사이트 다른 유닛도 두절인지(동시 다발 = 컬렉터/네트워크, 단일 = NMC)", read_only: true }
+  - { step: "컬렉터 헬스(heartbeat), Local Console 장비 현황", read_only: true }
+  - { step: "HAEA NOC: NMC IP ping, 웹 UI 접속, 스위치 포트 링크 상태", read_only: true }
+actions:
+  - { step: "단일 NMC 무응답: NMC 웹/CLI 접속 불가 시 NMC만 재시작(UPS 출력 영향 없음 — 'Reboot Management Interface'), 내장형은 매뉴얼 절차", impact: none, who: "HAEA NOC 또는 FSE", rollback: "n/a" }
+  - { step: "스위치 포트 문제: 포트 재활성/케이블 교체", impact: none, who: "HAEA 네트워크팀", rollback: "n/a" }
+verification: ["trap 8 또는 폴링 재개 → 포털 alarm_clear, 30분 이내 재발 없음"]
+escalate_if: ["UPS 전면 디스플레이도 이상(출력 알람) → 현장 출동 P1 판단", "동일 유닛 주 2회 이상 재발 → NMC 교체 검토"]
+sources:
+  - { grade: A, ref: "계약 00 부록 B — UPS_COMM_LOST 30분 규칙", doc_id: "00_INTERFACE_CONTRACT_Probe-Portal_v1.md" }
+  - { grade: A, ref: "NMC3 User Guide — Reboot Management Interface / Network troubleshooting", doc_id: "TBD-K1" }
+  - { grade: B, ref: "WO-INT-006 trap 리스너: communicationLost hold 30m 구현", file: "probe-agent/src/trap/handler.js" }
+severity_hint: P3
+customer_visible: true
+last_reviewed: "2026-10-26"
+reviewed_by: PM

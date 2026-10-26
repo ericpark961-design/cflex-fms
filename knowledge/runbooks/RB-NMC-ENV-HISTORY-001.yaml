@@ -1,0 +1,33 @@
+# schema: knowledge/schemas/runbook.schema.json
+id: RB-NMC-ENV-HISTORY-001
+title: "활성 알람은 없으나 NMC 로그에 환경(온도) 고점 이력 (\"NMC LOG SHOWS ENVIAkNMENTAL HISTORY\", PREV HIGH 09/26)"
+status: approved
+applies_to: { models: [SRYLF20KRMT, SRYLFXBPRM4, SRT5KRMXLT], nmc: [embedded, NMC2, NMC3], firmware: "any" }
+triggers:
+  alarm_codes: [UPS_HIGH_TEMP]           # UPS 자체 온도일 때만. 환경 센서 온도는 부록 B 코드 없음(Q-2026-10-26-05) → 기록만
+  apc_events: ["Environment: High temperature threshold violation", "Environment: Temperature returned to normal", "UPS: Internal temperature exceeds threshold"]
+  pm_findings: ["ENVIAkNMENTAL HISTORY", "PREV HIGH"]
+  telemetry_rules: ["env.temp_c > sitebook.environment.room_temp_c_baseline + 5 for 30m"]
+symptoms:
+  - "PM 2026-10-02 HAEA HQ MDF 1F UPS A: 활성 알람 없음, NMC 로그에 환경 고점 2026-09-26 00:54:15 (심야)"
+causes:
+  - { cause: "심야 공조 절감 운전/공조 정지 시간대 실온 상승 (00:54 발생이 단서)", likelihood: high }
+  - { cause: "캐비닛 내부 열 축적(도어 폐쇄·배기 막힘) — UPS 20kW급은 발열 큼", likelihood: medium }
+  - { cause: "임계치가 너무 낮게 설정(기본값 대비)", likelihood: low }
+checks:
+  - { step: "NMC 데이터 로그(온도)에서 9/26 전후 24h 추세와 반복 패턴(매일 같은 시간?) 확인 — collect_diag 번들로 포털에 적재", read_only: true }
+  - { step: "HAEA 시설팀에 MDF 1F 공조 야간 스케줄 확인", read_only: true }
+  - { step: "NMC Environment 임계치 설정값 확인(High/Max)", read_only: true }
+actions:
+  - { step: "반복 패턴이면 공조 스케줄 조정 요청(HAEA 시설), 임계치는 제조사 권장 운전 범위(0~40°C, 권장 ≤ 25°C) 기준으로 유지", impact: none, who: "HAEA 시설/NOC", rollback: "n/a" }
+  - { step: "캐비닛 배기/도어 상태 현장 점검(다음 PM 또는 출동 시 사진 → Site Book environment)", impact: none, who: "FSE", rollback: "n/a" }
+verification: ["30일간 환경 고점 이벤트 0건 또는 임계 미달", "Site Book room_temp_c_baseline 채움"]
+escalate_if: ["UPS 내부 온도 알람(UPS_HIGH_TEMP P2) 동반 또는 배터리 온도 > 30°C 지속 → 배터리 수명 단축 경고, 당일 조치"]
+sources:
+  - { grade: A, ref: "APC Smart-UPS Ultra 20kW 사양서 — 운전 온도 범위", doc_id: "TBD-K1" }
+  - { grade: A, ref: "NMC3 User Guide — Environment thresholds / Data log", doc_id: "TBD-K1" }
+  - { grade: B, ref: "RingOn PM 2026-10-02 HAEA HQ MDF 1F UPS (A) — PREV HIGH 09/26/2026 00:54:15", file: "knowledge/sitebook/HAEA/HQ/HAEA-HQ-MDF-1F-UPS-A.yaml" }
+severity_hint: P4
+customer_visible: true
+last_reviewed: "2026-10-26"
+reviewed_by: PM

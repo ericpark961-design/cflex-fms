@@ -1,0 +1,106 @@
+# Site Book — HAEA HQ MDF 1F UPS (A)  (schema: knowledge/schemas/sitebook_unit.schema.json)
+# 출처: RingOn Q3-2026 PM 보고서 2026-10-02 (원문 a0dc8f04-Ring-On_Post_Inspection_Report__HAEA_HQ_MDF_1F_UPS_A.docx) + 부록 C 시드 행 "HAEA HQ MDF 1F UPS (A)"
+# 규칙: 보고서에 없는 값은 unknown — 추정으로 채우지 않는다. 비밀값(community, v3 키, 연락처 원문) 없음.
+schema_version: 1
+tenant: HAEA
+site: HAEA-HQ
+unit_id: HAEA-HQ-MDF-1F-UPS-A
+unit_name: "HAEA HQ MDF 1F UPS (A)"
+in_sow: true
+quantity_basis: "48 (Q3-2026 실사, 부록 C) — 44(SOW)/41(NMC IP)과 혼용 금지"
+
+build_up:
+  manufacturer: Schneider Electric (APC)
+  model: SRYLFXBPRM4
+  model_family: "Smart-UPS Ultra On-Line 20kW (SRYLF20KRMT) + XBP battery pack"
+  serial: AD2520120007
+  mfg_date: "2025-05-13"
+  firmware_ups: "UPS 17.0 (ID1225)"
+  firmware_nmc: unknown
+  nmc_model: "embedded"
+  nmc_mac: unknown
+  rated: "20kW, 120/208V"
+  input_voltage_nominal: "119V | 119V (206V)"
+  output_voltage_nominal: "120V | 120V (208V)"
+  phase: unknown
+  battery:
+    type: "Li-ion XBP modules"
+    strings: "14"
+    modules_expected: 14
+    modules_registered: 11
+    install_date: "2025-12-28 or newer"
+    replace_due: "2035-12-28 ~ 2036-02-29"
+    status_at_pm: "GOOD 100%, 199 V, N+2"
+  options:
+    external_bypass_type: "PHASE LOCK REQUIRED"
+    external_battery_packs: unknown
+    fan: "YES"
+
+environment:
+  building: "HAEA HQ"
+  room: "1F MDF"
+  cabinet_or_rack: "CABINET-2"
+  ru_position: unknown
+  room_temp_c_baseline: unknown
+  humidity_baseline: unknown
+  hvac_note: unknown
+  nmc_env_prev_high_ts: "2026-09-26 00:54:15"
+
+cabling:            # 전부 현장 입력 대기 — 사진 1장 + 라벨 문자열 필요 (명세 03 §4.3)
+  input_panel: unknown
+  input_breaker: unknown
+  output_breaker: unknown
+  output_pdu_targets: []
+  bypass_location: unknown
+  nmc_port: { switch: unknown, port: unknown, vlan: unknown, ip_ref: "Exhibit 1 NMC IP (값은 포털 비밀 저장소)" }
+  snmp_version: unknown
+  console_cable: unknown
+
+baseline:           # source=pm_report, 2026-10-02. 이후 telemetry 7일 중앙값으로 갱신(명세 03 §4.1)
+  source: pm_report
+  measured_at: "2026-10-02 17:29"
+  load_pct: null
+  load_kw: 3.0
+  load_kva_display: "3.0KW (display)"
+  runtime: "2 HOURS @ 199V"
+  dc_v: 199
+  input_v_measured: "L1-119V | L2-120V (207V)"
+  output_v_measured: "L1-120V | L2-120V (207V)"
+  output_a: null
+  batt_temp_c: null
+  efficiency_pct: unknown
+  self_test_last: "GOOD 2026-10-02 18:00"
+  self_test_prev: "2026-10-02 17:58:13"
+
+pm_history:
+  - date: "2026-10-02"
+    quarter: "Q3 2026"
+    result: PASS
+    checks_passed: 9
+    checks_na: 1            # 10번 redundancy check (paired 아님)
+    alarm_history_cleared: true
+    findings:
+      - "NO ACTIVE ALARMS AT THIS TIME"
+      - "NMC LOG SHOWS ENVIRONMENTAL HISTORY"
+      - "UPS FOR DIAGNOSTIC"
+      - "ONLY 11 BATTERY MODULES REGISTERED"
+    fse: unknown
+    report_file: "a0dc8f04-Ring-On_Post_Inspection_Report__HAEA_HQ_MDF_1F_UPS_A.docx"
+
+alarm_history_baseline:
+  note: "PM 시점 활성 알람 0 (IDF 537: REPLACE ALL RBC 알람 문구 기록). NMC 자체 로그는 collect_diag 번들 수신 후 적재."
+  open_alarms_at_pm: 0
+
+runbook_candidates:
+  - RB-ULTRA-XBP-MODULE-COUNT-001
+  - RB-NMC-ENV-HISTORY-001
+  - RB-UPS-LOAD-LOW-001
+
+source_refs:
+  - kind: pm_report
+    file: "a0dc8f04-Ring-On_Post_Inspection_Report__HAEA_HQ_MDF_1F_UPS_A.docx"
+  - kind: inventory_seed
+    file: docs/spec/Appendix_C_Q3-2026_PM_Inventory_Seed.csv
+    row: "HAEA HQ MDF 1F UPS (A)"
+updated_by: PM
+updated_at: "2026-10-26"

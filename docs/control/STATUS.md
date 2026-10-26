@@ -170,6 +170,48 @@
 - 블로커: 없음
 - 다음 세션 계획: PR #6 검토 반영 → WO-INT-006(SNMP trap 162) 또는 관리자 지시 순서
 
+### 2026-10-25 19:40 PDT — Claude Code (7차)
+- WO-INT-006: **검토요청** | 브랜치 `wo/INT-006-snmp-trap` (base main `0a398e6`, 작업 트리 `../cflex-fms-wt-int006`) | 커밋 `9cd0d1d`(+STATUS 커밋) | **PR #7** https://github.com/ericpark961-design/cflex-fms/pull/7
+  - ① **trap 리스너** `probe-agent/src/trap/listener.js`:
+    - v1·v2c·v3(authPriv까지)를 받는다. inform은 프로토콜상 응답만 한다. 장비 쓰기(SET)는 없다(D-05).
+    - 바인드는 `CFLEX_TRAP_PORT`(기본 1162)·`CFLEX_TRAP_BIND`(0.0.0.0)이고, `CFLEX_TRAP_ENABLED=0`이면 끈다(`config.js`).
+    - 162→1162는 설치기(firewalld forward/sysctl, WO-INT-005)가 맡는다. 코드는 권한을 요구하지 않는다.
+    - 크리덴셜은 **콘솔 인벤토리의 장비별 SNMP 크리덴셜을 재사용**한다(community, v3 user·auth·priv). trap 전용 설정은 없다. 인벤토리를 pull할 때마다 갱신된다.
+  - ② **분류** `src/trap/handler.js`:
+    - 발신 IP → 콘솔 인벤토리 장비. **그 장비 자신의** community/v3 user여야 받는다. 다른 장비의 크리덴셜이면 폐기하고 카운트한다.
+    - 매핑은 `src/trap/apc-mib.js`(PowerNet-MIB specific → 부록 B)다. 다음 8개 코드를 raise/clear 쌍으로 다룬다: onBattery/powerRestored, lowBattery/returnFromLowBattery, overload/overloadCleared, commLost/Established, batteryNeedsReplacement/Replaced, diagnosticsFailed/Passed, turnedOff/On, bypass 3종/returnFromBypass.
+  - ③ **기존 엔진 투입**:
+    - `forwarder.alarms`·`forwarder.emitAlarms`를 쓴다. 폴링과 같은 (device, code) 키라서 **같은 alarm_id**가 되고, 중복 억제·플래핑·유지보수가 그대로 적용된다. 콘솔 → 포털 경로도 그대로다.
+    - 엔진 변경은 최소로 했다: `latched`와 `clear()`·`isOpen()`.
+      - 폴러가 보는 코드(onBattery 등)는 폴링이 "아직 있음"을 계속 판정한다.
+      - trap으로만 아는 코드(`UPS_SELFTEST_FAIL`, `UPS_COMM_LOST`)는 latched다. 폴 주기에 풀리지 않고 clear trap으로만 해제된다.
+    - communicationLost는 부록 B 30분 규칙을 지킨다: 30분 안에 Established가 오면 알람이 없다.
+  - ④ **모르는 trap**:
+    - 모르는 발신 IP·OID는 `SNMP_TRAP_UNKNOWN`으로 **기록만** 한다(카운트 + 로그 + 최근 200건). 부록 B·스키마 enum에 없는 코드라 이벤트로 보내지 않는다 → Q-04.
+    - 환경·NetBotz·PDU trap은 부록 B에 코드가 없어 매핑하지 않았다 → Q-05. 새 코드도 만들지 않았다.
+    - 잘못된 community·v3 인증 실패(모르는 user·틀린 digest)·해석 불가 패킷은 폐기하고 카운트한다.
+  - ⑤ **시뮬레이터** `sim/sim-trap.js`: 15건(APC 13종 + 코드 없는 2종: NetBotz형 OID, coldStart)을 v1 4·v2c 8·v3 3으로 보낸다. CLI 또는 모듈로 쓴다. v3 키는 env로만 받는다.
+  - ⑥ 문서: `probe-agent/README.md`에 "SNMP traps (WO-INT-006)" 절(포트·v3 설정·매핑표·unknown·테스트 방법)을 넣었다. `install/netmatrix.json`·netcheck는 이미 162/1162가 있어 **바꾸지 않았다**.
+  - 테스트(이 세션 실행):
+    ```
+    probe-agent        npm test                                  74/74   (기존 62 + trap.test.js 12)
+    apps/console       npm test                                  27 중 pass 25, fail 0, skip 2
+    install            node --test install/test/static.test.js   12/12
+    ```
+    - trap.test.js 12건: 매핑표 = 부록 B만·raise마다 clear 있음 / RFC 3584 decode / 크리덴셜 집합 / **시나리오 15건 실 UDP(v1·v2c·v3 authPriv) → 알람 11건, 스키마 유효** / 잘못된 community·v3 auth 실패·모르는 user 폐기+카운트 / 다른 장비 크리덴셜 폐기 / 모르는 발신 IP → UNKNOWN 기록만 / commLost 30분 hold / latched / **폴링+trap 같은 장애 = 같은 alarm_id, 포털 raise 1건(양쪽 순서)** / 유지보수 창.
+    - console skip 2건은 `apps/twin` 콘솔 빌드(`dist-console`)가 이 새 작업 트리에 없어서다(CDN·라우트 검사). 이번 변경과 무관하고, apps/console은 고치지 않았다. 6차의 27/27은 빌드가 있던 트리 기준이다.
+  - **미수행 (통과로 치지 않음)**:
+    - ① 실제 APC NMC의 trap 수신, PowerNet-MIB 원본과의 trap 번호 대조 → Q-06, SAT 항목.
+    - ② 컨테이너(rootless Podman, slirp4netns)에서 발신 IP가 보존되는지 실측하지 못했다. Podman이 없다(D-11과 같음).
+    - ③ install Python unittest·apps/twin 테스트는 이번 지시 목록에 없어 실행하지 않았다(해당 코드 변경 없음).
+  - 로컬 전용(커밋 안 함): `.runtime/`, `probe-agent/package-lock.json`, node_modules.
+- 질문 3건, 모두 권고안 (A)로 진행했다:
+  - `Q-2026-10-26-04`: SNMP_TRAP_UNKNOWN이 부록 B 밖이라 기록만 한다.
+  - `Q-2026-10-26-05`: 환경·NetBotz·PDU용 부록 B 코드가 없다.
+  - `Q-2026-10-26-06`: APC trap 번호를 SAT에서 MIB와 대조한다.
+- 블로커: 없음
+- 다음 세션 계획: PR 검토 반영 → 관리자 지시 순서(Q-05가 (B)면 계약 v1.2 코드 추가 후 apc-mib 표 확장)
+
 ### 2026-10-25 21:40 PDT — Claude Code (8차)
 - WO-INT-007: **검토요청** | 브랜치 `wo/INT-007-node20-sqlite` (base main `5e2e954`, 작업 트리 `../cflex-fms-wt-int007`) | 커밋 `a8a60e8`(코드) + control 커밋 | **PR #8** https://github.com/ericpark961-design/cflex-fms/pull/8
   - Node: **v20.20.2**(`npx -y node@20 -v`, ABI 115) / **v22.22.2**(시스템, ABI 127)
@@ -242,3 +284,6 @@
 
 - 2026-10-26 (8차): WO-INT-004c PR #6 **머지**(649622b) — 관리자 재실행 probe 62/62(두 프로세스 E2E 4 포함)·console 27/27·twin 내부 프로파일 빌드 검사 통과·설치기 Python 51/51·static 12/12·notify 5/5, `bash -n` OK, 비밀값 0, Docker 0, 노드 간 8080 0, 장비 SET 0, 역할 침범 없음. 상태 **완료**(Redis replica/promote 실동작·내부 빌드 육안 확인은 SAT, D-11 기준). Q-2026-10-26-01/02/03 모두 **(A)** 권고안 채택. WO-INT-006(SNMP trap 162) **진행** 지시 — TASKS 행에 포트 1162·콘솔 인벤토리 매핑·기존 분류 엔진 경유·중복 억제·부록 B 밖 코드 금지를 명시, 워크트리 `../cflex-fms-wt-int006`. 머지된 004c/005 워크트리 정리. Codex: 진척 없음(마지막 커밋 a8b097c 10-25 09:25) → codex 워크트리에 `docs/control/TASKS.md`(WO-PTL-001/002 완료 기준 구체화, cflex-portal-check 기준) + AGENTS.md 지시 커밋(1173d7a, push 안 함) — **실행은 법인장**. 대화형 세션 `wo/INT-portal-integration`(1805359)은 메인 트리 점유 중, 검토는 PR 생성 후.
 - 2026-10-26 (9차): WO-INT-006 PR #7 **검토 통과(PM approved, 머지 대기)** — 관리자 재실행 probe 74/74(trap.test.js 12 포함: 실 UDP v1/v2c/v3 authPriv 15건·폴링+trap 동일 alarm_id·commLost 30분·latched·유지보수 창)·console 25 pass/2 skip(dist-console 없음, 무관)·설치기 Python 51/51, 비밀값 0(테스트 픽스처만), Docker 0, 장비 SET 0, 역할 침범 없음, 엔진 변경 최소(latched/clear/isOpen). **머지는 이 PM 세션의 도구 권한(자동 머지 차단)으로 실행 못 함** → 법인장이 PR #7 머지 버튼 1회, 또는 다음 회차 재시도. PR에 리뷰 코멘트 기록. Q-2026-10-26-04/05/06 → 모두 **(A)** 채택(기록은 PR #7 머지 후 DECISIONS에 적음 — 충돌 회피): 04 SNMP_TRAP_UNKNOWN 기록만, 05 환경·NetBotz·PDU 코드는 계약 v1.2 결정 후 별도 WO(법인장 판단 필요: HAEA에 도어·누수·PDU 알람을 줄지), 06 MIB 대조는 SAT 체크리스트. TASKS WO-INT-006 행·WO-INT-007 행 갱신도 PR #7 머지 후(인접 행 충돌 회피). WO-INT-007(Node 20 검증 + better-sqlite3 prebuild/node:sqlite 폴백 정리 + index.js 실기동 스모크) **진행** 지시 — 워크트리 `../cflex-fms-wt-int007`, base main 0a398e6; 이 Mac은 Node 22만 있어 Node 20은 `npx -y node@20`으로 실행. Codex: 진척 없음(법인장 실행 대기).
+- 2026-10-26 (Eric 지시): D-12 Probe 범위 동결 — 내부는 현재 개발 수준 유지, 알림 엔진은 포털. 004c 범위 축소(ServiceNow 최소만). 다음 회차부터 포털(Codex WO-PTL-001/002) 지시 구체화가 1순위.
+- 2026-10-26 (Eric 지시 2): D-12a — Probe는 수집·표시만, 알림 처리 전부 포털. 004c는 이미 머지됨(PR #6) → 콘솔의 로컬 알림 발송 코드는 **기본 비활성**으로 두고 추가 개발 금지. WO-INT-006 PR #7 관리자 머지 완료(review 9 승인분). 내부 Probe는 007·008 후 기능 완료 선언, 이후 포털(Codex) 1순위.
+- 2026-10-26 (Eric 지시 3): D-13 분산 구조 확정 — 컬렉터 N대(수집만, 외부 경로 0) → FMS(표시·취합·포털 송신) → 포털. HAEA 1차는 컬렉터 1대. WO-INT-012 등록(007·008 이후).

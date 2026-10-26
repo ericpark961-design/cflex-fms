@@ -1,0 +1,28 @@
+# schema: knowledge/schemas/runbook.schema.json
+id: RB-UPS-SELFTEST-SCHEDULE-001
+title: "자가진단(Self-test) 주기·결과 해석과 PM 시 수동 실행 절차"
+status: approved
+applies_to: { models: [SRT5KRMXLT, SRYLF20KRMT, SRYLFXBPRM4, SRT3000RMXLA], nmc: [any], firmware: "any" }
+triggers:
+  alarm_codes: [UPS_SELFTEST_FAIL, UPS_SELFTEST_OK]   # 부록 B P3 / P4
+  apc_events: ["UPS: Self-test passed", "UPS: Self-test failed", "upsDiagnosticsPassed (trap 10)", "upsDiagnosticsFailed (trap 3)"]
+  pm_findings: ["Self-Test Results", "ALARM TEST PERFORMED"]
+symptoms:
+  - "HAEA HQ 2026-10-02: 5대 모두 GOOD/PASS. SRT5K 4대는 18:34로 동일 시각 기록(스케줄 자가진단 또는 보고서 복사값 — 다음 PM 때 유닛별 실제 시각 확인)"
+causes:
+  - { cause: "자가진단 실패: 배터리 전압 강하·연결 불량·배터리 수명 종료", likelihood: n/a }
+checks:
+  - { step: "NMC → Configuration → UPS → Self-test schedule(기본: 시작 시 + 14일마다) 확인", read_only: true }
+  - { step: "마지막 자가진단 시각이 14일 이상 지났으면 스케줄 비활성 여부 확인", read_only: true }
+actions:
+  - { step: "PM 시 수동 Self-test 1회(고객 통보 후) → 결과·시각을 보고서와 Site Book baseline.self_test_last에 기록", impact: low, who: "FSE", rollback: "n/a" }
+  - { step: "실패 시 RB-UPS-RBC-REPLACE-ALARM-001 절차", impact: n/a, who: "FSE", rollback: "n/a" }
+verification: ["포털 events에 UPS_SELFTEST_OK(P4) 수신, trap 10 수신(WO-INT-006)"]
+escalate_if: ["연속 2회 실패 → P2 상향, 배터리 교체 일정"]
+sources:
+  - { grade: A, ref: "APC Smart-UPS SRT User Guide — Self-test", doc_id: "TBD-K1" }
+  - { grade: B, ref: "RingOn PM 2026-10-02 HAEA HQ 5건", file: "knowledge/sitebook/HAEA/HQ/*.yaml" }
+severity_hint: P3
+customer_visible: true
+last_reviewed: "2026-10-26"
+reviewed_by: PM

@@ -6,16 +6,20 @@
 //   4. Drain local buffer when cflex reachable
 //   5. Send heartbeat every HEARTBEAT_INTERVAL_MS
 //   6. Purge old buffered events daily
+//   7. Receive SNMP traps (UDP CFLEX_TRAP_PORT) into the same alarm engine
 const cfg = require('./config');
 const buffer = require('./buffer');
 const forwarder = require('./forwarder');
 const upsPoller = require('./pollers/ups');
 const collectors = require('./pollers');
 const health = require('./health');
+const { createTrapHandler } = require('./trap/handler');
+const { createTrapListener } = require('./trap/listener');
 
 let devices = [];
 let objects = [];
 let polling = false;
+let traps = null;
 
 async function loadDevices() {
   const remote = await forwarder.fetchDeviceConfig();
@@ -39,6 +43,8 @@ async function loadDevices() {
     console.log(`[probe] loaded ${objects.length} objects from cflex —`,
       Object.entries(byKind).map(([k, n]) => `${k}:${n}`).join(' '));
   }
+  // The trap listener knows senders by these rows, and accepts their credentials.
+  if (traps) traps.setInventory([...devices.map(d => ({ kind: 'ups', ...d })), ...objects]);
   // Inventory to the Portal (contract §3.2): on change, and in full daily.
   // This runs every 5 minutes, so the daily resend needs no timer of its own.
   if (devices.length || objects.length) {
@@ -126,6 +132,17 @@ async function bootstrap() {
   console.log(`[probe] starting cflex-probe v${require('../package.json').version}`);
   console.log(`[probe] tenant=${cfg.tenantId} probe_id=${cfg.probeId}`);
   console.log(cfg.console.url ? `[probe] console=${cfg.console.url}` : `[probe] cflex=${cfg.cflexUrl}`);
+
+  // Traps go into the forwarder's alarm engine, so a trap and a poll seeing
+  // the same fault are one alarm (same alarm_id), and out the same way.
+  if (cfg.trap.enabled) {
+    const handler = createTrapHandler({
+      engine: forwarder.alarms(), emit: (items) => forwarder.emitAlarms(items), defaultCommunity: cfg.snmp.community,
+    });
+    traps = createTrapListener({ handler, port: cfg.trap.port, bind: cfg.trap.bind, defaultCommunity: cfg.snmp.community }).start();
+  } else {
+    console.log('[probe] trap listener off (CFLEX_TRAP_ENABLED=0)');
+  }
 
   await loadDevices();
 

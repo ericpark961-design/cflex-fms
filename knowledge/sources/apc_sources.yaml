@@ -1,0 +1,36 @@
+# K1 수집 허용목록 — 명세 03 §2.2. 이 목록 밖은 수집하지 않는다. URL/문서 ID는 Codex WO-PTL-008에서 실제 조회로 확정(TBD는 확정 전 수집 금지).
+schema_version: 1
+policy:
+  allowed_domains: [www.se.com, se.com, www.apc.com, apc.com, download.schneider-electric.com, community.se.com]
+  disallowed: ["login/partner-only pages", "paywalled", "any domain not listed"]
+  rate: { min_interval_s: 2, concurrency: 1, user_agent: "RingOn-CFlex-KB/1.0 (ops reference; contact ericpark@ringonservice.com)" }
+  storage: { keep_original: true, hash: sha256, license_tag: "internal-ops-reference", customer_exposure: "summary+citation+link only" }
+  refresh: weekly
+models_in_scope:         # 부록 C 시드(48대) 기준 — 추가 모델은 시드 갱신 시 같이
+  - { model: SRT5KRMXLT, family: "Smart-UPS SRT 5000VA RM 208/230V", sites: [HAEA-HQ, HMA, KUS] }
+  - { model: SRYLF20KRMT, family: "Smart-UPS Ultra On-Line 20kW Li-ion", sites: [HAEA-HQ] }
+  - { model: SRYLFXBPRM4, family: "Smart-UPS Ultra External Battery Pack", sites: [HAEA-HQ] }
+  - { model: SRT3000RMXLAQ, family: "Smart-UPS SRT 3000VA RM", sites: [HMA] }
+  - { model: SRT3000RMXLA-NC, family: "Smart-UPS SRT 3000VA RM w/ NMC", sites: [HMA] }
+  - { model: SRT5KTF, family: "SRT 5kVA transformer/battery accessory (KUS 2nd battery)", sites: [KUS] }
+  - { model: "TBD", note: "부록 C 나머지 모델을 WO-PTL-008에서 전수 추출해 추가" }
+seeds:
+  - { kind: manual, model: SRT5KRMXLT, title: "Smart-UPS SRT 5000/6000 User Guide / Installation", doc_id: TBD, url: TBD }
+  - { kind: manual, model: SRYLF20KRMT, title: "Smart-UPS Ultra On-Line 20kW Operation & Installation", doc_id: TBD, url: TBD }
+  - { kind: manual, model: SRYLFXBPRM4, title: "Smart-UPS Ultra External Battery Pack Installation", doc_id: TBD, url: TBD }
+  - { kind: manual, model: NMC3, title: "Network Management Card 3 User Guide (AP9640/41/43, embedded)", doc_id: TBD, url: TBD }
+  - { kind: manual, model: NMC3, title: "NMC3 CLI Guide", doc_id: TBD, url: TBD }
+  - { kind: manual, model: NMC3, title: "NMC3 Security Handbook", doc_id: TBD, url: TBD }
+  - { kind: reference, model: NMC, title: "NMC Event Log Messages (전 메시지 사전)", doc_id: TBD, url: TBD, structured_output: knowledge/vendor/apc_event_messages.csv }
+  - { kind: mib, model: all, title: "PowerNet-MIB (현재 + 장비 펌웨어 시점 버전)", doc_id: TBD, url: TBD, structured_output: knowledge/vendor/apc_powernet_traps.csv, note: "WO-INT-006 apc-mib.js 대조(Q-2026-10-26-06)" }
+  - { kind: mib, model: all, title: "RFC 1628 UPS-MIB", url: "https://www.rfc-editor.org/rfc/rfc1628", doc_id: RFC1628 }
+  - { kind: release_notes, model: SRT, title: "Smart-UPS SRT UPS firmware release notes (16.x/17.x)", doc_id: TBD, url: TBD }
+  - { kind: release_notes, model: NMC3, title: "NMC3 firmware release notes (v1.x~3.x)", doc_id: TBD, url: TBD }
+  - { kind: kb, topic: battery, title: "Replace Battery indicator with new battery / RBC 교체 절차 / 배터리 수명·온도", doc_id: "FA###### (TBD)", url: TBD }
+  - { kind: kb, topic: time, title: "NMC Date/Time, NTP 동기화", doc_id: "FA###### (TBD)", url: TBD }
+  - { kind: kb, topic: snmp, title: "SNMPv1/v3 설정, trap receiver 설정, PowerNet MIB 다운로드", doc_id: "FA###### (TBD)", url: TBD }
+  - { kind: kb, topic: environment, title: "온도/습도 임계치, 권장 운전 환경", doc_id: "FA###### (TBD)", url: TBD }
+  - { kind: spec, model: SRT5KRMXLT, title: "Technical Specifications / Runtime chart", doc_id: TBD, url: TBD }
+community_policy:        # K2 — 원문 복제 금지, 런북 형식 요약 + 링크 + 등급 C/D
+  sources: ["community.se.com (Schneider Electric Community)", "reddit.com/r/sysadmin, r/homelab", "community.spiceworks.com", "servethehome.com forums"]
+  rule: "사람(PM/FSE) 승인 없이는 K2에 들어가지 않는다. LLM 초안은 status: draft."
