@@ -77,6 +77,14 @@ class Preflight(unittest.TestCase):
         checks, _, _ = preflight.run(self.site, "collector", "bare", r, host_id="cap01")
         self.assertEqual(self.verdicts(checks)["rpm nodejs"], "FAIL")
 
+    def test_bare_node_must_be_exactly_20(self):
+        # The bundle's better-sqlite3 is Node 20's ABI (115); Node 22 (127) cannot load it.
+        for rpm, want in (("nodejs-20.18.2-1.module+el8.10.0+22646+5be0a3a1\n", "PASS"),
+                          ("nodejs-22.11.0-1.module+el8.10.0+22622+eab3bbb2\n", "FAIL")):
+            r = host({"rpm -q nodejs": (0, rpm, "")})
+            checks, _, _ = preflight.run(self.site, "collector", "bare", r, host_id="cap01")
+            self.assertEqual(self.verdicts(checks)["rpm nodejs"], want, rpm)
+
 
 if __name__ == "__main__":
     unittest.main()

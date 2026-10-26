@@ -39,6 +39,29 @@ Quadlet `.pod` 유닛은 **Podman 5.0부터**다. RHEL 8.10 AppStream의 Podman�
 두 방식 모두 **접속한 쪽의 원래 IP를 보존**한다. trap의 출발지 IP가 NMC를 식별하고, 콘솔 감사로그가 사용자 IP를 남기기 때문이다.
 Podman 4의 기본(rootlesskit)은 모든 패킷이 10.0.2.2에서 온 것처럼 보이므로 쓰지 않는다.
 
+### 1.2 Node.js 20과 네이티브 모듈(better-sqlite3) — 번들은 NODE_MODULE_VERSION 115 (WO-INT-007)
+네이티브 모듈은 `better-sqlite3` 하나다(Collector 버퍼·알람 상태, Local Console 저장소). 바이너리는 **만들 때의 Node ABI에서만** 로드된다.
+
+| | Node | ABI (`process.versions.modules`) |
+|---|---|---|
+| 컨테이너 `cflex/collector`·`cflex/app` | `ubi8/nodejs-20` | **115** |
+| 베어 프로파일 | AppStream `dnf module nodejs:20` | **115** |
+| (참고) Node 22 | — | 127 — **번들 바이너리가 로드되지 않는다** |
+
+- 번들의 `app/{collector,console}`(베어용 트리)는 이미지의 `/opt/cflex`를 그대로 복사한 것이다. 그래서 두 프로파일이 **같은 115 바이너리**를 쓴다.
+  베어 `preflight`는 nodejs가 **정확히 20**이 아니면 FAIL이다(22가 깔린 호스트에서 트리가 기동 직후 죽지 않도록).
+- **prebuild는 쓰지 않고 이미지 안에서 소스 빌드한다.** better-sqlite3가 GitHub에 올리는 linux-x64 prebuild는
+  9.6·10.1·11.0·11.10, ABI 115·127 모두 `GLIBC_2.29`를 요구한다. RHEL 8 / UBI8의 glibc는 2.28이므로 받아도 로드되지 않는다
+  (2026-10-25 실측). 그래서 Containerfile의 deps 단계가 `npm_config_build_from_source=true`로 node-gyp 빌드를 강제한다.
+  `ubi8/nodejs-20` 베이스에는 `make gcc gcc-c++`가 있고, `python3`는 platform-python(3.6)에 링크되어 있다(이미지 history 확인).
+  빌드 직후 `require('better-sqlite3')(':memory:')`를 열어 보고, 실패하면 이미지 빌드가 멈춘다.
+- `install/build-bundle`은 `podman save` 전에 두 이미지마다 `podman run --network=none --entrypoint node`를 돌린다. 각 트리에서
+  better-sqlite3가 로드되는지, `process.versions.modules`가 **115**인지 확인한다. 아니면 번들을 만들지 않는다.
+  결과는 `MANIFEST.json`에 남는다: `node: {major: 20, abi: "115"}`, 이미지마다 `node: {version, abi}`.
+- 개발 Mac(arm64)의 `npm install`은 Node 20(v115)·22(v127) 모두 darwin prebuild를 받는다(소스 빌드 아님). 이 바이너리는 번들에 들어가지 않는다.
+- **미검증(SAT/빌드 호스트):** Podman이 없어 UBI8 안의 node-gyp 빌드를 실제로 돌려 보지 못했다. 특히 RHEL npm에 딸린 node-gyp가
+  platform-python 3.6을 받아들이는지는 확인하지 못했다. 이 Mac에서는 `--build-from-source` + Node 20.20.2로 소스 빌드하고 로드까지 확인했다.
+
 ## 2. 특권 포트(trap UDP 162, 콘솔 TCP 443) — 설치기 선택 규칙 (§3.1)
 
 rootless 컨테이너는 1024 미만 포트를 직접 열 수 없다. 두 방법 중 설치기가 고른다(`site.yaml` `install.privileged_ports`).

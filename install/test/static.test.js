@@ -124,6 +124,29 @@ test('Containerfiles: UBI8 base by build arg, UID 1001, HEALTHCHECK, no latest, 
   }
 });
 
+test('better-sqlite3: built from source in the image, loaded before packaging, one driver (WO-INT-007)', () => {
+  // No linux-x64 prebuild loads on RHEL 8's glibc 2.28, so the node images compile it and prove it loads.
+  for (const f of ['images/collector/Containerfile', 'images/app/Containerfile']) {
+    const run = read(f).match(/^RUN cd (?:probe-agent|apps\/console) \\\n(?: .*\\\n)* .*$/m)[0];
+    assert.match(run, /npm_config_build_from_source=true npm install --omit=dev/, f);
+    assert.match(run, /node -e "require\('better-sqlite3'\)\(':memory:'\)\.close\(\)"/, f);
+  }
+  // The bundle is Node 20's ABI and the bare profile accepts nothing but Node 20.
+  assert.match(read('install/lib/cflex_install/bundle.py'), /^NODE_ABI = "115"$/m);
+  assert.match(read('install/lib/cflex_install/preflight.py'), /v\[0\] == 20/);
+  assert.match(read('docs/install/CONTAINER_PROFILE.md'), /NODE_MODULE_VERSION 115/);
+  // Production and tests open SQLite with the same driver: no node:sqlite anywhere in what ships or tests it.
+  for (const dir of ['apps/console/src', 'apps/console/test', 'probe-agent/src', 'probe-agent/test', 'probe-agent/bin']) {
+    for (const fn of fs.readdirSync(path.join(REPO, dir), { recursive: true })) {
+      if (!/\.(c|m)?js$/.test(fn)) continue;
+      const code = read(path.join(dir, fn)).split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+      assert.doesNotMatch(code, /node:sqlite|DatabaseSync/, `${dir}/${fn}`);
+    }
+  }
+  assert.ok(JSON.parse(read('apps/console/package.json')).dependencies['better-sqlite3']);
+  assert.ok(JSON.parse(read('probe-agent/package.json')).dependencies['better-sqlite3']);
+});
+
 test('nginx: no port 80, no default site, no off-origin log of bodies', () => {
   const main = read('images/web/nginx.conf');
   const srv = read('install/templates/nginx/cflex-console.conf');

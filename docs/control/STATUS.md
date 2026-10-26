@@ -212,6 +212,63 @@
 - 블로커: 없음
 - 다음 세션 계획: PR 검토 반영 → 관리자 지시 순서(Q-05가 (B)면 계약 v1.2 코드 추가 후 apc-mib 표 확장)
 
+### 2026-10-25 21:40 PDT — Claude Code (8차)
+- WO-INT-007: **검토요청** | 브랜치 `wo/INT-007-node20-sqlite` (base main `5e2e954`, 작업 트리 `../cflex-fms-wt-int007`) | 커밋 `a8a60e8`(코드) + control 커밋 | **PR #8** https://github.com/ericpark961-design/cflex-fms/pull/8
+  - Node: **v20.20.2**(`npx -y node@20 -v`, ABI 115) / **v22.22.2**(시스템, ABI 127)
+  - ① **`node:sqlite` 폴백 제거**:
+    - `apps/console/src/db.js`는 better-sqlite3 단일 경로다. better-sqlite3를 `optionalDependencies`에서 `dependencies`로 옮겼다.
+    - node:sqlite를 쓰던 테스트 3곳을 better-sqlite3로 바꿨다: `alarm-state.test.js`, `console.e2e.test.js`의 읽기 핸들, console `cli test-ticket`의 감사 확인.
+    - `persist.js` 주석과 console README를 정리했다.
+    - 정적 테스트가 probe-agent/console의 src·test·bin에 `node:sqlite`/`DatabaseSync`가 없는지 검사한다.
+    - **main(=PR #7) 그대로 Node 20에서 돌리면 깨진다** — 이번 수정 전 상태다:
+      - probe **64/69**: alarm-state 파일 + console.e2e 4건, `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`.
+      - console **24/27** + 2 skip: test-ticket 1건.
+  - ② **better-sqlite3 prebuild/ABI**:
+    - 개발 Mac(darwin-arm64)의 `npm install`/`npm rebuild`는 Node 22에서 `node-v127-darwin-arm64`, Node 20에서 `node-v115-darwin-arm64` prebuild를 받았다
+      (`prebuild-install ... Successfully installed prebuilt binary!`). 소스 빌드로 떨어지지 않았다.
+    - **RHEL 8 대상은 다르다:**
+      - linux-x64 prebuild 9.6/10.1/11.0/11.10(v115·v127)이 **전부 `GLIBC_2.29`를 요구**한다. RHEL 8 / UBI8는 2.28이다(바이너리 심볼 실측).
+      - 그래서 UBI8에서는 prebuild가 로드되지 않는다. 이미지 안 소스 빌드가 유일한 경로다.
+    - 고친 것:
+      - Containerfile collector·app의 deps 단계: `npm_config_build_from_source=true` 명시, 빌드 직후 `require('better-sqlite3')(':memory:')` 로드 검사.
+      - `install/build-bundle`(bundle.py): `podman save` 전에 두 이미지에서 `podman run --network=none --entrypoint node`로 better-sqlite3 로드 + `process.versions.modules == 115`를 검사한다. 아니면 번들 거부.
+        `MANIFEST.json`에 `node:{major:20, abi:"115"}`와 이미지별 `node:{version, abi}`를 남긴다.
+      - 베어 `preflight`: nodejs **정확히 20**만 PASS. 전에는 `>= 20`이어서 22에 115 트리를 깔 수 있었다 — 불일치 수정.
+      - 문서: `docs/install/CONTAINER_PROFILE.md` §1.2. 이미지·베어 모두 Node 20 = NODE_MODULE_VERSION 115, 22 = 127은 로드 불가, prebuild를 쓰지 않는 이유, 미검증 항목.
+    - 소스 빌드 경로 확인: 이 Mac에서 Node 20 + `--build-from-source` → node-gyp 컴파일 → Node 20에서 로드(ABI 115, SQLite 3.49.2).
+    - `ubi8/nodejs-20` 이미지 history(레지스트리 API, pull 없음): `make gcc gcc-c++`, `python3 → platform-python` 확인.
+  - ③ **index.js 실기동 스모크** `probe-agent/test/smoke.test.js` (`npm run smoke`, `npm test`에도 포함). 관리자 검토 로그 3차 미해결 항목.
+    - 구성: `node src/index.js`(실프로세스) + `sim/sim-ups.js`(on battery) + 127.0.0.1 HTTPS 인벤토리 스텁(구 클라우드 pull, 테스트 CA는 `NODE_EXTRA_CA_CERTS`) + Portal URL = 닫힌 127.0.0.1 포트.
+      env는 PATH + 지정값뿐이다(프록시 없음). trap 포트·바인드도 127.0.0.1 임의 포트다. 외부 네트워크·실장비 0, SNMP 읽기 전용.
+    - 확인: ⓐ HEALTHCHECK(`bin/cflex-healthcheck.js`) 기동 전 unhealthy ⓑ 인벤토리 pull → 폴링 2주기 `1 ok, 0 fail`
+      ⓒ HEALTHCHECK healthy ⓓ 버퍼에 inventory·events(UPS_ON_BATTERY raise)·telemetry 행이 쌓이고 `ECONNREFUSED`로 재시도 기록, 같은 파일 `state`에 열린 알람
+      ⓔ SIGTERM → exit 0(<5 s), DB `integrity_check = ok`, 행 보존.
+    - "헬스 엔드포인트": Collector에는 HTTP 리스너가 없다. 헬스는 주기 스탬프 파일 + `cflex-healthcheck.js`(컨테이너 HEALTHCHECK)이고, 그것을 검사했다(엔드포인트 추가 없음).
+  - 테스트(이 세션 실행, 숫자 그대로):
+    ```
+                                                       Node 20.20.2        Node 22.22.2
+    probe-agent      npm test                         67/67 skip 0        67/67 skip 0     (기존 62 + smoke 5)
+    probe-agent      npm run smoke                     5/5                 5/5
+    apps/console     npm test                         27/27 skip 0        27/27 skip 0     (twin build:console 후)
+    packages/notify  npm test                         14 ok + 5/5         14 ok + 5/5
+    install          node --test install/test/static.test.js   13/13      13/13            (기존 12 + better-sqlite3 1)
+    apps/twin        npm test                         13/13 스크립트       13/13 스크립트
+    install          python3 -m unittest discover -s install/test   54/54 (Python 3, Node 무관; 기존 51 + bundle ABI 2 + preflight 1)
+    ```
+    - **PR #7 브랜치 Node 20** (임시 트리 `../cflex-fms-wt-int007-tmp006`, 커밋 없음, 끝나고 `worktree remove --force`):
+      - 그대로: probe 64/69, console 24/27 + 2 skip(실패 원인 ①).
+      - **이 브랜치를 `--no-commit` 머지 미리보기**: probe **79/79**(74 + smoke 5, trap 리스너 포함 기동), console 25/27 + 2 skip(그 트리에 dist-console 없음), static 13/13.
+  - **미수행 (통과로 치지 않음)**:
+    - ① `podman build`로 UBI8 안 node-gyp 소스 빌드 → Q-2026-10-26-07.
+    - ② 번들 ABI 검사의 실제 podman 실행. 단위 테스트는 fake podman이다.
+    - ③ RHEL 8.10 실호스트 Node 20(AppStream) 실행. 이 Mac의 Node 20은 nodejs.org darwin-arm64 빌드다.
+  - 범위 밖으로 남긴 것(수정 안 함): `node:sqlite`가 `apps/twin/mock/server.js`(개발용 목, 미배포), `backend/**`·`deploy/s1/snmp-reach.js`(내부 Probe 런타임 아님)에 남아 있다.
+  - 로컬 전용(커밋 안 함): probe-agent·apps/console·apps/twin `node_modules`, `apps/twin/dist-console`, `.runtime/int007/`(로그·러너).
+    lockfile을 새로 만들지 않았다(`--no-package-lock`).
+- 질문: `Q-2026-10-26-07`(RHEL 8 glibc 2.28 → prebuild 불가, 이미지 소스 빌드 검증 시점) — 권고안 (A)로 진행
+- 블로커: 없음
+- 다음 세션 계획: PR 검토 반영 → WO-INT-008(PostgreSQL 16) 또는 관리자 지시 순서
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.

@@ -14,14 +14,16 @@ RUN cd apps/twin && npm ci --no-audit --no-fund
 COPY --chown=1001:0 apps/twin apps/twin
 RUN cd apps/twin && CONSOLE_PROFILE=internal npm run build:console
 
-# ── deps: console runtime (better-sqlite3 — Node 20 has no node:sqlite) ──
+# ── deps: console runtime (better-sqlite3, the only driver — Node 20 has no node:sqlite) ──
+# Compiled from source against UBI8 glibc, as in images/collector (no prebuild runs on RHEL 8's
+# glibc 2.28). Node 20 ABI (NODE_MODULE_VERSION 115); build-bundle checks it.
 FROM ${BASE_IMAGE} AS deps
 USER 1001
 WORKDIR /opt/app-root/src
 COPY --chown=1001:0 apps/console/package.json apps/console/
 RUN cd apps/console \
- && npm install --omit=dev --no-audit --no-fund \
- && node -e "require('better-sqlite3')" \
+ && npm_config_build_from_source=true npm install --omit=dev --no-audit --no-fund \
+ && node -e "require('better-sqlite3')(':memory:').close()" \
  && npm cache clean --force
 
 # ── runtime ──

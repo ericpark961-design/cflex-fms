@@ -7,12 +7,16 @@
 ARG BASE_IMAGE=registry.access.redhat.com/ubi8/nodejs-20:1
 
 # ── build: node_modules (better-sqlite3 compiles here, against UBI8 glibc) ──
+# From source, always: every better-sqlite3 linux-x64 prebuild (9.6–11.10, ABI 115 and 127) needs
+# GLIBC_2.29 and RHEL 8 has 2.28 (WO-INT-007). The base has make/gcc-c++/python3 for node-gyp.
+# The binary is Node 20's ABI (NODE_MODULE_VERSION 115); build-bundle checks that before packaging.
 FROM ${BASE_IMAGE} AS build
 USER 1001
 WORKDIR /opt/app-root/src
 COPY --chown=1001:0 probe-agent/package.json probe-agent/
 RUN cd probe-agent \
- && npm install --omit=dev --no-audit --no-fund \
+ && npm_config_build_from_source=true npm install --omit=dev --no-audit --no-fund \
+ && node -e "require('better-sqlite3')(':memory:').close()" \
  && npm cache clean --force
 
 # ── runtime ──

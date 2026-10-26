@@ -292,3 +292,24 @@ SMS·이메일·Teams 발송과 에스컬레이션, 24x7 센터의 즉각 조치
 - **HAEA 1차 배포는 컬렉터 1대(cap01v)** — VM 4대가 한 세그먼트(10.138.14.66~69)에 있고 방화벽 v3가 그 전제. 사이트별 컬렉터는 HAEA가 VM을 추가 제공할 때 설정 추가로 확장(방화벽 v4 필요 — 그때 요청).
 - 실행: **WO-INT-012** (007·008 이후). 범위: forwarder 모듈을 app으로 이동(코드 재사용, 컬렉터의 포털 설정 제거), 컬렉터 다중 인스턴스 설정(`site_id` 스코프)·FMS 병합, 계약 00 v1.2 `collector_id`, netcheck/방화벽 표에서 cap01→포털 행을 '해당 없음'으로(v3 문서 자체는 변경 않음). 테스트: 컬렉터 2개 + FMS 1개 E2E.
 
+### Q-2026-10-26-07 — better-sqlite3는 RHEL 8에서 prebuild가 로드되지 않는다: 이미지 안 소스 빌드의 검증 시점 (Claude Code, WO-INT-007)
+
+**실측(2026-10-25):**
+- better-sqlite3가 GitHub에 올리는 linux-x64 prebuild를 받아 보았다(9.6.0·10.1.0·11.0.0·11.10.0, Node 20 = v115, Node 22 = v127).
+  전부 `GLIBC_2.29` 심볼을 요구한다. RHEL 8.10 / UBI8의 glibc는 **2.28**이다.
+- 그래서 UBI8에서는 prebuild-install이 받은 바이너리의 로드 검사에 실패하고 `node-gyp rebuild`로 넘어간다.
+  지금까지의 이미지 빌드도 사실상 소스 빌드에 기대고 있었다.
+
+WO-INT-007에서 한 일:
+- Containerfile 2종이 `npm_config_build_from_source=true`로 소스 빌드를 **명시**한다. 빌드 직후 `:memory:` 로드 검사를 하고, 실패하면 빌드가 멈춘다.
+- `build-bundle`은 이미지마다 better-sqlite3 로드와 ABI 115를 검사한다. 아니면 번들을 만들지 않는다.
+- `ubi8/nodejs-20` 이미지 history로 툴체인을 확인했다: `make gcc gcc-c++`가 있고, `python3`는 platform-python(3.6)에 링크되어 있다.
+- **확인하지 못한 것:** RHEL nodejs:20의 npm에 딸린 node-gyp가 Python 3.6을 받아들이는지. Podman이 없어 실제 `podman build`를 못 했다.
+  이 Mac에서는 Node 20.20.2 + `--build-from-source`로 컴파일하고 로드까지 확인했다.
+
+- **(A)** 지금 구조를 유지한다. RingOn 빌드 호스트에서 처음 `podman build`(D-11과 같은 시점)를 할 때 확인한다.
+  python 때문에 실패하면 build 단계에만 `dnf install python39`(UBI 저장소, 빌드 호스트 전용, 현장 무관)를 한 줄 추가한다 — 권고.
+- **(B)** 지금 build 단계에 `USER 0` + `dnf install -y python39`를 미리 넣는다. 검증 없이 넣는 변경이고, 빌드 호스트가 UBI 저장소에 접근해야 한다.
+- **(C)** better-sqlite3를 순수 JS/WASM 드라이버로 바꾼다. 명세 밖이고 Collector 버퍼 성능을 다시 검증해야 한다 — 비권고.
+
+권고안 (A)로 진행했다.

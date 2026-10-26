@@ -9,7 +9,7 @@
     "user": "node src/cli.js",
     "test": "node --test test/*.test.js"
   },
-  "optionalDependencies": {
+  "dependencies": {
     "better-sqlite3": "^11.0.0"
   },
   "license": "UNLICENSED",

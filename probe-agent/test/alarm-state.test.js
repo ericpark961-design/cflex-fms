@@ -2,13 +2,13 @@
 //
 // WO-INT-004b: the v1.1 capacity warning and its 2-hour hold after a
 // discharge, and open alarms surviving a restart in the buffer's SQLite file.
-// The file is real; node:sqlite stands in for better-sqlite3 (same API).
+// The file is real, opened with better-sqlite3 — the driver the buffer uses.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { DatabaseSync } = require('node:sqlite');
+const Database = require('better-sqlite3');
 const { createAlarmEngine } = require('../src/alarms/engine');
 const { sqliteState } = require('../src/alarms/persist');
 const schema = require('../src/contract/schema');
@@ -86,7 +86,7 @@ function tmpDb() {
 test('restart: open alarms come back from the buffer DB and keep their alarm_id', () => {
   const file = tmpDb();
   const c = clockAt(T0);
-  let db = new DatabaseSync(file);
+  let db = new Database(file);
   const first = createAlarmEngine({ ctx, now: c.now, persist: sqliteState(db, 'alarm_engine'), log: quiet });
   const [raise] = first.fromAlert(UPS, { metric: 'temp_c', severity: 'P2', value: 40, threshold: 38, message: 'warm' }).items;
   const [gone] = first.fromAlert({ ...UPS, id: 7, serial: 'Z7' }, { metric: 'load_pct', value: 80, message: 'load' }).items;
@@ -94,7 +94,7 @@ test('restart: open alarms come back from the buffer DB and keep their alarm_id'
 
   // The process restarts: a new handle on the same file, a new engine.
   c.advance(5 * MIN);
-  db = new DatabaseSync(file);
+  db = new Database(file);
   const second = createAlarmEngine({ ctx, now: c.now, persist: sqliteState(db, 'alarm_engine'), log: quiet });
   assert.deepStrictEqual(second.openAlarms().map(a => a.alarm_id).sort(), [raise.event.alarm_id, gone.event.alarm_id].sort());
 
@@ -113,7 +113,7 @@ test('restart: open alarms come back from the buffer DB and keep their alarm_id'
   db.close();
 
   // And the clear itself was saved.
-  db = new DatabaseSync(file);
+  db = new Database(file);
   const third = createAlarmEngine({ ctx, now: c.now, persist: sqliteState(db, 'alarm_engine'), log: quiet });
   assert.deepStrictEqual(third.openAlarms().map(a => a.alarm_id), [raise.event.alarm_id]);
   db.close();
@@ -122,7 +122,7 @@ test('restart: open alarms come back from the buffer DB and keep their alarm_id'
 test('restart: the capacity hold survives it', () => {
   const file = tmpDb();
   const c = clockAt(T0);
-  let db = new DatabaseSync(file);
+  let db = new Database(file);
   const first = createAlarmEngine({ ctx, now: c.now, persist: sqliteState(db, 'alarm_engine'), log: quiet });
   first.fromAlert(UPS, onBat);
   c.advance(MIN); first.beginCycle(UPS);
@@ -131,7 +131,7 @@ test('restart: the capacity hold survives it', () => {
   db.close();
 
   c.advance(30 * MIN);
-  db = new DatabaseSync(file);
+  db = new Database(file);
   const second = createAlarmEngine({ ctx, now: c.now, persist: sqliteState(db, 'alarm_engine'), log: quiet });
   assert.deepStrictEqual(second.fromAlert(UPS, capLow(45)).items, [], 'still inside the 2 h hold');
   c.advance(2 * 60 * MIN);
@@ -141,7 +141,7 @@ test('restart: the capacity hold survives it', () => {
 
 test('restart: an unreadable state row starts empty instead of stopping the Probe', () => {
   const file = tmpDb();
-  const db = new DatabaseSync(file);
+  const db = new Database(file);
   const st = sqliteState(db, 'alarm_engine');
   db.prepare("INSERT OR REPLACE INTO state (name, value, updated) VALUES ('alarm_engine', '{not json', 0)").run();
   const errors = [];

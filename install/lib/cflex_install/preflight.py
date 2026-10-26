@@ -166,8 +166,11 @@ def run(site, role, profile, runner, host_id=None, bundle=None):
         for n in PACKAGES["bare"].get(role, []):
             rc3, out, _ = runner.run(["rpm", "-q", n])
             if n == "nodejs" and rc3 == 0:
+                # Exactly 20: the bundle's node_modules (better-sqlite3) are built for Node 20's ABI
+                # (NODE_MODULE_VERSION 115) and do not load in 22 (127) — CONTAINER_PROFILE.md.
                 v = _ver(out)
-                add("rpm nodejs", "PASS" if v and v[0] >= 20 else "FAIL", out.strip() + ("" if v and v[0] >= 20 else " — need dnf module nodejs:20"))
+                add("rpm nodejs", "PASS" if v and v[0] == 20 else "FAIL",
+                    out.strip() + ("" if v and v[0] == 20 else " — need dnf module nodejs:20 (the bundle is built for Node 20's ABI)"))
             else:
                 add("rpm " + n, "PASS" if rc3 == 0 else "WARN", out.strip() if rc3 == 0 else "will be installed from AppStream (dnf module)")
         facts["ports_mode"] = "capability"
