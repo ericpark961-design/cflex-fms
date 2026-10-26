@@ -22,6 +22,7 @@ const fs = require('fs');
 const transport = require('./portal/transport');
 const schema = require('./contract/schema');
 const adapt = require('./contract/adapt');
+const { state: csrState } = require('./portal/csr');
 const { createAlarmEngine } = require('./alarms/engine');
 const { jsonStore } = require('./alarms/store');
 
@@ -94,6 +95,29 @@ function createForwarder(o) {
   let commandsPending = 0;
   let drift = null;               // { alarm_id } while the clock is off
   const stats = { sent: 0, rejected: 0, retried: 0, invalid: 0, blocked_keys: 0, unmapped_alerts: 0, notify_errors: 0, last_error: null };
+
+  /**
+   * This node's device certificate, as it is on disk right now.
+   *
+   * Read per heartbeat rather than cached: a certificate installed by the
+   * enroller while we are running must show up without a restart, and the
+   * expiry has to be current for the renewal window to mean anything.
+   */
+  function certState() {
+    try {
+      const st = csrState({ dir: portal.pkiDir || '', nodeId: portal.nodeId });
+      return {
+        state: st.state,                       // none | pending | signed | expired | unreadable
+        to: st.to || null,
+        days_left: st.days_left ?? null,
+        // Contract §1/§6-2: the Portal issues cert_renew 60 days out.
+        renew_due: st.days_left != null && st.days_left < 60,
+        // The forwarder reads its TLS material at construction, so a
+        // certificate newer than this process is on disk but not in use.
+        in_use: !!portal.tls?.cert,
+      };
+    } catch (e) { return { state: 'unknown', error: String(e.message).slice(0, 80) }; }
+  }
 
   const headers = (key, len) => ({
     'Content-Type': 'application/json',
@@ -404,6 +428,15 @@ function createForwarder(o) {
         ...(s.devices_unreachable !== undefined ? { devices_unreachable: s.devices_unreachable } : {}),
         clock: adapt.iso(now()), profile: portal.profile || 'bare', os: osName(),
         portal: { enabled: !!portal.enabled, last_reachable: lastReachable, last_error: stats.last_error, sent: stats.sent, rejected: stats.rejected, queued: queue.stats().pending },
+        // What this node holds on disk, so the console can tell "a certificate
+        // is registered" from "the node actually installed it". Those are
+        // different facts and conflating them is how a screen says connected
+        // while nothing has ever been sent.
+        //
+        // The CONSOLE heartbeat only — contract §3.1 has no field for this and
+        // adding one would be a contract change (see PROBE_TO_PLATFORM_REQUEST
+        // Q-B). This is the Probe's self-report, and the console labels it so.
+        cert: certState(),
       });
       consoleLink.flush().catch(() => {});
     }
@@ -498,6 +531,9 @@ function get() {
       enabled: cfg.portal.enabled, url: cfg.portal.url, tenant: cfg.tenantId, nodeId: cfg.portal.nodeId,
       role: 'collector', siteId: cfg.portal.siteId, profile: cfg.portal.profile,
       tls: transport.loadTls(cfg.portal.tls), proxy: cfg.portal.proxy, noProxy: cfg.portal.noProxy,
+      // Where the device key and certificate live, so the console heartbeat can
+      // report what this node actually holds (certState()).
+      pkiDir: cfg.console.pkiDir,
       timeoutMs: 15000,
     },
     legacy: { enabled: cfg.legacy.enabled, url: cfg.cflexUrl, token: cfg.cflexToken, probeId: cfg.probeId, tenantId: cfg.tenantId },

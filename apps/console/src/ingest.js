@@ -138,6 +138,18 @@ function createIngest(db, { now = Date.now } = {}) {
         enabled: !!b.portal.enabled, last_reachable: num(b.portal.last_reachable), last_error: str(b.portal.last_error, 200),
         sent: num(b.portal.sent), rejected: num(b.portal.rejected), queued: num(b.portal.queued),
       } : null,
+      // What the node says it holds on disk. Kept separate from the
+      // enrolment row, which is what the CONSOLE registered: "a certificate
+      // is registered" and "the node installed it" are different facts, and
+      // conflating them is how a screen reads connected while nothing has
+      // ever been sent. `in_use` is the third: the forwarder reads its TLS
+      // material at construction, so a certificate newer than the process is
+      // on disk and not in use until a restart.
+      cert: b.cert && typeof b.cert === 'object' ? {
+        state: str(b.cert.state, 16), to: str(b.cert.to, 48),
+        days_left: num(b.cert.days_left), renew_due: !!b.cert.renew_due,
+        in_use: !!b.cert.in_use,
+      } : null,
     };
     st.beat.run(now(), JSON.stringify(keep), nodeId);
     return { ack: true };
