@@ -96,13 +96,18 @@ never holds up the Portal, nor the reverse. No proxy, no client certificate.
 
 `sim/sim-ups.js` is an APC Smart-UPS SNMP simulator (stdin `battery` / `online`);
 `test/console.e2e.test.js` runs it, the console and the collector as three
-processes.
+processes. `test/smoke.test.js` (`npm run smoke`) boots `src/index.js` alone
+against it: poll cycles, the Portal unreachable so everything lands in the
+buffer, the HEALTHCHECK script, exit 0 on SIGTERM.
 
-Tests (no network beyond 127.0.0.1, needs the `openssl` CLI; the console E2E
-also needs `npm install` here for better-sqlite3 and net-snmp):
+Tests (no network beyond 127.0.0.1, needs the `openssl` CLI and `npm install`
+here — better-sqlite3 is the only SQLite driver, in the tests too; the console
+E2E also needs `npm install` in `apps/console`). Node 20, the version the
+images and the bare profile run, and Node 22 both pass:
 
 ```
 node --test test/*.test.js
+npm run smoke
 node test/support/mock-portal.js     # a strict local Portal to point a probe at
 ```
 

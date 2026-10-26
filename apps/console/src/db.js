@@ -1,7 +1,8 @@
 // db.js — the Local Console's store. SQLite until WO-INT-008 moves it to
 // PostgreSQL 16 on db01; every query goes through this file's handle with the
-// better-sqlite3 API (prepare/get/all/run/exec), which node:sqlite's
-// DatabaseSync shares — the tests use that, production better-sqlite3.
+// better-sqlite3 API (prepare/get/all/run/exec). better-sqlite3 is the only
+// driver, in production and in the tests alike (WO-INT-007): Node 20, the
+// version the images and the bare profile run, has no node:sqlite.
 //
 // app01 and app02 point at the same database (today: the same file on one
 // host for the integration test; in production: db01 after WO-INT-008). The
@@ -11,18 +12,10 @@ const path = require('path');
 
 function openSqlite(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
-  let db;
-  try {
-    const Database = require('better-sqlite3');
-    db = new Database(file);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
-  } catch (e) {
-    if (e.code !== 'MODULE_NOT_FOUND') throw e;
-    const { DatabaseSync } = require('node:sqlite');
-    db = new DatabaseSync(file);
-    db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
-  }
+  const Database = require('better-sqlite3');
+  const db = new Database(file);
+  db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
   db.exec('PRAGMA foreign_keys = ON;');
   return db;
 }
@@ -35,7 +28,7 @@ function migrate(db) {
   if (!has('alarm_events', 'local_notified')) db.exec('ALTER TABLE alarm_events ADD COLUMN local_notified TEXT');
 }
 
-/** BEGIN … COMMIT around fn; ROLLBACK if it throws. Works on both drivers. */
+/** BEGIN … COMMIT around fn; ROLLBACK if it throws. */
 function tx(db, fn) {
   db.exec('BEGIN IMMEDIATE');
   try { const r = fn(); db.exec('COMMIT'); return r; } catch (e) { db.exec('ROLLBACK'); throw e; }

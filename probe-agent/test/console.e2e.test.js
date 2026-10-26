@@ -32,9 +32,11 @@ const { startDummyServiceNow } = require('../../packages/notify/test/support/dum
 const { startMiniRedis } = require('../../apps/console/test/support/mini-redis');
 
 const ROOT = path.resolve(__dirname, '../..');
-const hasSqlite = (() => { try { require.resolve('better-sqlite3'); return true; } catch { return false; } })();
+// better-sqlite3 for both processes: this directory's (the probe) and the console's own.
+const resolves = (from) => { try { require.resolve('better-sqlite3', { paths: [from] }); return true; } catch { return false; } };
 const skip = !hasOpenssl() ? 'openssl CLI not available'
-  : !hasSqlite ? 'probe-agent dependencies not installed (npm install in probe-agent)' : false;
+  : !resolves(__dirname) ? 'probe-agent dependencies not installed (npm install in probe-agent)'
+  : !resolves(path.join(ROOT, 'apps/console/src')) ? 'console dependencies not installed (npm install in apps/console)' : false;
 
 const COMMUNITY = 'e2e-ro-community';
 const SERIAL = 'AS2535281781';
@@ -113,8 +115,7 @@ test.before(async () => {
     CONSOLE_TWIN_DIR: tmp,
   });
   await waitFor('console /healthz', () => fetch(`http://127.0.0.1:${consolePort}/healthz`).then(r => r.ok));
-  const { DatabaseSync } = require('node:sqlite');
-  consoleDb = new DatabaseSync(dbFile, { readOnly: true });
+  consoleDb = new (require('better-sqlite3'))(dbFile, { readonly: true });
 
   // nginx's part: TLS on the console's name with the HAEA (here: test) CA, proxied to the app.
   front = https.createServer(certs.server, (req, res) => {

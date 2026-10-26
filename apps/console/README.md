@@ -4,8 +4,9 @@ Spec 01 §2.2, WO-INT-004. The API and pages behind nginx 443 on app01/app02. Th
 `apps/twin`, built for the console with `npm run build:console` and served at `/twin/`.
 Two pages twin does not have are served here: `/login` and `/settings`.
 
-No npm dependencies. `better-sqlite3` is optional; without it the store opens with `node:sqlite`.
-Redis is reached over RESP by `src/redis.js`, so no client package is needed either.
+One npm dependency: `better-sqlite3`, the only SQLite driver, in production and in the tests
+(`npm install` first). There is no `node:sqlite` fallback: Node 20 does not have it (WO-INT-007).
+Redis is reached over RESP by `src/redis.js`, so no client package is needed.
 
 ## Run
 

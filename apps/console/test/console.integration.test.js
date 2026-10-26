@@ -538,8 +538,8 @@ test('cli test-ticket (installer `verify --send-test`): the Settings channels, c
     const bad = await run();
     assert.strictEqual(bad.code, 1);
     assert.match(bad.out, /^FAIL ServiceNow test ticket at create/);
-    const { DatabaseSync } = require('node:sqlite');
-    const ro = new DatabaseSync(path.join(dir, 'console.db'), { readOnly: true });
+    const Database = require('better-sqlite3');
+    const ro = new Database(path.join(dir, 'console.db'), { readonly: true });
     assert.deepStrictEqual(ro.prepare(`SELECT actor LIKE 'cli:%' AS cli, json_extract(detail, '$.ok') AS ok FROM audit_log WHERE action = 'test_ticket' ORDER BY id`).all().map(r => [r.cli, r.ok]), [[1, 1], [1, 0]]);
     ro.close();
   } finally {

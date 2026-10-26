@@ -30,9 +30,10 @@ from .sysrun import Runner
 # re-tagged unmodified so the site sees one naming scheme (cflex/<name>:<version>).
 OWN = [
     {"name": "collector", "containerfile": "images/collector/Containerfile", "roles": ["collector"],
-     "base_var": "UBI8_NODEJS_20", "packages": ["probe-agent", "packages/notify"]},
+     "base_var": "UBI8_NODEJS_20", "packages": ["probe-agent", "packages/notify"], "node_tree": "/opt/cflex/probe-agent"},
     {"name": "app", "containerfile": "images/app/Containerfile", "roles": ["app"],
-     "base_var": "UBI8_NODEJS_20", "packages": ["apps/console", "probe-agent", "packages/notify", "apps/twin"]},
+     "base_var": "UBI8_NODEJS_20", "packages": ["apps/console", "probe-agent", "packages/notify", "apps/twin"],
+     "node_tree": "/opt/cflex/apps/console"},
     {"name": "web", "containerfile": "images/web/Containerfile", "roles": ["app"],
      "base_var": "UBI8_NGINX_122", "packages": []},
 ]
@@ -41,6 +42,29 @@ EXTERNAL = [
     {"name": "postgres", "roles": ["db"], "base_var": "RHEL8_POSTGRESQL_16"},
 ]
 BARE_TREES = {"collector": "collector", "console": "app"}
+
+# better-sqlite3 is a native module: its binary only loads in the Node ABI it was compiled for.
+# The images run ubi8/nodejs-20 and the bare profile AppStream nodejs:20 with these same trees,
+# so the bundle carries NODE_MODULE_VERSION 115 (Node 20) and nothing else (Node 22 = 127).
+NODE_MAJOR = 20
+NODE_ABI = "115"
+_NODE_CHECK = ("require('better-sqlite3')(':memory:').close();"
+               "console.log(process.versions.node + ' ' + process.versions.modules)")
+
+
+def check_node_abi(runner, podman, ref, tree):
+    """Run the image's node in its tree: better-sqlite3 must load and the ABI be NODE_ABI. → {version, abi}."""
+    rc, out, err = runner.run([podman, "run", "--rm", "--network=none", "--entrypoint", "node", "-w", tree,
+                               ref, "-e", _NODE_CHECK], timeout=300)
+    if rc != 0:
+        raise RuntimeError("%s: better-sqlite3 does not load in %s: %s" % (ref, tree, (err or out).strip()[-1000:]))
+    parts = out.strip().split()
+    if len(parts) != 2 or parts[1] != NODE_ABI or parts[0].split(".")[0] != str(NODE_MAJOR):
+        raise RuntimeError("%s: node %s (NODE_MODULE_VERSION %s) — the bundle must be Node %d, ABI %s "
+                           "(docs/install/CONTAINER_PROFILE.md)" % (ref, parts[0] if parts else "?",
+                                                                    parts[1] if len(parts) > 1 else "?",
+                                                                    NODE_MAJOR, NODE_ABI))
+    return {"version": parts[0], "abi": parts[1]}
 
 
 def sha256_file(path):
@@ -205,7 +229,9 @@ def build(repo, out_dir, version, runner=None, podman="podman", git="git", git_r
                                          "-t", ref, src], timeout=3600)
                 if rc != 0:
                     raise RuntimeError("podman build %s: %s" % (spec["name"], err.strip()[-2000:]))
-            images.append(dict(spec, ref=ref, base=base_ref, base_digest=base_dg, source="built"))
+            # Also with --no-build: whatever is tagged locally is what gets packaged.
+            node = check_node_abi(runner, podman, ref, spec["node_tree"]) if spec.get("node_tree") else None
+            images.append(dict(spec, ref=ref, base=base_ref, base_digest=base_dg, source="built", node=node))
         for spec in EXTERNAL:
             ref = "localhost/cflex/%s:%s" % (spec["name"], version)
             base_ref, base_dg, pinned = resolve(spec["base_var"])
@@ -225,11 +251,14 @@ def build(repo, out_dir, version, runner=None, podman="podman", git="git", git_r
             with io.open(os.path.join(root, sbom_rel), "w", encoding="utf-8") as f:
                 f.write(json.dumps(sbom_stub(im["name"], im["ref"], version, src, im.get("packages", []), im["base"], im["base_digest"], now), indent=2))
                 f.write("\n")
-            manifest_images.append({
+            entry = {
                 "name": im["name"], "ref": im["ref"], "tar": tar_rel, "sha256": sha256_file(os.path.join(root, tar_rel)),
                 "image_id": idg.strip() if rc == 0 else None, "roles": im["roles"], "source": im["source"],
                 "base": im["base"], "base_digest": im["base_digest"], "sbom": sbom_rel,
-            })
+            }
+            if im.get("node"):
+                entry["node"] = im["node"]
+            manifest_images.append(entry)
 
         # Bare profile: the very same /opt/cflex trees, so both profiles run identical node_modules.
         for tree, img in sorted(BARE_TREES.items()):
@@ -265,6 +294,7 @@ def build(repo, out_dir, version, runner=None, podman="podman", git="git", git_r
         "git_tree_dirty": bool(dirty.strip()), "built_at": now,
         "images": manifest_images,
         "bare_trees": {k: "app/" + k for k in sorted(BARE_TREES)},
+        "node": {"major": NODE_MAJOR, "abi": NODE_ABI},
         "migrations": [],
         "sbom_status": "stub", "vuln_scan": "not performed",
         "signature": "gpg:%s" % gpg_key if gpg_key else "unsigned",

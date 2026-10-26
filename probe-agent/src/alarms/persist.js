@@ -3,8 +3,8 @@
 //
 // One row per named state, a JSON value, replaced whole. The engine's state is
 // a few hundred alarms at most; a table per field would be more schema than
-// data. Takes any handle with the better-sqlite3 API (exec/prepare/get/run) —
-// node:sqlite's DatabaseSync has the same shape, which is what the tests use.
+// data. Takes the buffer's better-sqlite3 handle (exec/prepare/get/run); the
+// tests open the same driver on a real file.
 function sqliteState(db, name) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS state (
