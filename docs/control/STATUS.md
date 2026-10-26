@@ -270,7 +270,7 @@
 - 다음 세션 계획: PR 검토 반영 → WO-INT-008(PostgreSQL 16) 또는 관리자 지시 순서
 
 ### 2026-10-26 08:12 PDT — Claude Code (9차)
-- WO-INT-008: **검토요청** | 브랜치 `wo/INT-008-postgres` (base main `ffdae05`, 작업 트리 `../cflex-fms-wt-int008`, origin/main `ffbe386` 머지 — 충돌 없음) | 코드 커밋 `c4e49cb` + 머지 `1cef8ef` + control 커밋 | PR: 아래 링크
+- WO-INT-008: **검토요청** | 브랜치 `wo/INT-008-postgres` (base main `ffdae05`, 작업 트리 `../cflex-fms-wt-int008`, origin/main `ffbe386` 머지 — 충돌 없음) | 코드 커밋 `c4e49cb` + 머지 `1cef8ef` + control 커밋 | **PR #9** https://github.com/ericpark961-design/cflex-fms/pull/9
   - ① **콘솔 저장소 → PostgreSQL 16** (`apps/console/src/db.js`):
     - 드라이버는 `pg`(순수 JS) 1개만 추가했다. 접속은 `CFLEX_DB_URL`(비밀번호 포함 URL은 거부) 또는 `CFLEX_DB_HOST/PORT/NAME/USER`이고, 비밀번호는 `CFLEX_DB_PASSWORD_FILE` 파일로만 받는다.
     - 호출부 `ingest·settings·views·notify·server·cli`를 async로 바꿨다.
