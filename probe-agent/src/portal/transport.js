@@ -10,6 +10,7 @@
 // over the same CONNECT socket and is not — see DECISIONS Q-2026-10-25-04.
 const fs = require('fs');
 const http = require('http');
+const net = require('net');
 const https = require('https');
 const tls = require('tls');
 
@@ -88,7 +89,23 @@ async function request(o) {
   const port = Number(u.port) || 443;
   const timeoutMs = o.timeoutMs || 15000;
   const t = o.tls || {};
-  const tlsOpts = { cert: t.cert, key: t.key, ca: t.ca, servername: u.hostname, minVersion: 'TLSv1.2' };
+  // `ca: []` is not "use the defaults" — node reads an empty array as an
+  // explicit, empty trust store, so server verification fails with
+  // `unable to get local issuer certificate`. loadTls() gets this right, but
+  // three callers build `tls` by hand (enroll.js defaults to `ca: []`,
+  // local-notify.js, console/client.js), so normalising here is what makes
+  // every path safe. Proven against the live Portal: ca:undefined → 401
+  // (verified, client cert rejected); ca:[] → cannot verify the server at all.
+  const caList = Array.isArray(t.ca) ? t.ca.filter(Boolean) : (t.ca ? [t.ca] : []);
+  const tlsOpts = {
+    cert: t.cert,
+    key: t.key,
+    // With a CA given, keep the system store too: a private or proxy CA must
+    // ADD trust, not replace it.
+    ca: caList.length ? [...tls.rootCertificates, ...caList] : undefined,
+    servername: net.isIP(u.hostname) ? undefined : u.hostname,
+    minVersion: 'TLSv1.2',
+  };
 
   // Plaintext is refused, except to loopback.
   //

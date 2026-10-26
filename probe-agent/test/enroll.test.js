@@ -310,3 +310,46 @@ test('plaintext to a remote host is refused, loopback is not', { skip }, async (
     (e) => e.code !== 'plaintext_refused',
   );
 });
+
+test('an empty ca array uses the default trust store, not an empty one', { skip }, async () => {
+  // Node reads `ca: []` as an explicit EMPTY trust store, so server
+  // verification fails with `unable to get local issuer certificate`.
+  // loadTls() gets this right; three callers build `tls` by hand and
+  // enroll.js DEFAULTS to `ca: []`, so the normalisation lives in
+  // transport.request where every path goes through it.
+  //
+  // Found against the live Portal: ca:undefined → 401 (TLS verified, client
+  // certificate rejected — correct); ca:[] → could not verify the server at
+  // all, which looks like a certificate problem and is not one.
+  const tls = require('node:tls');
+  const https = require('node:https');
+  const fs = require('node:fs');
+  const certs = require('./support/certs').makeCerts();
+  const seen = [];
+  const srv = https.createServer({ ...certs.server }, (req, res) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  const port = srv.address().port;
+  try {
+    const t = require('../src/portal/transport');
+    // The mock's CA is NOT in the system store, so an empty list must now fall
+    // back to the default store and therefore FAIL to verify — proving the
+    // empty array no longer means "trust nothing with no fallback" but
+    // "whatever the system trusts".
+    const anon = await t.request({
+      method: 'GET', url: `https://127.0.0.1:${port}/x`, headers: {}, tls: { ca: [] },
+    }).catch(e => ({ status: 0, why: e.message }));
+    assert.ok(!/unable to get local issuer certificate/.test(String(anon.why || '')),
+      `empty ca still meant an empty store: ${anon.why}`);
+
+    // And given the CA, it verifies — the system store is kept alongside it.
+    const ok = await t.request({
+      method: 'GET', url: `https://127.0.0.1:${port}/x`, headers: {},
+      tls: { ca: [fs.readFileSync(certs.caPath)] },
+    });
+    assert.strictEqual(ok.status, 200);
+    assert.ok(tls.rootCertificates.length > 0, 'the system store should still be present');
+  } finally {
+    await new Promise(r => { srv.closeAllConnections?.(); srv.close(r); });
+    certs.cleanup();
+  }
+});
