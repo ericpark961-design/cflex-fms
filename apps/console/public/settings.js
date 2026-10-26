@@ -164,19 +164,30 @@
       el('button', {}, '점검 실행 / Run'));
 
     // ── enrolment ──
+    const LABEL = { signed: '서명됨', pending: 'CSR 도착 — 서명 필요', expected: '대기 — collector 미접속' };
+    const CLS = { signed: 'ok', pending: 'warn', expected: 'muted' };
     const enrolRows = d.enrollments.length ? d.enrollments.map(e => el('tr', {},
-      el('td', {}, e.node_id),
-      el('td', { class: e.state === 'signed' ? 'ok' : 'warn' }, e.state === 'signed' ? '서명됨' : 'CSR 대기'),
+      el('td', {}, e.node_id, e.site_id ? el('div', { class: 'muted small' }, `${e.site_id} · ${e.role || '-'}`) : null),
+      el('td', { class: CLS[e.state] }, LABEL[e.state] || e.state),
       el('td', {}, e.cert ? e.cert.cn : e.expect_cn),
       el('td', { class: e.renew_due ? 'warn' : '' }, e.cert ? `${e.cert.to} (${e.cert.days_left}일)` : '—'),
       el('td', {}, e.pubkey_sha256 || '—'),
       el('td', {}, when(e.signed_at)),
       el('td', {},
-        el('button', { on: { click: () => {
-          // The CSR is public; the key is not and is not here to copy.
-          out.textContent = e.csr;
-          msg('CSR 을 복사해 포털 CA 에 등록하고, 서명된 인증서를 아래에 붙여넣는다.', true);
-        } } }, 'CSR 보기'),
+        e.csr
+          ? el('button', { on: { click: () => {
+            // The CSR is public; the key is not and is not here to copy.
+            out.textContent = e.csr;
+            msg('CSR 을 복사해 CA 에 주고, 서명된 인증서를 아래에 붙여넣는다.', true);
+          } } }, 'CSR 보기')
+          : null,
+        e.state === 'expected'
+          ? el('button', { on: { click: async () => {
+            if (!confirm(`${e.node_id} 등록 행을 지운다. 계속?`)) return;
+            try { await send('DELETE', `/v1/console/portal/nodes/${encodeURIComponent(e.node_id)}`); msg('지웠다.', true); route(); }
+            catch (err) { msg(err.message); }
+          } } }, '행 삭제')
+          : null,
         e.state === 'signed'
           ? el('button', { on: { click: async () => {
             if (!confirm(`${e.node_id} 의 인증서를 내린다. collector 는 다음 pull 에서 포털에 붙지 못한다. 계속?`)) return;
@@ -204,7 +215,8 @@
       el('h2', {}, '서명된 인증서 등록'),
       el('div', { class: 'row' },
         el('label', {}, 'node', el('select', { name: 'node_id' },
-          d.enrollments.map(e => el('option', { value: e.node_id }, e.node_id)))) ),
+          // Only nodes whose CSR has arrived: there is nothing to sign otherwise.
+          d.enrollments.filter(e => e.csr).map(e => el('option', { value: e.node_id }, e.node_id)))) ),
       el('label', {}, '인증서 (PEM)', el('textarea', { name: 'cert', rows: 6, required: true, placeholder: '-----BEGIN CERTIFICATE-----' })),
       el('label', {}, 'CA 체인 (PEM, 선택)', el('textarea', { name: 'ca', rows: 4, placeholder: '-----BEGIN CERTIFICATE-----' })),
       el('button', {}, '등록 / Install'));
@@ -226,6 +238,7 @@
       el('h2', {}, '장치 인증서 / Device certificate (계약 §6)'),
       el('p', { class: 'muted' }, '개인키는 collector 에 남고 이 화면에 오지 않는다. collector 가 CSR 을 올리고, 서명된 인증서를 여기서 등록하면 collector 가 가져간다.'),
       table(['node', '상태', 'CN', '만료', 'CSR 공개키', '서명 시각', ''], enrolRows),
+      addForm,
       pasteForm,
       checkBox,
       el('h2', {}, 'collector 보고 / As the collectors report it'),

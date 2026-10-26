@@ -181,5 +181,11 @@ CREATE TABLE IF NOT EXISTS enrollments (
   cert          TEXT,
   ca            TEXT,
   signed_at     INTEGER,
-  signed_by     TEXT
+  signed_by     TEXT,
+  -- Set when an operator pre-registers a node, before any collector has
+  -- connected. A row with an empty csr is 'expected': deployed-but-silent and
+  -- not-yet-deployed are different problems and the page has to tell them apart.
+  site_id       TEXT,
+  role          TEXT,
+  added_by      TEXT
 );

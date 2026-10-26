@@ -136,6 +136,8 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
 
     const row = db.prepare('SELECT * FROM enrollments WHERE node_id = ?').get(node);
     if (row && row.csr === pem) return { node_id: node, unchanged: true, state: state(row) };
+    // An operator may have pre-registered this node (state 'expected', empty
+    // csr). The collector's CSR fills that row in; it is not a conflict.
 
     // A new CSR means a new key pair, so any certificate we hold is dead.
     db.prepare(
@@ -200,7 +202,50 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
     return listEnrollments().find(e => e.node_id === node);
   }
 
-  const state = (r) => (r.cert ? 'signed' : 'pending');
+  /**
+   * Pre-register a node an operator expects, before its collector has ever
+   * connected. Without this the page is empty until a CSR happens to arrive,
+   * which gives an operator nothing to act on and no way to tell "not deployed
+   * yet" from "deployed and silent".
+   *
+   * Creates a row with no CSR. The collector's own enrolment fills it in.
+   */
+  function addNode(b = {}, by) {
+    const node = clean(b.node_id, 32);
+    if (!node) throw bad('node_required');
+    // Contract §1 / 인계 가이드 §1: lower case, digits, _ and -.
+    if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(node)) {
+      throw bad('invalid_node_id', '소문자·숫자·_·- 로 시작하는 32자 이내여야 한다');
+    }
+    const site = clean(b.site_id, 32);
+    if (site && !/^[A-Z0-9][A-Z0-9-]{0,31}$/.test(site)) {
+      throw bad('invalid_site_id', '대문자·숫자·- 로 시작하는 32자 이내여야 한다');
+    }
+    const role = clean(b.role, 16) || 'collector';
+    if (!['collector', 'app'].includes(role)) throw bad('invalid_role', 'collector 또는 app');
+
+    if (db.prepare('SELECT node_id FROM enrollments WHERE node_id = ?').get(node)) {
+      throw bad('exists', `${node} 는 이미 등록돼 있다`);
+    }
+    db.prepare(
+      `INSERT INTO enrollments (node_id, csr, pubkey_sha256, requested_at, site_id, role, added_by)
+         VALUES (?, '', NULL, ?, ?, ?, ?)`,
+    ).run(node, now(), site, role, clean(by, 64));
+    return listEnrollments().find(e => e.node_id === node);
+  }
+
+  function removeNode(nodeId, by) {
+    const node = clean(nodeId, 32);
+    const r = db.prepare('SELECT csr, cert FROM enrollments WHERE node_id = ?').get(node);
+    if (!r) throw bad('no_enrollment', node);
+    // A node that has enrolled is not deleted from here: its certificate is
+    // live and removing the row would lose the audit trail. Revoke first.
+    if (r.cert) throw bad('has_cert', '인증서를 먼저 내려야 한다 (인증서 내리기)');
+    db.prepare('DELETE FROM enrollments WHERE node_id = ?').run(node);
+    return { removed: node };
+  }
+
+  const state = (r) => (r.cert ? 'signed' : (r.csr ? 'pending' : 'expected'));
 
   function listEnrollments() {
     return db.prepare('SELECT * FROM enrollments ORDER BY node_id').all().map((r) => {
@@ -209,13 +254,16 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
       return {
         node_id: r.node_id,
         state: state(r),
+        site_id: r.site_id || null,
+        role: r.role || null,
+        added_by: r.added_by || null,
         requested_at: r.requested_at,
         signed_at: r.signed_at,
         signed_by: r.signed_by,
         pubkey_sha256: r.pubkey_sha256 ? `${r.pubkey_sha256.slice(0, 16)}…` : null,
         expect_cn: `${tenant}.${r.node_id}`,
         // The CSR is public and the admin has to copy it out of here.
-        csr: r.csr,
+        csr: r.csr || null,
         cert: info && !info.error
           ? { cn: info.cn, issuer: info.issuer?.split('\n')[0] || null, to: info.to, days_left: left, client_auth: info.clientAuth }
           : null,
@@ -271,7 +319,7 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
     };
   }
 
-  return { DEFAULTS, get, put, enroll, certsFor, signCert, listEnrollments, revoke, check };
+  return { DEFAULTS, get, put, enroll, certsFor, signCert, listEnrollments, addNode, removeNode, revoke, check };
 }
 
 module.exports = { createPortal, DEFAULTS };

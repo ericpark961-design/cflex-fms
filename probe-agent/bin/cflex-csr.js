@@ -22,6 +22,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const csrmod = require('../src/portal/csr');
 const cfg = require('../src/config');
 
 const argv = process.argv.slice(2);
@@ -55,68 +56,41 @@ CN is \${TENANT_ID}.\${CFLEX_NODE_ID} = ${CN}
   process.exit(0);
 }
 
-try { execFileSync('openssl', ['version'], { stdio: 'pipe' }); }
-catch { die('openssl not found — install it (RHEL: it is in the base system)'); }
+if (!csrmod.hasOpenssl()) die('openssl not found — install it (RHEL: it is in the base system)');
 
 if (has('--show')) {
   if (!fs.existsSync(CSR)) die(`no CSR at ${CSR} — run without --show first`);
-  const out = execFileSync('openssl', ['req', '-in', CSR, '-noout', '-subject', '-verify'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-  process.stdout.write(out);
+  process.stdout.write(execFileSync('openssl', ['req', '-in', CSR, '-noout', '-subject', '-verify'],
+    { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }));
   process.exit(0);
 }
 
-// A key that already exists is not replaced by accident: the certificate signed
-// against it is what the Portal trusts, and regenerating silently would take
-// the node offline at the next poll.
+// A key that already exists is not replaced by accident: the Portal has (or
+// will have) a certificate signed against it, and regenerating silently would
+// take the node offline at the next poll.
 if (fs.existsSync(KEY) && !has('--force')) {
   die(`${KEY} already exists.\n`
     + `  The Portal has (or will have) a certificate signed against this key.\n`
     + `  Re-run with --force only if you intend to re-enrol this node.`, 3);
 }
 
-fs.mkdirSync(DIR, { recursive: true, mode: 0o700 });
-
-// P-256. Smaller handshake than RSA-2048 at equivalent strength, and every
-// TLS 1.2+ stack in this path supports it.
-execFileSync('openssl', ['ecparam', '-name', 'prime256v1', '-genkey', '-noout', '-out', KEY], { stdio: 'pipe' });
-fs.chmodSync(KEY, 0o600);
-
-// SAN carries the node id as a DNS name as well as the CN. Some servers match
-// SAN and ignore CN entirely; supplying both costs nothing and avoids a
-// one-line argument with the Portal later.
-const conf = path.join(DIR, `.${NODE}.csr.cnf`);
-fs.writeFileSync(conf, [
-  '[req]', 'prompt = no', 'distinguished_name = dn', 'req_extensions = ext', '',
-  '[dn]', 'C = US', 'O = RingOn Service Corp', 'OU = C-Flex FMS Probe', `CN = ${CN}`, '',
-  '[ext]', `subjectAltName = DNS:${CN}, DNS:${NODE}`,
-  'keyUsage = critical, digitalSignature, keyEncipherment',
-  'extendedKeyUsage = clientAuth', '',
-].join('\n'), { mode: 0o600 });
-
-try {
-  execFileSync('openssl', ['req', '-new', '-key', KEY, '-out', CSR, '-config', conf, '-sha256'], { stdio: 'pipe' });
-} finally {
-  fs.rmSync(conf, { force: true });
-}
-fs.chmodSync(CSR, 0o644);
-
-const fp = execFileSync('openssl', ['req', '-in', CSR, '-pubkey', '-noout'], { encoding: 'utf8' });
-const digest = require('node:crypto').createHash('sha256').update(fp.trim()).digest('hex');
+const r = csrmod.ensure({ dir: DIR, tenant: TENANT, nodeId: NODE, force: has('--force') });
 
 process.stdout.write(`
-  CN            ${CN}
-  SAN           DNS:${CN}, DNS:${NODE}
-  key           ${KEY}  (0600 — keep on this node, never send it)
-  CSR           ${CSR}
-  pubkey sha256 ${digest.slice(0, 32)}…   ← compare with the Portal's record
+  CN            ${r.cn}
+  SAN           DNS:${r.cn}, DNS:${NODE}
+  key           ${r.paths.key}  (0600 — keep on this node, never send it)
+  CSR           ${r.paths.csr}
+  pubkey sha256 ${r.pubkey_sha256.slice(0, 32)}…   ← compare with the Portal's record
 
 Send the CSR, not the key:
 
-  cat ${CSR}
+  cat ${r.paths.csr}
 
-The Portal signs it (contract §6-1) and returns ${NODE}.pem. Then:
+The Portal signs it (contract §6-1) and returns ${NODE}.pem.
 
-  CFLEX_TLS_CERT=${path.join(DIR, `${NODE}.pem`)}
-  CFLEX_TLS_KEY=${KEY}
-  CFLEX_TLS_CA=${path.join(DIR, 'ringon-ca.pem')}
+이 CLI 를 안 써도 됩니다 — collector 가 부팅할 때 키가 없으면 스스로 만들고
+콘솔의 "포털 연동" 화면에 CSR 을 올립니다 (src/portal/enroll.js). 여기서는
+운영자가 CSR 을 복사해 CA 에 주고, 서명된 인증서를 그 화면에 붙여넣으면 됩니다.
+이 CLI 는 수동·현장 경로입니다.
 `);

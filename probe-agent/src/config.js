@@ -52,6 +52,18 @@ const cfg = {
     enabled: process.env.CFLEX_LEGACY_FORWARD === '1',
   },
 
+  // The Local Console on app01/app02. This is where the collector enrols
+  // (posts its CSR, collects the signed certificate) and, later, pulls its
+  // configuration. NOT the Portal, and not the legacy cloud — three different
+  // destinations that are easy to conflate.
+  console_: {
+    url: process.env.CFLEX_CONSOLE_URL || '',
+    token: process.env.CFLEX_COLLECTOR_KEY || '',
+    pkiDir: process.env.CFLEX_PKI_DIR || '/etc/cflex/pki',
+    enrollIntervalMs: parseInt(process.env.CFLEX_ENROLL_INTERVAL_MS || '60000', 10),
+    caPath: process.env.CFLEX_CONSOLE_CA || '',
+  },
+
   // Local notification (HAEA SMTP relay / Teams / ServiceNow). The file holds
   // the channel config and, by reference (…File keys), its secrets; 0600.
   notify: {

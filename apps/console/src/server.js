@@ -336,6 +336,16 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
     return { ok: true, ...r };
   });
 
+  R('POST', '/v1/console/portal/nodes', 'admin', (c) => {
+    const e = portal.addNode(c.body || {}, c.session.username);
+    audit(c, 'portal_node_add', e.node_id, { site_id: e.site_id, role: e.role });
+    return { status: 201, body: { ok: true, enrollment: e } };
+  });
+  R('DELETE', '/v1/console/portal/nodes/:node', 'admin', (c) => {
+    const r = portal.removeNode(c.params.node, c.session.username);
+    audit(c, 'portal_node_remove', c.params.node);
+    return { ok: true, ...r };
+  });
   R('POST', '/v1/console/portal/enrollments/:node/cert', 'admin', (c) => {
     const e = portal.signCert(c.params.node, c.body || {}, c.session.username);
     audit(c, 'portal_cert_signed', c.params.node, { cn: e?.cert?.cn, to: e?.cert?.to });

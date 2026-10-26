@@ -9,6 +9,8 @@
 const cfg = require('./config');
 const buffer = require('./buffer');
 const forwarder = require('./forwarder');
+const { createEnroller } = require('./portal/enroll');
+const transport = require('./portal/transport');
 const upsPoller = require('./pollers/ups');
 const collectors = require('./pollers');
 
@@ -121,6 +123,41 @@ async function bootstrap() {
   console.log(`[probe] starting cflex-probe v${require('../package.json').version}`);
   console.log(`[probe] tenant=${cfg.tenantId} probe_id=${cfg.probeId}`);
   console.log(`[probe] cflex=${cfg.cflexUrl}`);
+
+  // ── enrolment (contract §6) ───────────────────────────────────────────
+  // The collector gets its own device certificate: generate the key here if
+  // absent, hand the CSR to the Local Console, pick up the signed certificate
+  // when an operator has pasted it. Nobody ssh-es in to run a CLI.
+  //
+  // Idempotent and on a timer, so it also covers "the certificate was signed
+  // an hour after the collector started" and a later rotation.
+  if (cfg.console_.url && cfg.console_.token) {
+    const fs = require('fs');
+    const enroller = createEnroller({
+      consoleUrl: cfg.console_.url,
+      nodeId: cfg.portal.nodeId,
+      tenant: cfg.tenantId,
+      token: cfg.console_.token,
+      dir: cfg.console_.pkiDir,
+      request: transport.request,
+      ca: cfg.console_.caPath && fs.existsSync(cfg.console_.caPath)
+        ? [fs.readFileSync(cfg.console_.caPath)] : [],
+    });
+    const enrol = async () => {
+      const r = await enroller.tick();
+      // A certificate that lands while we are running is only useful once the
+      // forwarder reads it, and it reads its TLS material at construction.
+      // Say so rather than appearing to work until the next restart.
+      if (r.installed) {
+        console.log('[probe] certificate installed — restart the service for the forwarder to use it');
+      }
+    };
+    await enrol();
+    setInterval(enrol, cfg.console_.enrollIntervalMs);
+    console.log(`[probe] enrolment via ${cfg.console_.url} (pki ${cfg.console_.pkiDir})`);
+  } else {
+    console.log('[probe] enrolment not configured (CFLEX_CONSOLE_URL / CFLEX_COLLECTOR_KEY) — device certificate must be placed by hand');
+  }
 
   await loadDevices();
 
