@@ -126,9 +126,29 @@ function state({ dir, nodeId }) {
   if (!has(p.key)) return { state: 'none', paths: p };
   if (!has(p.cert)) return { state: 'pending', paths: p };
   try {
-    const x = new crypto.X509Certificate(fs.readFileSync(p.cert));
+    const pem = fs.readFileSync(p.cert);
+    const x = new crypto.X509Certificate(pem);
     const left = Math.round((new Date(x.validTo) - Date.now()) / 86_400_000);
-    return { state: left > 0 ? 'signed' : 'expired', to: x.validTo, days_left: left, paths: p };
+    const cn = (dn) => (dn || '').split('\n').map(l => l.trim()).find(l => l.startsWith('CN='))?.slice(3) || null;
+    return {
+      state: left > 0 ? 'signed' : 'expired',
+      from: x.validFrom,
+      to: x.validTo,
+      days_left: left,
+      // WHO this node presents itself as, and WHO vouched for it. Shown on the
+      // console's 연동 page because "it connected" is not enough — the
+      // question that cost a day was *which* identity connected, and a CN
+      // plus an issuer answers it at a glance.
+      cn: cn(x.subject),
+      issuer: cn(x.issuer),
+      serial: x.serialNumber || null,
+      // SHA-256 of the DER, which is what a Portal records per node. Not the
+      // SHA-1 `$ssl_client_fingerprint` nginx hands out.
+      fingerprint: crypto.createHash('sha256').update(x.raw).digest('hex'),
+      pubkey_sha256: crypto.createHash('sha256')
+        .update(x.publicKey.export({ type: 'spki', format: 'der' })).digest('hex'),
+      paths: p,
+    };
   } catch (e) { return { state: 'unreadable', error: e.message, paths: p }; }
 }
 

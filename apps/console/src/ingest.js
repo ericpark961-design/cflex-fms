@@ -137,6 +137,13 @@ function createIngest(db, { now = Date.now } = {}) {
       portal: b.portal && typeof b.portal === 'object' ? {
         enabled: !!b.portal.enabled, last_reachable: num(b.portal.last_reachable), last_error: str(b.portal.last_error, 200),
         sent: num(b.portal.sent), rejected: num(b.portal.rejected), queued: num(b.portal.queued),
+        // Where, as whom, over what. A link that failed is not diagnosable
+        // without these: a node pointed at the wrong endpoint or tenant looks
+        // exactly like a rejected certificate.
+        endpoint: str(b.portal.endpoint, 200), tenant: str(b.portal.tenant, 32),
+        site_id: str(b.portal.site_id, 32), api_version: str(b.portal.api_version, 16),
+        api_version_seen: str(b.portal.api_version_seen, 16),
+        last_status: num(b.portal.last_status), proxy: str(b.portal.proxy, 200),
       } : null,
       // What the node says it holds on disk. Kept separate from the
       // enrolment row, which is what the CONSOLE registered: "a certificate
@@ -146,9 +153,14 @@ function createIngest(db, { now = Date.now } = {}) {
       // material at construction, so a certificate newer than the process is
       // on disk and not in use until a restart.
       cert: b.cert && typeof b.cert === 'object' ? {
-        state: str(b.cert.state, 16), to: str(b.cert.to, 48),
+        state: str(b.cert.state, 16), from: str(b.cert.from, 48), to: str(b.cert.to, 48),
         days_left: num(b.cert.days_left), renew_due: !!b.cert.renew_due,
         in_use: !!b.cert.in_use,
+        // The identity presented and who signed it — the question that cost a
+        // day was which identity connected, not whether one did.
+        cn: str(b.cert.cn, 64), issuer: str(b.cert.issuer, 64),
+        serial: str(b.cert.serial, 64), fingerprint: str(b.cert.fingerprint, 64),
+        pubkey_sha256: str(b.cert.pubkey_sha256, 64),
       } : null,
     };
     st.beat.run(now(), JSON.stringify(keep), nodeId);

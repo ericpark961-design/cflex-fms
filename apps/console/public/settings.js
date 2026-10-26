@@ -164,64 +164,151 @@
       el('button', {}, '점검 실행 / Run'));
 
     // ── enrolment ──
-    const LABEL = { signed: '서명됨', pending: 'CSR 도착 — 서명 필요', expected: '대기 — collector 미접속' };
-    const CLS = { signed: 'ok', pending: 'warn', expected: 'muted' };
-    const enrolRows = d.enrollments.length ? d.enrollments.map(e => el('tr', {},
-      el('td', {}, e.node_id, e.site_id ? el('div', { class: 'muted small' }, `${e.site_id} · ${e.role || '-'}`) : null),
-      el('td', { class: CLS[e.state] }, LABEL[e.state] || e.state),
-      el('td', {}, e.cert ? e.cert.cn : e.expect_cn),
-      el('td', { class: e.renew_due ? 'warn' : '' }, e.cert ? `${e.cert.to} (${e.cert.days_left}일)` : '—'),
-      el('td', {}, e.pubkey_sha256 || '—'),
-      el('td', {}, when(e.signed_at)),
-      el('td', {},
-        e.csr
-          ? el('button', { on: { click: () => {
-            // The CSR is public; the key is not and is not here to copy.
-            out.textContent = e.csr;
-            msg('CSR 을 복사해 CA 에 주고, 서명된 인증서를 아래에 붙여넣는다.', true);
-          } } }, 'CSR 보기')
+    // ── 연동 상태: 6단계, 단계마다 누가 그렇게 말하는지 ──────────────
+    // "인증서가 등록됐다"와 "노드가 설치했다"와 "연결됐다"와 "데이터가 흐른다"는
+    // 서로 다른 사실이다. 한 줄로 합치면 화면이 정상으로 보이는데 포털은 heartbeat
+    // 를 한 번도 못 받은 상태가 된다 — 실제로 그랬다.
+    const STATE = {
+      ok:      ['ok',    '정상'],
+      waiting: ['warn',  '대기'],
+      warn:    ['warn',  '주의'],
+      failed:  ['bad',   '실패'],
+      expired: ['bad',   '만료'],
+      revoked: ['bad',   '폐기'],
+      blocked: ['muted', '선행 필요'],
+      unknown: ['muted', '확인 불가'],
+      off:     ['muted', '꺼짐'],
+    };
+    const BY = { console: '콘솔 기록', probe: '프로브 자기보고', verified: '콘솔 직접 확인' };
+
+    const ladder = (e) => el('table', {},
+      el('thead', {}, el('tr', {}, ['', '단계', '근거', '내용'].map(h => el('th', {}, h)))),
+      el('tbody', {}, e.stages.map((st) => {
+        const [cls, word] = STATE[st.state] || ['muted', st.state];
+        return el('tr', {},
+          el('td', { class: st.stale ? 'muted' : cls }, st.stale ? '확인 불가' : word),
+          el('td', {}, st.label),
+          // Who says so. A probe-reported stage is only as good as its last
+          // report, so a stale one is shown as unknown rather than as ok.
+          el('td', { class: 'muted small' }, BY[st.by] || st.by,
+            st.stale ? el('div', { class: 'bad' }, '보고 오래됨') : null),
+          el('td', {}, st.detail || '—',
+            st.as_of ? el('div', { class: 'muted small' }, when(st.as_of)) : null));
+      })));
+
+    // ── 무엇으로 연동했는가 ──────────────────────────────────────────
+    // "연결됐다"보다 "어느 신원으로 연결했다"가 중요하다. 노드 키가 다른
+    // 인증서를 등록해 하루를 쓴 일이 있었고, CN·발급자·지문이 그걸 한눈에 잡는다.
+    const identity = (e, rep) => {
+      const c = rep?.cert || null;
+      const p2 = rep?.portal || null;
+      const rows = [
+        ['등록 Tenant / Node / Site', `HAEA / ${e.node_id} / ${e.site_id || '—'}`, '콘솔 기록'],
+        ['허용 사이트', (e.allowed_sites || []).join(', ') || '없음', '콘솔 기록'],
+        ['전송 대상', p2?.endpoint || c.url, p2 ? '프로브 자기보고' : '콘솔 설정'],
+        ['전송 헤더 Tenant / Node', p2 ? `${p2.tenant || '—'} / ${e.node_id}` : '—', '프로브 자기보고'],
+        ['계약 버전 (보냄 / 받음)', p2 ? `${p2.api_version || '—'} / ${p2.api_version_seen || '응답 없음'}` : '—', '프로브 자기보고'],
+        ['마지막 응답 코드', p2?.last_status != null ? String(p2.last_status) : '—', '프로브 자기보고'],
+        ['프록시', p2?.proxy || '없음', '프로브 자기보고'],
+      ];
+      if (c) {
+        rows.push(
+          ['인증서 CN', c.cn || '—', '프로브 자기보고'],
+          ['발급자', c.issuer || '—', '프로브 자기보고'],
+          ['유효기간', c.from && c.to ? `${c.from} → ${c.to} (${c.days_left}일)` : '—', '프로브 자기보고'],
+          ['시리얼', c.serial || '—', '프로브 자기보고'],
+          ['인증서 지문 SHA-256', c.fingerprint || '—', '프로브 자기보고'],
+          ['공개키 SHA-256', c.pubkey_sha256 || '—', '프로브 자기보고'],
+          ['사용 중', c.in_use ? '예' : '아니오 — 디스크에만 있다 (재시작 필요)', '프로브 자기보고'],
+        );
+      }
+      // The console's own record of the public key, so a mismatch with what the
+      // node reports is visible rather than inferred.
+      rows.push(['콘솔이 등록한 공개키', e.pubkey_sha256 || '—', '콘솔 기록']);
+      const mismatch = c?.pubkey_sha256 && e.pubkey_sha256
+        && !c.pubkey_sha256.startsWith(String(e.pubkey_sha256).replace(/…$/, ''));
+      return [
+        table(['항목', '값', '근거'], rows.map(([k, v, by]) => el('tr', {},
+          el('td', {}, k), el('td', { class: 'mono' }, v), el('td', { class: 'muted small' }, by)))),
+        mismatch
+          ? el('p', { class: 'bad' }, '⚠ 노드가 보고한 공개키가 콘솔 등록값과 다르다 — 다른 노드의 인증서일 수 있다')
           : null,
-        e.state === 'expected'
-          ? el('button', { on: { click: async () => {
-            if (!confirm(`${e.node_id} 등록 행을 지운다. 계속?`)) return;
-            try { await send('DELETE', `/v1/console/portal/nodes/${encodeURIComponent(e.node_id)}`); msg('지웠다.', true); route(); }
-            catch (err) { msg(err.message); }
-          } } }, '행 삭제')
+      ];
+    };
+
+    const byNode = new Map((d.collectors || []).map(x => [x.node_id, x]));
+
+    const nodeBlocks = d.enrollments.length ? d.enrollments.flatMap(e => [
+      el('h2', {}, `${e.node_id}`,
+        el('span', { class: 'muted small' }, `  도달 단계: ${e.reached || '없음'}`)),
+      ...(e.flags || []).map(f => el('p', { class: f.key === 'renew_due' ? 'warn' : 'bad' },
+        `⚑ ${f.label} — ${f.detail}`)),
+      ladder(e),
+      el('h3', {}, '무엇으로 연동했는가'),
+      ...identity(e, byNode.get(e.node_id)),
+      el('div', { class: 'row' },
+        e.csr
+          ? el('button', { on: { click: () => { out.textContent = e.csr; msg('CSR 을 복사해 CA 에 주고, 서명된 인증서를 아래에 붙여넣는다.', true); } } }, 'CSR 보기')
           : null,
         e.state === 'signed'
           ? el('button', { on: { click: async () => {
             if (!confirm(`${e.node_id} 의 인증서를 내린다. collector 는 다음 pull 에서 포털에 붙지 못한다. 계속?`)) return;
-            try { await send('DELETE', `/v1/console/portal/enrollments/${encodeURIComponent(e.node_id)}/cert`); msg('인증서를 내렸다. CSR 은 남아 있어 재서명할 수 있다.', true); route(); }
-            catch (err) { msg(err.message); }
+            try { await send('DELETE', `/v1/console/portal/enrollments/${encodeURIComponent(e.node_id)}/cert`); msg('인증서를 내렸다. CSR 은 남아 있어 재서명할 수 있다.', true); route(); } catch (err) { msg(err.message); }
           } } }, '인증서 내리기')
-          : null))) : [el('tr', {}, el('td', { colspan: 7, class: 'muted' },
-            'collector 가 CSR 을 아직 올리지 않았다. collector 에서: node bin/cflex-csr.js  (키는 그 노드에 남는다)'))];
+          : null,
+        e.state === 'expected'
+          ? el('button', { on: { click: async () => {
+            if (!confirm(`${e.node_id} 등록 행을 지운다. 계속?`)) return;
+            try { await send('DELETE', `/v1/console/portal/nodes/${encodeURIComponent(e.node_id)}`); msg('지웠다.', true); route(); } catch (err) { msg(err.message); }
+          } } }, '행 삭제')
+          : null,
+        el('button', { on: { click: async () => {
+          try {
+            const t = await send('POST', `/v1/console/portal/enrollments/${encodeURIComponent(e.node_id)}/enroll-token`, { ttlMinutes: 30 });
+            out.textContent = t.token;
+            msg('1회용 등록 토큰. 한 번 쓰면 끝이고 다시 볼 수 없다 — collector 의 CFLEX_ENROLL_TOKEN_FILE 에 넣는다.', true);
+          } catch (err) { msg(err.message); }
+        } } }, '등록 토큰 발급')),
+    ]) : [el('p', { class: 'muted' }, '노드가 없다. 아래에서 추가하면 collector 가 접속할 때 스스로 CSR 을 올린다.')];
 
-    const pasteForm = el('form', { on: { submit: async (e) => {
-      e.preventDefault();
-      const b = formData(e.target);
+    // Pre-register a node. Without this the table is empty until a CSR happens
+    // to arrive, and an operator cannot tell "not deployed" from "deployed and
+    // silent" — which are different problems.
+    const addForm = el('form', { on: { submit: async (e2) => {
+      e2.preventDefault();
+      try {
+        const r = await send('POST', '/v1/console/portal/nodes', formData(e2.target));
+        msg(`${r.enrollment.node_id} 추가. collector 가 접속하면 CSR 이 여기로 올라온다.`, true);
+        route();
+      } catch (err) { msg(err.message); }
+    } } },
+      el('h2', {}, '노드 추가'),
+      el('p', { class: 'muted' }, 'collector 가 부팅 시 키를 스스로 만들고 CSR 을 올린다. 여기서 할 일은 CSR 복사와 인증서 붙여넣기뿐이다.'),
+      el('div', { class: 'row' },
+        field('node id', 'node_id', '', 'text', { required: true, pattern: '[a-z0-9][a-z0-9_-]{0,31}', placeholder: 'cap01' }),
+        field('site id', 'site_id', '', 'text', { pattern: '[A-Z0-9][A-Z0-9-]{0,31}', placeholder: 'HAEA-HQ' }),
+        el('label', {}, 'role', el('select', { name: 'role' }, ['collector', 'app'].map(x => el('option', { value: x }, x))))),
+      el('button', {}, '추가 / Add'));
+
+    const pasteForm = el('form', { on: { submit: async (e2) => {
+      e2.preventDefault();
+      const b = formData(e2.target);
       if (!b.node_id) { msg('node 를 고르세요'); return; }
       try {
         const r = await send('POST', `/v1/console/portal/enrollments/${encodeURIComponent(b.node_id)}/cert`,
-          { cert: e.target.cert.value, ca: e.target.ca.value || null });
+          { cert: e2.target.cert.value, ca: e2.target.ca.value || null });
         msg(`${r.enrollment.node_id} 서명 인증서 저장 — CN=${r.enrollment.cert.cn}, 만료 ${r.enrollment.cert.to}. collector 가 다음 pull 에서 가져간다.`, true);
         route();
       } catch (err) {
-        // The server's reasons are specific on purpose (CN mismatch, wrong
-        // public key, no clientAuth) — show them rather than "실패".
-        // `details`, not `extra`: the server puts the code in `error` and the
-        // specifics in `details`, so the first version of this line showed
-        // nothing useful no matter what went wrong.
         msg(err.body?.details ? `${err.message} — ${JSON.stringify(err.body.details)}` : err.message);
       }
     } } },
       el('h2', {}, '서명된 인증서 등록'),
       el('div', { class: 'row' },
         el('label', {}, 'node', el('select', { name: 'node_id' },
-          // Only nodes whose CSR has arrived: there is nothing to sign otherwise.
-          d.enrollments.filter(e => e.csr).map(e => el('option', { value: e.node_id }, e.node_id)))) ),
+          d.enrollments.filter(x => x.csr).map(x => el('option', { value: x.node_id }, x.node_id))))),
       el('label', {}, '인증서 (PEM)', el('textarea', { name: 'cert', rows: 6, required: true, placeholder: '-----BEGIN CERTIFICATE-----' })),
-      el('label', {}, 'CA 체인 (PEM, 선택)', el('textarea', { name: 'ca', rows: 4, placeholder: '-----BEGIN CERTIFICATE-----' })),
+      el('label', {}, 'CA 체인 (PEM, 선택 — 서버 TLS 검증용이 아니다)', el('textarea', { name: 'ca', rows: 4, placeholder: '-----BEGIN CERTIFICATE-----' })),
       el('button', {}, '등록 / Install'));
 
     // ── what the collectors themselves report ──
@@ -238,13 +325,13 @@
 
     return [
       form,
-      el('h2', {}, '장치 인증서 / Device certificate (계약 §6)'),
-      el('p', { class: 'muted' }, '개인키는 collector 에 남고 이 화면에 오지 않는다. collector 가 CSR 을 올리고, 서명된 인증서를 여기서 등록하면 collector 가 가져간다.'),
-      table(['node', '상태', 'CN', '만료', 'CSR 공개키', '서명 시각', ''], enrolRows),
+      el('h2', {}, '연동 상태 / Managed service link'),
+      el('p', { class: 'muted' }, '단계마다 근거를 함께 적는다. 앞 단계가 정상이라고 뒤 단계를 추론하지 않는다 — 인증서가 있다는 것은 연결됐다는 뜻이 아니다.'),
+      ...nodeBlocks,
       addForm,
       pasteForm,
       checkBox,
-      el('h2', {}, 'collector 보고 / As the collectors report it'),
+      el('h2', {}, 'collector 보고 원본 / As the collectors report it'),
       table(['node', '', 'last seen', '포털', 'last reachable', 'sent', 'queued', 'last error'], live),
       out,
     ];

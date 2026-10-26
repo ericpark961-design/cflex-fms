@@ -9,6 +9,10 @@ h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 24px 0 8p
 .muted { color: var(--muted); } .small { font-size: 12px; } .error { color: var(--crit); min-height: 1.4em; } .okmsg { color: var(--ok); }
 /* Verdicts on the 포털 연동 page. Semantic colour, separate from --primary:
    a status must not read as a link, and a link must not read as a status. */
+/* Identifiers that get compared by eye — CN, fingerprints, serials.
+   Proportional digits make two hashes look alike when they are not. */
+.mono { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-size: 12px;
+  word-break: break-all; font-variant-numeric: tabular-nums; }
 .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--crit); }
 /* Check output and the CSR: monospace, scrolls in its own box so a PEM block
    cannot push the page sideways. */

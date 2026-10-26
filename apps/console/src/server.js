@@ -337,18 +337,26 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
   // The Portal connection belongs to the collector; this page configures it
   // and the collector pulls the result. See src/portal.js for why enrolment is
   // split the way it is — the device key never leaves the collector.
-  R('GET', '/v1/console/portal', 'admin', () => ({
-    ok: true,
-    config: portal.get(),
-    defaults: portal.DEFAULTS,
-    enrollments: portal.listEnrollments(),
-    // What the collectors themselves last reported about the link.
-    collectors: settings.listCollectors().map(c => ({
+  R('GET', '/v1/console/portal', 'admin', () => {
+    const reports = new Map(settings.listCollectors().map(c => [c.node_id, {
       node_id: c.node_id, last_seen: c.last_seen,
       stale: !c.last_seen || now() - c.last_seen > 5 * 60e3,
       portal: c.heartbeat?.portal || null,
-    })),
-  }));
+      cert: c.heartbeat?.cert || null,
+    }]));
+    return {
+      ok: true,
+      config: portal.get(),
+      defaults: portal.DEFAULTS,
+      // Each node carries its six stages, and each stage says who says so —
+      // this console's record, the node's self-report, or a check this console
+      // ran itself. Nothing infers a later stage from an earlier one.
+      enrollments: portal.listEnrollments().map(e => ({
+        ...e, ...portal.stagesFor(e, reports.get(e.node_id) || null),
+      })),
+      collectors: [...reports.values()],
+    };
+  });
 
   R('PUT', '/v1/console/portal', 'admin', (c) => {
     const cfg = portal.put(c.body || {}, c.session.username);

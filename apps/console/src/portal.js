@@ -399,6 +399,131 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
     state: r.used_at ? 'used' : (r.expires_at <= now() ? 'expired' : 'open'),
   }));
 
+
+  // ── registration stages ─────────────────────────────────────────
+  //
+  // Six stages, because "a certificate is registered" is not "the node
+  // installed it" is not "it connected" is not "data is flowing". Collapsing
+  // them is how a screen reads healthy while the Portal has never received a
+  // heartbeat — which is exactly what happened before this existed.
+  //
+  // Each stage carries WHO says so:
+  //
+  //   console   this console's own record. A fact we own.
+  //   probe     the node's self-report, from its heartbeat. Trust it only as
+  //             far as `as_of` — a node that stopped reporting keeps its last
+  //             answer, and a stale answer is not a current one.
+  //   verified  this console reached the Portal itself (portal.check()). The
+  //             only stage evidence that does not come from the node.
+  //
+  // Nothing here infers a later stage from an earlier one.
+  const STAGE_MS = 5 * 60_000;          // a report older than this is stale
+
+  function stagesFor(enr, report) {
+    const hb = report?.portal || null;
+    const cert = report?.cert || null;
+    const seen = report?.last_seen ?? null;
+    const stale = seen == null || (now() - seen) > STAGE_MS;
+
+    const st = (key, label, by, state, detail, asOf = null) => ({
+      key, label, by, state, detail,
+      as_of: asOf,
+      // A probe-reported stage whose report is old is not "ok" — it is unknown.
+      stale: by === 'probe' ? stale : false,
+    });
+
+    const haveCsr = !!enr.csr;
+    const haveCert = !!enr.cert;
+    // revoke() clears cert but keeps signed_by, so a row that was signed and
+    // now is not has been withdrawn rather than never issued.
+    const revoked = !haveCert && !!enr.signed_by;
+
+    const out = [
+      st('registered', '등록 대기', 'console', 'ok',
+        `${enr.node_id} · ${enr.site_id || '사이트 미지정'} · ${enr.role || 'collector'}`,
+        enr.requested_at),
+
+      st('csr', 'CSR 접수', 'console', haveCsr ? 'ok' : 'waiting',
+        haveCsr ? `공개키 ${enr.pubkey_sha256 || '?'}` : 'collector 가 아직 올리지 않았다',
+        haveCsr ? enr.requested_at : null),
+
+      st('issued', '승인·발급', 'console',
+        revoked ? 'revoked' : haveCert ? 'ok' : haveCsr ? 'waiting' : 'blocked',
+        revoked ? '인증서가 내려졌다 — CSR 은 남아 있어 재서명 가능'
+          : haveCert ? `CN=${enr.cert.cn} · 만료 ${enr.cert.to}`
+            : haveCsr ? 'CA 서명 후 등록 대기' : 'CSR 이 먼저다',
+        enr.signed_at),
+    ];
+
+    // ── 4. installed — the node's own answer, never inferred from §3 ──
+    if (!cert) {
+      out.push(st('installed', '설치 확인', 'probe', haveCert ? 'unknown' : 'blocked',
+        haveCert ? 'collector 보고 없음 — 가져갔는지 알 수 없다' : '발급이 먼저다', seen));
+    } else if (cert.state === 'signed' && cert.in_use) {
+      out.push(st('installed', '설치 확인', 'probe', 'ok',
+        `노드가 보유·사용 중 · 만료 ${cert.to} (${cert.days_left}일)`, seen));
+    } else if (cert.state === 'signed') {
+      // On disk but not loaded: the forwarder reads its TLS material at
+      // construction, so this needs a restart before it can connect.
+      out.push(st('installed', '설치 확인', 'probe', 'warn',
+        '디스크에 있으나 사용 중이 아니다 — 프로브 재시작이 필요하다', seen));
+    } else if (cert.state === 'expired') {
+      out.push(st('installed', '설치 확인', 'probe', 'expired',
+        `노드의 인증서가 만료됐다 (${cert.to})`, seen));
+    } else {
+      out.push(st('installed', '설치 확인', 'probe', 'waiting',
+        `노드 상태: ${cert.state}`, seen));
+    }
+
+    // ── 5. mTLS link — reachability, as the node saw it ──
+    const reach = hb?.last_reachable ?? null;
+    if (!hb) {
+      out.push(st('linked', 'mTLS 연결 확인', 'probe', 'unknown', 'collector 보고 없음', seen));
+    } else if (hb.enabled === false) {
+      out.push(st('linked', 'mTLS 연결 확인', 'probe', 'off', '포털 전송이 꺼져 있다', seen));
+    } else if (reach) {
+      out.push(st('linked', 'mTLS 연결 확인', 'probe', 'ok',
+        `마지막 성공 ${new Date(reach).toISOString()}`, seen));
+    } else {
+      out.push(st('linked', 'mTLS 연결 확인', 'probe', 'failed',
+        hb.last_error ? `아직 성공 없음 — ${hb.last_error}` : '아직 성공 없음', seen));
+    }
+
+    // ── 6. data flowing ──
+    if (!hb) {
+      out.push(st('flowing', '수집·전송', 'probe', 'unknown', 'collector 보고 없음', seen));
+    } else if ((hb.sent || 0) > 0 && reach) {
+      out.push(st('flowing', '수집·전송', 'probe', 'ok',
+        `전송 ${hb.sent} · 거부 ${hb.rejected || 0} · 큐 ${hb.queued || 0}`, seen));
+    } else if ((hb.queued || 0) > 0) {
+      out.push(st('flowing', '수집·전송', 'probe', 'warn',
+        `큐 ${hb.queued} 대기 — 연결되면 나간다`, seen));
+    } else {
+      out.push(st('flowing', '수집·전송', 'probe', 'waiting', '전송 0건', seen));
+    }
+
+    // ── flags, separate from the stage line ──
+    const flags = [];
+    if (revoked) flags.push({ key: 'revoked', label: '폐기', detail: `by ${enr.signed_by}` });
+    if (enr.cert && enr.cert.days_left != null && enr.cert.days_left <= 0) {
+      flags.push({ key: 'expired', label: '만료', detail: enr.cert.to });
+    } else if (enr.renew_due) {
+      flags.push({ key: 'renew_due', label: '갱신 예정', detail: `${enr.cert?.days_left}일 남음 (계약 §1·§6-2: 60일 창)` });
+    }
+    if (hb && hb.enabled !== false && !reach && hb.last_error) {
+      flags.push({ key: 'link_failed', label: '연결 실패', detail: hb.last_error });
+    }
+    if (haveCert && stale) {
+      flags.push({ key: 'no_report', label: '보고 없음', detail: seen ? `마지막 보고 ${Math.round((now() - seen) / 60000)}분 전` : '보고 이력 없음' });
+    }
+
+    // The furthest stage actually reached — never guessed from a later one.
+    let reached = null;
+    for (const x of out) { if (x.state === 'ok' && !x.stale) reached = x.key; else break; }
+
+    return { stages: out, flags, reached, report_as_of: seen, report_stale: stale };
+  }
+
   // ── the check ───────────────────────────────────────────────────
 
   /**
@@ -437,7 +562,7 @@ function createPortal(db, { sealer, tenant, checker = runChecks, now = Date.now 
   return {
     DEFAULTS, get, put, enroll, certsFor, signCert, listEnrollments,
     addNode, removeNode, revoke, check,
-    assertSite, setAllowedSites, sitesOf,
+    assertSite, setAllowedSites, sitesOf, stagesFor, STAGE_MS,
     issueEnrollToken, consumeEnrollToken, listEnrollTokens,
   };
 }

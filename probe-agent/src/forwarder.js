@@ -94,6 +94,8 @@ function createForwarder(o) {
   let lastReachable = null;
   let commandsPending = 0;
   let drift = null;               // { alarm_id } while the clock is off
+  let lastStatus = null;          // the Portal's last HTTP status, for the console
+  let apiVersionSeen = null;      // X-CFlex-API-Version it answered with
   const stats = { sent: 0, rejected: 0, retried: 0, invalid: 0, blocked_keys: 0, unmapped_alerts: 0, notify_errors: 0, last_error: null };
 
   /**
@@ -108,6 +110,7 @@ function createForwarder(o) {
       const st = csrState({ dir: portal.pkiDir || '', nodeId: portal.nodeId });
       return {
         state: st.state,                       // none | pending | signed | expired | unreadable
+        from: st.from || null,
         to: st.to || null,
         days_left: st.days_left ?? null,
         // Contract §1/§6-2: the Portal issues cert_renew 60 days out.
@@ -115,6 +118,14 @@ function createForwarder(o) {
         // The forwarder reads its TLS material at construction, so a
         // certificate newer than this process is on disk but not in use.
         in_use: !!portal.tls?.cert,
+        // The identity this node presents, and who signed it. The question
+        // that cost a day was not "did it connect" but "which identity
+        // connected" — a CN, an issuer and a fingerprint answer that.
+        cn: st.cn || null,
+        issuer: st.issuer || null,
+        serial: st.serial || null,
+        fingerprint: st.fingerprint || null,
+        pubkey_sha256: st.pubkey_sha256 || null,
       };
     } catch (e) { return { state: 'unknown', error: String(e.message).slice(0, 80) }; }
   }
@@ -151,10 +162,18 @@ function createForwarder(o) {
 
   async function call(method, path, body, key) {
     const buf = Buffer.from(JSON.stringify(body));
-    return request({
+    const r = await request({
       method, url: portal.url.replace(/\/+$/, '') + path, headers: headers(key, buf.length), body: buf,
       tls: portal.tls, proxy: portal.proxy, noProxy: portal.noProxy, timeoutMs: portal.timeoutMs,
     });
+    // Remembered for the console's 연동 page. A status alone cannot say
+    // whether the far side is the Portal at all; the version header it
+    // answers with can, and a node pointed at the wrong host shows up here
+    // rather than as a mysterious certificate error.
+    lastStatus = r.status ?? null;
+    const v = r.headers?.['x-cflex-api-version'];
+    if (v) apiVersionSeen = String(v).slice(0, 16);
+    return r;
   }
 
   async function callLegacy(kind, payload, bufferedTs) {
@@ -427,7 +446,21 @@ function createForwarder(o) {
         ...(s.devices_total !== undefined ? { devices_total: s.devices_total } : {}),
         ...(s.devices_unreachable !== undefined ? { devices_unreachable: s.devices_unreachable } : {}),
         clock: adapt.iso(now()), profile: portal.profile || 'bare', os: osName(),
-        portal: { enabled: !!portal.enabled, last_reachable: lastReachable, last_error: stats.last_error, sent: stats.sent, rejected: stats.rejected, queued: queue.stats().pending },
+        portal: {
+          enabled: !!portal.enabled, last_reachable: lastReachable, last_error: stats.last_error,
+          sent: stats.sent, rejected: stats.rejected, queued: queue.stats().pending,
+          // Where, as whom, over what. Without this the console can say a link
+          // failed but not which endpoint or tenant it failed for — and a node
+          // pointed at the wrong URL looks identical to a rejected certificate.
+          endpoint: portal.url || null,
+          tenant: portal.tenant || null,
+          site_id: portal.siteId || null,
+          api_version: API_VERSION,
+          // Reported, never the credentials themselves.
+          proxy: portal.proxy ? String(portal.proxy).replace(/\/\/[^@]*@/, '//***@') : null,
+          last_status: lastStatus,
+          api_version_seen: apiVersionSeen,
+        },
         // What this node holds on disk, so the console can tell "a certificate
         // is registered" from "the node actually installed it". Those are
         // different facts and conflating them is how a screen says connected
