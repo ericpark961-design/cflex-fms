@@ -1,70 +1,33 @@
 #!/bin/bash
-# install.sh — install cflex-probe on Ubuntu 22.04 VM
-# Usage: sudo bash install.sh
-set -e
+# install.sh — cflex-probe (Collector) on RHEL 8.10 / RHEL 9, bare profile (spec 01 §3.2).
+#
+# RHEL only. No apt, no NodeSource, no git clone, no internet: Node.js 20 comes from
+# the HAEA Satellite AppStream (`dnf module enable nodejs:20`), the code from the
+# offline bundle. The container profile (default) does not use this script at all.
+#
+# This is a thin front for the common installer, so the two profiles cannot drift:
+#   sudo ./install.sh --config /opt/app/cflex/config/site.yaml            # print the plan
+#   sudo ./install.sh --config /opt/app/cflex/config/site.yaml --yes      # apply it
+# Any other cflex-install option is passed through (--host-id, --bundle, --dry-run).
+set -euo pipefail
 
-if [ "$EUID" -ne 0 ]; then echo "Run as root (sudo)"; exit 1; fi
+if [ "$(id -u)" -ne 0 ]; then echo "install.sh: run with sudo" >&2; exit 2; fi
 
-REPO_URL="${REPO_URL:-https://github.com/ericpark961-design/cflex-probe.git}"
-INSTALL_DIR=/opt/cflex-probe
-SERVICE_USER=cflex
+. /etc/os-release 2>/dev/null || true
+case "${ID:-}:${VERSION_ID:-}" in
+  rhel:8.10|rhel:9.*) ;;
+  rhel:*|rocky:8*|rocky:9*|almalinux:8*|almalinux:9*)
+    echo "install.sh: ${PRETTY_NAME:-$ID $VERSION_ID} — target is RHEL 8.10 (RHEL 9 compatible); continuing" >&2 ;;
+  *) echo "install.sh: RHEL 8.10 / 9.x only (found ${PRETTY_NAME:-unknown})" >&2; exit 2 ;;
+esac
 
-echo "[install] cflex-probe installer — Ubuntu 22.04"
-
-# ── 1. Dependencies
-apt-get update
-apt-get install -y curl git build-essential ca-certificates
-
-# Node.js 20 LTS via NodeSource
-if ! command -v node >/dev/null || [ "$(node -v | cut -dv -f2 | cut -d. -f1)" -lt 20 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
-fi
-echo "[install] node: $(node -v)"
-
-# ── 2. Create service user
-if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
-  useradd --system --shell /usr/sbin/nologin --home "$INSTALL_DIR" "$SERVICE_USER"
-fi
-
-# ── 3. Pull / refresh code
-if [ ! -d "$INSTALL_DIR/.git" ]; then
-  git clone "$REPO_URL" "$INSTALL_DIR"
-else
-  git -C "$INSTALL_DIR" pull --ff-only
-fi
-
-# ── 4. Install npm deps
-cd "$INSTALL_DIR"
-sudo -u "$SERVICE_USER" npm install --omit=dev
-
-# ── 5. Bootstrap .env if not present
-if [ ! -f "$INSTALL_DIR/.env" ]; then
-  cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
-  chmod 640 "$INSTALL_DIR/.env"
-  chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/.env"
-  echo "[install] .env created. EDIT IT: $INSTALL_DIR/.env"
-  echo "[install]   Set CFLEX_TOKEN and TENANT_ID before starting."
-fi
-
-# ── 6. Data dir
-mkdir -p "$INSTALL_DIR/data"
-chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
-
-# ── 7. Log files
-touch /var/log/cflex-probe.log /var/log/cflex-probe.err
-chown "$SERVICE_USER:$SERVICE_USER" /var/log/cflex-probe.*
-
-# ── 8. systemd
-cp "$INSTALL_DIR/systemd/cflex-probe.service" /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable cflex-probe
-
-echo
-echo "==============================================="
-echo " cflex-probe installed at $INSTALL_DIR"
-echo " Edit:   $INSTALL_DIR/.env"
-echo " Start:  systemctl start cflex-probe"
-echo " Logs:   journalctl -u cflex-probe -f"
-echo "         tail -f /var/log/cflex-probe.log"
-echo "==============================================="
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Repository: probe-agent/../install. Bundle: app/collector/probe-agent/../../../install.
+for c in "$here/../install/cflex-install" "$here/../../../install/cflex-install"; do
+  if [ -x "$c" ]; then
+    # install runs preflight first and stops on any FAIL; without --yes it only prints the plan.
+    exec "$c" install --role collector --profile bare "$@"
+  fi
+done
+echo "install.sh: cflex-install not found (expected ../install/cflex-install or the bundle's install/)" >&2
+exit 2

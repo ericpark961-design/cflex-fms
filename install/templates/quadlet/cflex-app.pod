@@ -1,0 +1,19 @@
+# C-Flex Local Console pod (web + app + redis share one network namespace) — Podman ≥ 5.0 only.
+# On Podman 4.x (RHEL 8.10) Quadlet has no .pod units; cflex-install renders the same layout with
+# cflex-web owning the namespace instead (docs/install/CONTAINER_PROFILE.md §1.1). Rendered by cflex-install @@INSTALLER_VERSION@@.
+[Unit]
+Description=C-Flex Local Console pod @@VERSION@@ (@@NODE_ID@@)
+Wants=network-online.target
+After=network-online.target
+
+[Pod]
+PodName=cflex-app
+# The pod owns the user namespace; member containers inherit it (Podman refuses --userns with --pod).
+UserNS=keep-id:uid=1001,gid=1001
+Network=@@NETWORK@@
+# Console 443 (FW-5). Host side is @@HTTPS_HOST_PORT@@ — see docs/install/CONTAINER_PROFILE.md §2.
+PublishPort=@@HOST_IP@@:@@HTTPS_HOST_PORT@@:8443/tcp
+@@REDIS_PUBLISH@@
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,34 @@
+# C-Flex Local Console API (cflex-app, spec 01 §2.2). Rendered by cflex-install @@INSTALLER_VERSION@@.
+# Listens on 127.0.0.1:8080 inside the shared network namespace — nginx is its only client,
+# so nothing but 443 (and 6379 on the Redis node) is published on the host.
+[Unit]
+Description=C-Flex Console API @@VERSION@@ (@@NODE_ID@@)
+@@SIDECAR_UNIT_DEPS@@
+
+[Container]
+ContainerName=cflex-console
+Image=localhost/cflex/app:@@VERSION@@
+Pull=never
+UserNS=keep-id:uid=1001,gid=1001
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=ALL
+@@SIDECAR_NETWORK@@
+EnvironmentFile=/opt/app/cflex/config/app/app.env
+Volume=/opt/app/cflex/config/app:/opt/app/cflex/config:ro,Z
+Volume=/opt/app/cflex/secrets/app:/opt/app/cflex/secrets:ro,Z
+Volume=/opt/app/cflex/data:/opt/app/cflex/data:Z
+LogDriver=journald
+HealthCmd=node /opt/cflex/healthcheck.js
+HealthInterval=30s
+HealthTimeout=5s
+HealthStartPeriod=60s
+HealthRetries=3
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

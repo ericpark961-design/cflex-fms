@@ -1,0 +1,28 @@
+# cflex/web — nginx TLS 443 in front of the Local Console (spec 01 §2.2, §3.1).
+#   podman build --format docker -f images/web/Containerfile \
+#     --build-arg BASE_IMAGE=registry.access.redhat.com/ubi8/nginx-122@sha256:… -t cflex/web:<ver> .
+# The server block is per node (peer address, certificate), so cflex-install renders it into
+# /opt/app/cflex/config/nginx and the Quadlet unit mounts it read-only at /opt/cflex/nginx.d.
+ARG BASE_IMAGE=registry.access.redhat.com/ubi8/nginx-122:1
+FROM ${BASE_IMAGE}
+ARG CFLEX_VERSION=0.0.0-dev
+ARG CFLEX_COMMIT=unknown
+LABEL name="cflex/web" \
+      vendor="RingOn" \
+      version="${CFLEX_VERSION}" \
+      org.opencontainers.image.revision="${CFLEX_COMMIT}" \
+      summary="C-Flex Local Console web (nginx) — HAEA on-prem"
+
+USER 0
+# Our main config replaces the image's: pid and temp files in /tmp (tmpfs under a read-only
+# root), logs to stderr/stdout (journald), and only our server block — no default site, no port 80.
+COPY images/web/nginx.conf /etc/nginx/nginx.conf
+RUN chmod 0644 /etc/nginx/nginx.conf \
+ && mkdir -p /opt/cflex/nginx.d \
+ && nginx -t -c /etc/nginx/nginx.conf -e stderr
+
+USER 1001
+EXPOSE 8443/tcp
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["curl", "-fsk", "-o", "/dev/null", "https://127.0.0.1:8443/-/nginx"]
+CMD ["nginx", "-e", "stderr", "-g", "daemon off;"]

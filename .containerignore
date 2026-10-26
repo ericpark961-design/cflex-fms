@@ -1,0 +1,21 @@
+# podman build context = repository root (images/*/Containerfile). install/build-bundle builds
+# from `git archive`, so this only matters for a hand-run `podman build .` on a working tree:
+# keep local dependencies, data and secrets out of the image.
+.git
+**/node_modules
+**/.env
+**/.env.*
+**/data
+**/*.db
+**/dist
+**/dist-console
+.runtime
+scripts
+reference
+backend
+frontend
+deploy
+cflex-shell
+ringonservice-net
+sentinel-api
+tools
