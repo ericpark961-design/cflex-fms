@@ -43,9 +43,28 @@ const cfg = {
     enabled: process.env.CFLEX_LEGACY_FORWARD === '1',
   },
 
-  // Local notification (HAEA SMTP relay / Teams / ServiceNow). The file holds
-  // the channel config and, by reference (…File keys), its secrets; 0600.
+  // The Local Console (spec 01 §2.1): the inventory comes from it, telemetry
+  // and alarm events go to it, and it sends the local notifications
+  // (DECISIONS Q-2026-10-25-10 (A), firewall request v3 FW-7: cap → app 443).
+  // The key is a file (issued by `node src/cli.js collector-key <node>` on
+  // the console, 0600); only its path is here.
+  console: {
+    url: process.env.CFLEX_CONSOLE_URL || '',
+    keyPath: process.env.CFLEX_CONSOLE_KEY_FILE || '',
+    // The CA that signed the console's nginx certificate (HAEA internal CA).
+    caPath: process.env.CFLEX_CONSOLE_CA || '',
+    timeoutMs: parseInt(process.env.CFLEX_CONSOLE_TIMEOUT_MS || '20000', 10),
+  },
+  // How often the inventory and config (thresholds, maintenance windows) are pulled again.
+  configReloadMs: parseInt(process.env.CONFIG_RELOAD_MS || String(5 * 60 * 1000), 10),
+
+  // Local notification from the Collector itself — off. The Local Console
+  // notifies (Q-2026-10-25-10 (A)); cap01 has no route to the SMTP relay or
+  // the proxy in firewall request v3. CFLEX_COLLECTOR_NOTIFY=1 brings the old
+  // path back for a site without a console; CFLEX_NOTIFY_CONFIG alone is
+  // ignored with a warning.
   notify: {
+    collectorNotify: process.env.CFLEX_COLLECTOR_NOTIFY === '1',
     configPath: process.env.CFLEX_NOTIFY_CONFIG || '',
     itsmStorePath: process.env.CFLEX_ITSM_STORE || './data/itsm-map.json',
     idStorePath: process.env.CFLEX_ID_STORE || './data/device-ids.json',
@@ -70,11 +89,16 @@ const cfg = {
     community: process.env.SNMP_COMMUNITY || 'public',
     timeoutMs: parseInt(process.env.SNMP_TIMEOUT_MS || '3000', 10),
     retries: parseInt(process.env.SNMP_RETRIES || '2', 10),
+    // NMC agents answer on 161; another port only for a simulator on a test host.
+    port: parseInt(process.env.SNMP_PORT || '161', 10),
   },
 };
 
 if (cfg.legacy.enabled && !cfg.cflexToken) {
   console.warn('[config] WARN: CFLEX_LEGACY_FORWARD=1 but CFLEX_TOKEN not set — legacy events will fail and buffer');
+}
+if (cfg.console.url && !cfg.console.keyPath) {
+  console.warn('[config] WARN: CFLEX_CONSOLE_URL set but CFLEX_CONSOLE_KEY_FILE not — the Local Console will refuse this node');
 }
 if (cfg.portal.enabled && !(cfg.portal.tls.certPath && cfg.portal.tls.keyPath)) {
   console.warn('[config] WARN: CFLEX_TLS_CERT/CFLEX_TLS_KEY not set — the Portal will refuse this node (mTLS, contract §1)');

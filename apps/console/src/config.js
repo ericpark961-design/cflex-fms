@@ -48,6 +48,20 @@ function load() {
     // Data with no poll inside this window shows as "no data" (the old backend's 5 minutes).
     staleMs: int('CONSOLE_STALE_S', 300) * 1000,
     saml: { enabled: env('CONSOLE_SAML', '0') === '1' },
+    // DECISIONS Q-2026-10-25-09 (B): the HAEA build serves only the internal
+    // screens' API. `portal` keeps the compatibility answers twin's portal
+    // screens used to get (empty routes / control actions); nothing else differs.
+    profile: env('CONSOLE_PROFILE', 'internal') === 'portal' ? 'portal' : 'internal',
+    // Local notification goes out from here (Q-2026-10-25-10 (A), v3 FW-8):
+    // SMTP to the relay directly, Teams/ServiceNow through HAEA's proxy.
+    notify: {
+      proxy: env('HTTPS_PROXY', env('https_proxy', null)),
+      noProxy: env('NO_PROXY', env('no_proxy', null)),
+      caPath: env('CONSOLE_PROXY_CA', null),
+      // A Collector re-sending events after the console was down: older than
+      // this, they are stored but nobody is paged (the Portal has them).
+      replayMaxMs: int('CONSOLE_NOTIFY_REPLAY_MAX_S', 900) * 1000,
+    },
   };
 }
 

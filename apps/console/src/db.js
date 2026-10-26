@@ -29,6 +29,10 @@ function openSqlite(file) {
 
 function migrate(db) {
   db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+  // Columns added after a table first shipped: CREATE TABLE IF NOT EXISTS
+  // leaves an existing table alone, so they are added here.
+  const has = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col);
+  if (!has('alarm_events', 'local_notified')) db.exec('ALTER TABLE alarm_events ADD COLUMN local_notified TEXT');
 }
 
 /** BEGIN … COMMIT around fn; ROLLBACK if it throws. Works on both drivers. */
