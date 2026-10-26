@@ -378,7 +378,7 @@
 - 다음 세션 계획: PR 검토 반영 → WO-INT-012(D-13 분산 구조) 또는 관리자가 지시하는 순서. Q-16을 승인하면 버그 수정 WO
 
 ### 2026-10-26 11:55 PDT — Claude Code (11차)
-- WO-INT-012: **검토요청** | 브랜치 `wo/INT-012-distributed` (base main `0c02f13`, 작업 트리 `../cflex-fms-wt-int012`) | 커밋 `7b09e7c` | PR: 아래 링크(다음 커밋)
+- WO-INT-012: **검토요청** | 브랜치 `wo/INT-012-distributed` (base main `0c02f13`, 작업 트리 `../cflex-fms-wt-int012`) | 커밋 `7b09e7c` + STATUS `34ab78b` | **PR #11** https://github.com/ericpark961-design/cflex-fms/pull/11
   - 한 것:
     - ① **포털 송신기 → FMS(app)**: `apps/console/src/portal.js`(컬렉터 forwarder 규칙 그대로 이식 — §5 화이트리스트·§7 스키마 검증, Idempotency-Key 고정, 1 s…5 min ±20 % 백오프, 429 Retry-After, 409 재시도, 그 밖 4xx 버림, CLOCK_DRIFT, replaced_by 1회).
       7일 버퍼 = db01 `portal_outbox`(추가형 `0002_portal_outbox.sql`, 표 3·열 1 추가만). 두 app 노드가 넣고, **advisory lock(`LOCKS.portal`) 잡은 1노드만** 비우기·인벤토리·컬렉터 heartbeat 대리 송신. heartbeat(`role:app`)는 노드마다. 이벤트는 콘솔 통보 결과(`local_notified`)를 담을 때까지 최대 30초 보류.
