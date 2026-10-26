@@ -1,0 +1,105 @@
+# Site Book — HAEA HQ MDF 2F  (schema: knowledge/schemas/sitebook_unit.schema.json)
+# 출처: RingOn Q3-2026 PM 보고서 2026-10-02 (원문 f02575bb-Ring-On_Post_Inspection_Report_HAEA_HQ_MDF_2F.docx) + 부록 C 시드 행 "HAEA HQ MDF 2F"
+# 규칙: 보고서에 없는 값은 unknown — 추정으로 채우지 않는다. 비밀값(community, v3 키, 연락처 원문) 없음.
+schema_version: 1
+tenant: HAEA
+site: HAEA-HQ
+unit_id: HAEA-HQ-MDF-2F
+unit_name: "HAEA HQ MDF 2F"
+in_sow: true
+quantity_basis: "48 (Q3-2026 실사, 부록 C) — 44(SOW)/41(NMC IP)과 혼용 금지"
+
+build_up:
+  manufacturer: Schneider Electric (APC)
+  model: SRT5KRMXLT
+  model_family: "Smart-UPS SRT 5000 RM"
+  serial: AS2528170119
+  mfg_date: "2025-07-08"
+  firmware_ups: "UPS 16.9 (ID:1044)"
+  firmware_nmc: unknown
+  nmc_model: "embedded"
+  nmc_mac: unknown
+  rated: "5.4kVA/4.8kW @208V, 6.0kVA/4.8kW @240V"
+  input_voltage_nominal: "208/240V"
+  output_voltage_nominal: "208/240V"
+  phase: unknown
+  battery:
+    type: "RBC (internal)"
+    strings: "INTERNAL"
+    modules_expected: null
+    modules_registered: null
+    install_date: "2025-07"
+    replace_due: "2030-05"
+    status_at_pm: "GOOD, 93%"
+  options:
+    external_bypass_type: "MANUAL"
+    external_battery_packs: unknown
+    fan: unknown
+
+environment:
+  building: "HAEA HQ"
+  room: "2F MDF"
+  cabinet_or_rack: "IDF-2 (as labeled on report)"
+  ru_position: unknown
+  room_temp_c_baseline: unknown
+  humidity_baseline: unknown
+  hvac_note: unknown
+  nmc_env_prev_high_ts: null
+
+cabling:            # 전부 현장 입력 대기 — 사진 1장 + 라벨 문자열 필요 (명세 03 §4.3)
+  input_panel: unknown
+  input_breaker: unknown
+  output_breaker: unknown
+  output_pdu_targets: []
+  bypass_location: unknown
+  nmc_port: { switch: unknown, port: unknown, vlan: unknown, ip_ref: "Exhibit 1 NMC IP (값은 포털 비밀 저장소)" }
+  snmp_version: unknown
+  console_cable: unknown
+
+baseline:           # source=pm_report, 2026-10-02. 이후 telemetry 7일 중앙값으로 갱신(명세 03 §4.1)
+  source: pm_report
+  measured_at: "2026-10-02 18:32"
+  load_pct: 18
+  load_kw: null
+  load_kva_display: "1008VA"
+  runtime: "41:11"
+  dc_v: 205.7
+  input_v_measured: "205.5V"
+  output_v_measured: "205.5V"
+  output_a: 4.9
+  batt_temp_c: null
+  efficiency_pct: unknown
+  self_test_last: "GOOD 2026-10-02 18:34"
+  self_test_prev: "2026-10-01"
+
+pm_history:
+  - date: "2026-10-02"
+    quarter: "Q3 2026"
+    result: PASS
+    checks_passed: 9
+    checks_na: 1            # 10번 redundancy check (paired 아님)
+    alarm_history_cleared: true
+    findings:
+      - "TIME NEEDS TO BE CORRECTED, 50 MINUTES BEHIND"
+      - "NO ALARMS EXIST ON SYSTEM"
+      - "CHARGE LEVEL 99% 41M09S RUNTIME"
+      - "ALARM TEST PERFORMED: GOOD 10/02/2026 18:47"
+    fse: unknown
+    report_file: "f02575bb-Ring-On_Post_Inspection_Report_HAEA_HQ_MDF_2F.docx"
+
+alarm_history_baseline:
+  note: "PM 시점 활성 알람 0 (IDF 537: REPLACE ALL RBC 알람 문구 기록). NMC 자체 로그는 collect_diag 번들 수신 후 적재."
+  open_alarms_at_pm: 0
+
+runbook_candidates:
+  - RB-UPS-CLOCK-DRIFT-001
+  - RB-UPS-LOAD-LOW-001
+
+source_refs:
+  - kind: pm_report
+    file: "f02575bb-Ring-On_Post_Inspection_Report_HAEA_HQ_MDF_2F.docx"
+  - kind: inventory_seed
+    file: docs/spec/Appendix_C_Q3-2026_PM_Inventory_Seed.csv
+    row: "HAEA HQ MDF 2F"
+updated_by: PM
+updated_at: "2026-10-26"

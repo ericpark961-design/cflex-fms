@@ -1,0 +1,29 @@
+# schema: knowledge/schemas/runbook.schema.json
+id: RB-UPS-ON-BATTERY-001
+title: "UPS_ON_BATTERY(P1) — 온배터리 전환: 런타임 확인 → 입력 전원 확인 → 바이패스/정지 판단"
+status: approved
+applies_to: { models: [any], nmc: [any], firmware: "any" }
+triggers:
+  alarm_codes: [UPS_ON_BATTERY, UPS_LOW_BATTERY, UPS_RETURN_FROM_BATTERY, UPS_RUNTIME_LOW_WARN]
+  apc_events: ["UPS: On battery power in response to an input power problem", "upsOnBattery (trap 5)", "powerRestored (trap 9)", "lowBattery (trap 7)"]
+symptoms: ["입력 전원 이상(정전·전압/주파수 이탈·입력 차단기 트립)으로 배터리 급전"]
+causes:
+  - { cause: "건물/분전반 정전 또는 입력 차단기 트립 (Site Book cabling.input_panel/input_breaker 참조)", likelihood: high }
+  - { cause: "입력 전압 품질(Sag/Surge) — 짧은 온배터리 반복이면 이쪽, 감도(Sensitivity) 설정 검토", likelihood: medium }
+  - { cause: "UPS 입력 릴레이/내부 고장 — 다른 유닛 정상인데 단독 반복", likelihood: low }
+checks:
+  - { step: "첫 60초: 남은 런타임(Site Book baseline 대비), 같은 사이트 다른 유닛도 온배터리인지(건물 정전 vs 분기)", read_only: true }
+  - { step: "입력 전압/주파수 telemetry, 입력 차단기 상태(현장)", read_only: true }
+actions:
+  - { step: "런타임 < 15분이고 복전 전망 없음 → 고객 NOC에 부하(네트워크 장비) 정상 종료 안내 (PowerChute 유무 확인)", impact: high, who: "HAEA NOC", rollback: "n/a" }
+  - { step: "입력 차단기 트립이면 원인(과부하/누설) 확인 전 재투입 금지 → 전기 담당 확인", impact: high, who: "HAEA 시설/전기", rollback: "n/a" }
+  - { step: "반복 짧은 온배터리(일 3회 이상): 감도 설정/전압 범위 조정은 고객 승인 후 FSE가 NMC에서", impact: low, who: "FSE", rollback: "이전 설정" }
+verification: ["UPS_RETURN_FROM_BATTERY(P4) 수신, 충전 재개, 런타임 회복 추세"]
+escalate_if: ["UPS_LOW_BATTERY(P1) → 즉시 당직 전화, 부하 종료", "복전 후 UPS_OUTPUT_OFF → P1 현장 출동"]
+sources:
+  - { grade: A, ref: "계약 00 부록 B — P1 코드", doc_id: "00_INTERFACE_CONTRACT_Probe-Portal_v1.md" }
+  - { grade: A, ref: "APC Smart-UPS SRT User Guide — On Battery / Sensitivity", doc_id: "TBD-K1" }
+severity_hint: P1
+customer_visible: true
+last_reviewed: "2026-10-26"
+reviewed_by: PM

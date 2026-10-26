@@ -1,0 +1,58 @@
+# schema: knowledge/schemas/runbook.schema.json
+id: RB-UPS-RBC-REPLACE-ALARM-001
+title: "배터리 상태 GOOD(93~94%)·자가진단 PASS인데 \"REPLACE ALL RBC\"(배터리 교체) 알람 표시"
+status: approved
+applies_to:
+  models: [SRT5KRMXLT, SRT3000RMXLA, SRT3000RMXLA-NC]
+  nmc: [embedded, NMC2, NMC3]
+  firmware: "any"
+triggers:
+  alarm_codes: [UPS_BATTERY_REPLACE]     # 부록 B P2
+  apc_events: ["UPS: The battery needs replacement", "UPS: Battery needs replacement", "upsBatteryNeedsReplacement (trap 17)"]
+  pm_findings: ["REPLACE ALL RBC", "REPLACE RBC"]
+symptoms:
+  - "디스플레이/NMC에 Replace Battery 표시, 그러나 배터리 용량 93~94%, 런타임 33~39분(5kVA·20% 부하 기준 정상), 자가진단 GOOD (HAEA HQ IDF 537, 2026-10-02)"
+causes:
+  - cause: "자가진단 중 배터리 전압 강하 기준 초과(순간) — 설치 1년 내 신품이면 오판정 가능, 재시험으로 해소되는 경우 많음"
+    likelihood: medium
+    evidence: "설치 2025-07, 교체 예정 2030-05, 용량 94%"
+  - cause: "RBC 커넥터 접촉 불량/배터리 모듈 1개 전압 편차(스트링 내 셀 불량 시작)"
+    likelihood: medium
+  - cause: "배터리 온도 상승 환경에서 내부 저항 증가 — 온도 24°C로 정상 범위이므로 가능성 낮음"
+    likelihood: low
+  - cause: "교체 알림 날짜(Battery replacement date/Install date 설정) 오류로 날짜 기반 알림"
+    likelihood: low
+checks:
+  - step: "NMC → Status → UPS → Battery: Capacity, Temperature, Battery Voltage(218V 기록), Replacement date 확인"
+    read_only: true
+  - step: "이벤트 로그에서 'battery needs replacement' 최초 발생 시각과 그 직전 Self-test/온배터리 이벤트 확인"
+    read_only: true
+  - step: "최근 7일 telemetry: 배터리 전압·온도 추세, 런타임 급감 여부 (포털 Site Book baseline 대비)"
+    read_only: true
+actions:
+  - step: "부하가 보호되는 시간대에 NMC에서 Self-test 1회 재실행(런타임 캘리브레이션 아님 — 캘리브레이션은 배터리를 깊게 방전시키므로 고객 승인 전 금지)"
+    impact: low           # 자가진단은 수 초간 배터리로 전환
+    who: "FSE 또는 HAEA NOC (고객 통보 후)"
+    rollback: "n/a"
+  - step: "알람 지속 시 RBC 커넥터 재장착·모듈별 개방전압 측정(FSE 현장), 편차 모듈 식별"
+    impact: medium        # 커버 개방·배터리 분리, 바이패스 절차 필요
+    who: "FSE"
+    rollback: "원 모듈 재장착"
+  - step: "지속·재발 시 Schneider 보증(설치 2025-07 → 보증기간 내) RMA/RBC 교체 — 교체 후 Install date 갱신"
+    impact: medium
+    who: "RingOn 서비스 (보증 청구)"
+    rollback: "n/a"
+verification:
+  - "재시험 후 Replace Battery 표시 소거, 이벤트 로그에 'battery replaced'/'needs replacement cleared'"
+  - "포털 UPS_BATTERY_REPLACE alarm_clear 수신"
+escalate_if:
+  - "용량 < 60%(UPS_BATTERY_CAPACITY_LOW P3) 또는 런타임 기준선 대비 30% 이상 감소 → 즉시 교체 일정"
+  - "동일 사이트 복수 유닛 동시 발생 → 환경(온도)·전원 품질 공통 원인 조사"
+sources:
+  - { grade: A, ref: "APC Smart-UPS SRT 5000 User Guide — Troubleshooting: Replace Battery indicator", doc_id: "TBD-K1" }
+  - { grade: A, ref: "Schneider KB — Why does my Smart-UPS show Replace Battery when the battery is new?", doc_id: "TBD-K1(FA#)" }
+  - { grade: B, ref: "RingOn PM 2026-10-02 HAEA HQ IDF 537 — ALARM: REPLACE ALL RBC, 94%, 39m33s, 24°C, 218.0V", file: "knowledge/sitebook/HAEA/HQ/HAEA-HQ-IDF-537.yaml" }
+severity_hint: P2
+customer_visible: true
+last_reviewed: "2026-10-26"
+reviewed_by: PM

@@ -1,0 +1,56 @@
+# schema: knowledge/schemas/runbook.schema.json
+id: RB-UPS-CLOCK-DRIFT-001
+title: "UPS/NMC 시계가 수십 분 어긋남 (PM 소견 \"TIME NEEDS TO BE CORRECTED, 50~55 MINUTES BEHIND\")"
+status: approved
+applies_to:
+  models: [SRT5KRMXLT, SRYLF20KRMT, SRYLFXBPRM4, SRT3000RMXLA]
+  nmc: [embedded, NMC2, NMC3]
+  firmware: "any"
+triggers:
+  alarm_codes: [CLOCK_DRIFT]            # 계약 00 부록 B, P4
+  apc_events: ["System: Date/time changed", "NTP: Synchronization failed", "System: Network service started (NTP)"]
+  pm_findings: ["TIME NEEDS TO BE CORRECTED"]
+  telemetry_rules: ["abs(nmc_sysUpTime_wallclock - probe_clock) > 300s"]
+symptoms:
+  - "NMC Main → About → UPS 의 시간이 실제보다 50~55분 늦음 (HAEA HQ 2026-10-02: IDF 332 55분, IDF 433 54분, IDF 537 55분, MDF 2F 50분 — 4대 공통)"
+  - "이벤트 로그·데이터 로그의 타임스탬프가 포털 수신 시각과 어긋나 알람 상관분석이 틀어짐"
+causes:
+  - cause: "NTP 서버 미설정 또는 NTP(123/UDP)가 관리 VLAN에서 차단 — 여러 대가 같은 오차면 사이트 공통 원인"
+    likelihood: high
+    evidence: "같은 사이트 4대가 50~55분으로 비슷하게 늦음 → 설치 시 수동 설정 후 드리프트 또는 NTP 미동기"
+  - cause: "시간대(Time Zone)/DST 설정 오류 — 정확히 60분이면 이쪽을 먼저 의심"
+    likelihood: medium
+  - cause: "NMC 재부팅 후 RTC 초기화(RTC 백업이 없는 카드/펌웨어)"
+    likelihood: low
+checks:
+  - step: "NMC 웹 UI → Configuration → General → Date/Time → Mode 확인 (Manual / Synchronize with NTP)"
+    read_only: true
+  - step: "NTP 모드면 Primary/Secondary NTP 서버 주소와 마지막 동기 상태·Time Zone 확인"
+    read_only: true
+  - step: "고객 내부 NTP 서버에서 관리 VLAN → 123/UDP 허용 여부 확인 (HAEA 방화벽 요청서 v3는 변경하지 않음 — 내부 NTP는 v3 범위 밖이면 HAEA 네트워크팀 확인)"
+    read_only: true
+actions:
+  - step: "HAEA 내부 NTP 서버 주소를 NMC Date/Time에 설정하고 'Update Using NTP Now' 1회 실행"
+    impact: none          # 전원 경로 영향 없음
+    who: "FSE 또는 HAEA NOC (NMC 관리자 권한)"
+    rollback: "Manual 모드로 되돌리고 이전 시각 입력"
+    note: "Probe/포털은 장비에 쓰지 않는다(D-05) — 사람이 NMC에서 수행"
+  - step: "Time Zone을 America/Los_Angeles(PST/PDT 자동)로 확인·수정"
+    impact: none
+    who: "FSE 또는 HAEA NOC"
+    rollback: "이전 값 복원"
+verification:
+  - "5분 후 NMC 시각 오차 ≤ 60초 (포털: CLOCK_DRIFT 이벤트 clear 또는 telemetry 비교)"
+  - "이벤트 로그에 'NTP: Synchronized' 기록"
+  - "같은 사이트 나머지 유닛도 동일 설정인지 일괄 점검(HQ 6대)"
+escalate_if:
+  - "동기 후 24h 내 재발 → NMC 펌웨어 KB 확인, 카드 교체 검토"
+  - "NTP 차단이 원인이고 방화벽 변경이 필요 → HAEA 네트워크팀 요청(v3 요청서와 별건으로)"
+sources:
+  - { grade: A, ref: "APC NMC3 User Guide — Configuration > General > Date/Time", doc_id: "TBD-K1", anchor: "TBD" }
+  - { grade: A, ref: "Schneider KB — Smart-UPS SRT/NMC 시간 설정 및 NTP 동기화 FAQ", doc_id: "TBD-K1" }
+  - { grade: B, ref: "RingOn PM 2026-10-02 HAEA HQ IDF 332/433/537·MDF 2F — 50~55분 지연 4건", file: "knowledge/sitebook/HAEA/HQ/*.yaml" }
+severity_hint: P4
+customer_visible: true
+last_reviewed: "2026-10-26"
+reviewed_by: PM

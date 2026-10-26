@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cflex/knowledge/runbook.schema.json",
+  "title": "C-Flex Runbook (K2)",
+  "type": "object",
+  "required": ["id", "title", "status", "applies_to", "triggers", "causes", "checks", "actions", "verification", "sources", "severity_hint", "last_reviewed"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^RB-[A-Z0-9-]+-[0-9]{3}$" },
+    "title": { "type": "string", "minLength": 8 },
+    "status": { "enum": ["draft", "approved", "retired"] },
+    "applies_to": { "type": "object", "properties": { "models": { "type": "array", "items": { "type": "string" } }, "nmc": { "type": "array", "items": { "type": "string" } }, "firmware": { "type": "string" } } },
+    "triggers": { "type": "object", "properties": {
+      "alarm_codes": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z0-9_]+$" }, "description": "계약 00 부록 B 코드만" },
+      "apc_events": { "type": "array", "items": { "type": "string" } },
+      "pm_findings": { "type": "array", "items": { "type": "string" } },
+      "telemetry_rules": { "type": "array", "items": { "type": "string" } } } },
+    "symptoms": { "type": "array", "items": { "type": "string" } },
+    "causes": { "type": "array", "items": { "type": "object", "required": ["cause", "likelihood"], "properties": { "cause": { "type": "string" }, "likelihood": { "enum": ["high", "medium", "low", "n/a"] }, "evidence": { "type": "string" } } } },
+    "checks": { "type": "array", "items": { "type": "object", "required": ["step", "read_only"], "properties": { "step": { "type": "string" }, "read_only": { "const": true, "description": "확인 단계는 항상 읽기 전용" } } } },
+    "actions": { "type": "array", "items": { "type": "object", "required": ["step", "impact", "who", "rollback"], "properties": { "step": { "type": "string" }, "impact": { "enum": ["none", "low", "medium", "high", "n/a"] }, "who": { "type": "string" }, "rollback": { "type": "string" }, "note": { "type": "string" } } } },
+    "verification": { "type": "array", "items": { "type": "string" } },
+    "escalate_if": { "type": "array", "items": { "type": "string" } },
+    "sources": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["grade", "ref"], "properties": { "grade": { "enum": ["A", "B", "C", "D"] }, "ref": { "type": "string" }, "doc_id": { "type": "string" }, "anchor": { "type": "string" }, "file": { "type": "string" }, "url": { "type": "string" } } } },
+    "severity_hint": { "enum": ["P1", "P2", "P3", "P4"] },
+    "customer_visible": { "type": "boolean" },
+    "last_reviewed": { "type": "string", "format": "date" },
+    "reviewed_by": { "type": "string" }
+  }
+}

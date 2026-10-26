@@ -1,0 +1,29 @@
+# schema: knowledge/schemas/runbook.schema.json
+id: RB-UPS-LOAD-LOW-001
+title: "저부하 운전(5kVA에 18~21%, 20kW에 3kW) — 런타임·효율·알람 해석 기준"
+status: approved
+applies_to: { models: [SRT5KRMXLT, SRYLF20KRMT, SRYLFXBPRM4, SRT3000RMXLA], nmc: [any], firmware: "any" }
+triggers:
+  alarm_codes: [UPS_RUNTIME_LOW_WARN]    # 저부하인데 런타임 경고가 뜨면 배터리 문제 신호
+  apc_events: []
+  pm_findings: ["LOAD TOO LOW", "Efficiency: N/A"]
+  telemetry_rules: ["load_pct < 25"]
+symptoms:
+  - "HAEA HQ SRT5K 4대: 18~21%(1.0~1.2kVA), 런타임 33~41분. MDF 1F Ultra: 3.0kW/20kW, 런타임 2시간. PM 보고서에 Efficiency N/A(저부하에서 효율 미표시)"
+causes:
+  - { cause: "설계 여유(장비 증설 대비) — 정상", likelihood: high }
+  - { cause: "출력 분기의 일부 부하가 다른 전원/PDU로 이전됨(케이블링 변경) — Site Book cabling 대조", likelihood: low }
+checks:
+  - { step: "Site Book baseline(load_pct) 대비 ±5%p 이내면 정상. 급감하면 출력 차단기/PDU 확인", read_only: true }
+  - { step: "런타임이 같은 부하에서 기준선 대비 30% 이상 짧아지면 배터리 열화 신호 → RB-UPS-RBC-REPLACE-ALARM-001", read_only: true }
+actions:
+  - { step: "조치 불필요. 보고서에는 '저부하, 효율 N/A는 정상'으로 표기", impact: none, who: "n/a", rollback: "n/a" }
+verification: ["n/a"]
+escalate_if: ["부하 0% 또는 출력 전류 0A 지속 → 출력 경로 단절 의심, NOC 확인"]
+sources:
+  - { grade: A, ref: "APC Smart-UPS SRT 5000 사양서 — 런타임 차트(부하별)", doc_id: "TBD-K1" }
+  - { grade: B, ref: "RingOn PM 2026-10-02 HAEA HQ 5건 측정값", file: "knowledge/sitebook/HAEA/HQ/*.yaml" }
+severity_hint: P4
+customer_visible: true
+last_reviewed: "2026-10-26"
+reviewed_by: PM
