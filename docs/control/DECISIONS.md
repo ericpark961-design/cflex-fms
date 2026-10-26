@@ -359,3 +359,21 @@ Containerfile의 `npm_config_build_from_source=true` + 빌드 직후 로드 검�
 - **(A)** `cflex-migrate-sqlite`의 기본값을 `$CONSOLE_DB`로 하고, 없으면 `/opt/app/cflex/data/console.db`로 한다. 다른 경로는 `--sqlite <file>`로 지정한다 — **권고, 이대로 진행했다.**
 - 함께 기록: 옮기는 것은 사용자·설정·장비·크리덴셜·유지보수 창·열린 알람(+코멘트·ServiceNow 매핑)·최근 90일 이벤트(`--events-days`)이다.
   지시 범위 밖이지만 **감사로그 전부**도 옮긴다(append-only 10년 보존 — 업그레이드로 감사 기록이 끊기지 않게). 텔레메트리는 옮기지 않는다.
+
+### 답 Q-2026-10-26-08 → **(A)** (관리자, 2026-10-26)
+집계 표 없음(D-12a). `CFLEX_RETENTION_AGGREGATE_YEARS` 자리만. 장기 트렌드는 포털 WO-PTL-006.
+
+### 답 Q-2026-10-26-09 → **(A)** (관리자, 2026-10-26)
+이번 달 + 3개월 선행, 6시간 주기, advisory lock 1노드. DEFAULT 파티션이 안전망.
+
+### 답 Q-2026-10-26-10 → **(A)** (관리자, 2026-10-26)
+베어 db01 initdb·계정·pg_hba는 문서 절차. HAEA가 컨테이너를 거절할 때 별도 WO.
+
+### 답 Q-2026-10-26-11 → **(A)** (관리자, 2026-10-26)
+lockfile 미커밋 정책 유지(collector·app 공통). 번들 MANIFEST의 sha256이 재현성 근거. 정책 변경은 법인장 결정.
+
+### 답 Q-2026-10-26-12 → **(A)** (관리자, 2026-10-26)
+추가형(additive-only) 마이그레이션 + 이미지 롤백 + 복구 절차(`PG_BACKUP_RESTORE.md` §3·§4)로 명세 01 §3.3 "전방향+롤백" 요건을 충족한 것으로 본다. down 스크립트는 운영 데이터 소실 위험이 더 크다. 명세 01 §3.3 문구는 다음 개정 때 "additive-only + restore"로 정정.
+
+### 답 Q-2026-10-26-13 → **(A)** (관리자, 2026-10-26)
+이관 기본 경로 `$CONSOLE_DB` → `/opt/app/cflex/data/console.db`. 지시문의 `/var/lib/cflex`는 오기. 감사로그 전체 이관 승인.
