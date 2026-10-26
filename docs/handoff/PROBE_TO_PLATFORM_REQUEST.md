@@ -155,14 +155,49 @@ Probe 쪽은 이미 가지고 있다(`portal/csr.js` `state()`): `none|pending|s
 | 연동 점검 (`bin/cflex-portal-check.js`) | 코드 ✅ / **실 포털 실행 ✅** | §2 Q-C 의 출처 |
 | 실제 배포 · 실제 Probe 연결 | ❌ **0** | 포털 mTLS·CA 부재, 콘솔 미배포 |
 
-SAT 용 CSR 2개는 생성해 두었다. 공개키 SHA-256 앞 32자:
+SAT 용 CSR 2개. **공개 정보이므로 본문을 그대로 싣는다.**
+
+> ⚠ **정정 (2026-10-26).** 이 문서의 이전 판에 적은 공개키 지문
+> `15cd4fb5…` / `2212fe09…` 는 **틀렸다.** 당시 CLI 가 `openssl req -pubkey` 의
+> **PEM 문자열**을 sha256 한 값을 찍었다. 포털이 등록 기록으로 쓰는 것은
+> SPKI **DER** 의 sha256 이고, 내 `csr.js` 와 `openssl pkey -pubin -outform DER`
+> 가 독립적으로 그 값에 일치한다. 아래가 정본이다 — 이전 값으로 대조하면
+> 영원히 안 맞는다.
+
+| 노드 | CN | SAN | 공개키 SHA-256 (SPKI DER) |
+|---|---|---|---|
+| cap01 | `TEST.cap01` | `DNS:TEST.cap01, DNS:cap01` | `4027f2276c298c3ad8860690bfddc61e9900664730bfca647c770c00c9b3635a` |
+| cap02 | `TEST.cap02` | `DNS:TEST.cap02, DNS:cap02` | `f6630f3cb4f8b8496a69288078843396cbc8e2aeb9dff41b04f1fb51fbdd543b` |
+
+둘 다 P-256 / `ecdsa-with-SHA256`, EKU `clientAuth`, 자기서명 검증 통과,
+**개인키 포함 0건**(grep 확인).
 
 ```
-TEST.cap01   15cd4fb5758e520c41f47fb7ae4bb597…
-TEST.cap02   2212fe095f213c7d3b22e8ebeb63caa3…
+# TEST.cap01
+-----BEGIN CERTIFICATE REQUEST-----
+MIIBajCCARECAQAwWzELMAkGA1UEBhMCVVMxHDAaBgNVBAoME1JpbmdPbiBTZXJ2
+aWNlIENvcnAxGTAXBgNVBAsMEEMtRmxleCBGTVMgUHJvYmUxEzARBgNVBAMMClRF
+U1QuY2FwMDEwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAT2im0ADJPXB8WXI9Rt
+HfGMAXtNNzu24h6AwuNyvkDZBQzc96i1/UJyZVdlAmcJ9kgOpSvAYBDmAZvOcpQG
+tXDgoFQwUgYJKoZIhvcNAQkOMUUwQzAcBgNVHREEFTATggpURVNULmNhcDAxggVj
+YXAwMTAOBgNVHQ8BAf8EBAMCBaAwEwYDVR0lBAwwCgYIKwYBBQUHAwIwCgYIKoZI
+zj0EAwIDRwAwRAIgY/1UfLKwo/hF/EZZbnmhsfrdFGIRhrJ52SxFL9VxeWMCIBj1
+xvmAXQBMHjg26GUpizr8J0xxLKLi/6rB8vZvfp/t
+-----END CERTIFICATE REQUEST-----
+
+# TEST.cap02
+-----BEGIN CERTIFICATE REQUEST-----
+MIIBajCCARECAQAwWzELMAkGA1UEBhMCVVMxHDAaBgNVBAoME1JpbmdPbiBTZXJ2
+aWNlIENvcnAxGTAXBgNVBAsMEEMtRmxleCBGTVMgUHJvYmUxEzARBgNVBAMMClRF
+U1QuY2FwMDIwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQVF7PsTLTVTPFFOeIo
+8Yix7GMIiKgJVa4KkkyuLAOvcaFptz305kuPAUCQtHkPxosCW9UAvUQgk685/N5S
+7lyqoFQwUgYJKoZIhvcNAQkOMUUwQzAcBgNVHREEFTATggpURVNULmNhcDAyggVj
+YXAwMjAOBgNVHQ8BAf8EBAMCBaAwEwYDVR0lBAwwCgYIKwYBBQUHAwIwCgYIKoZI
+zj0EAwIDRwAwRAIgXy6FQh2PpbpE52B4HM6DjOnkeVn8bRCXJVNboRoJ4EwCIGvQ
+cPwkvvWPpiFQ54ciyolS02SJqJaZmYJq7K+dyHmY
+-----END CERTIFICATE REQUEST-----
 ```
 
-CSR 본문은 `docs/handoff/` 에 넣지 않았다 — 필요하면 요청해 주면 전달한다.
 **개인키는 전달하지 않는다.** CA 공개 인증서/체인은 Probe 산출물이 아니다(가이드 §2-4).
 
 ---
