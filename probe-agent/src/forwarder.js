@@ -439,7 +439,7 @@ function createForwarder(o) {
   }
 
   return {
-    sendEvent, postEvents, putInventory, syncInventory, addPoint, flushTelemetry, flush, heartbeat,
+    sendEvent, emitAlarms: emit, postEvents, putInventory, syncInventory, addPoint, flushTelemetry, flush, heartbeat,
     drain: async () => {
       const c = consoleLink ? await consoleLink.flush() : { sent: 0 };
       const r = await flush();
@@ -570,6 +570,8 @@ module.exports = {
   putInventory: (...a) => get().putInventory(...a),
   syncInventory: (...a) => get().syncInventory(...a),
   stats: () => get().stats(),
+  alarms: () => get().alarms,
+  emitAlarms: (...a) => get().emitAlarms(...a),
   lastReachable: () => get().lastReachable(),
   consoleConfigured: () => !!get().console,
   fetchDeviceConfig,

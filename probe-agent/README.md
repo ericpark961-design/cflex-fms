@@ -164,6 +164,70 @@ Devices without a serial (Q-2026-10-25-05) are inventoried with
 `provisional: true, id_basis: "ledger"`; once the serial is known the old ID is
 sent once more with `replaced_by` the new one.
 
+## SNMP traps (WO-INT-006)
+
+`src/trap/` receives SNMP traps (v1, v2c, v3 up to authPriv; informs are
+acknowledged) and puts them into **the same alarm engine** as the polls. A trap
+and a poll that see the same fault share the (device, code) key, so they are one
+alarm with one `alarm_id`, and de-duplication, flapping and maintenance windows
+apply unchanged. Events carry `source: "trap"` and go out the same way
+(Local Console, then Portal). Receive only: nothing is ever written to a device (D-05).
+
+| Env | Default | |
+|---|---|---|
+| `CFLEX_TRAP_PORT` | `1162` | UDP port inside the process. Container: the host maps 162 → 1162 (firewalld forward or sysctl, `docs/install/CONTAINER_PROFILE.md` §2). Bare: `162`, the unit has `CAP_NET_BIND_SERVICE`. The code never asks for privileges |
+| `CFLEX_TRAP_BIND` | `0.0.0.0` | |
+| `CFLEX_TRAP_ENABLED` | on | `0` = no listener |
+
+**Who sent it.** The source address is looked up in the Local Console's inventory
+(the rows the pollers use). The trap must carry *that device's* credential — its
+community, or its v3 user — not just one the node knows. **No credentials are
+configured for traps**: they are the console's per-device SNMP credentials. For
+v3, set the NMC's trap receiver to the same user, auth (SHA…) and priv (AES…)
+keys as the console holds for it; the NMC is the authoritative engine for its
+traps, so no engine ID needs configuring here. A v3 user name with different keys
+on two devices is checked with the first one's (logged). A v3 device sending v2c
+is accepted only if the console holds a community for it.
+
+**What it means.** `src/trap/apc-mib.js` maps APC PowerNet-MIB traps to appendix-B
+codes and nothing else:
+
+| Trap (specific) | Code | |
+|---|---|---|
+| upsOnBattery (5) / powerRestored (9) | `UPS_ON_BATTERY` | raise / clear |
+| lowBattery (7) / returnFromLowBattery (11) | `UPS_LOW_BATTERY` | raise / clear |
+| upsOverload (2) / upsOverloadCleared (33) | `UPS_OVERLOAD` | raise / clear |
+| communicationLost (1) / communicationEstablished (8) | `UPS_COMM_LOST` | raised only if not re-established within 30 min (appendix B) / clear |
+| upsBatteryNeedsReplacement (17) / upsBatteryReplaced (36) | `UPS_BATTERY_REPLACE` | raise / clear |
+| upsDiagnosticsFailed (3) / upsDiagnosticsPassed (10) | `UPS_SELFTEST_FAIL` | raise / clear |
+| upsTurnedOff (12) / upsTurnedOn (30) | `UPS_OUTPUT_OFF` | raise / clear |
+| hardwareFailure/software/switchedBypass (20–22) / returnFromBypass (23) | `UPS_ON_BYPASS` | raise / clear |
+
+For codes the UPS poller also sees, the poll still judges "still there", as for
+any poll alarm; trap-only ones (`UPS_SELFTEST_FAIL`, `UPS_COMM_LOST`) stay open
+until their clear trap. Appendix B has no environment, NetBotz or Rack PDU codes,
+so those traps are not mapped (DECISIONS Q-2026-10-26-05).
+
+**Unknown and rejected.** A trap from an address not in the inventory, or with an
+OID not in the table, is `SNMP_TRAP_UNKNOWN`: not an appendix-B code, so never
+an event — counted, logged, and kept in a list of the last 200
+(`handler.stats()`, `handler.recent()`; DECISIONS Q-2026-10-26-04). A wrong community,
+an unknown v3 user, a bad digest or an undecodable packet is dropped and counted
+(`discarded.auth` / `discarded.malformed`); another device's credential,
+`discarded.wrong_device_credential`.
+
+**Testing.** `node --test test/trap.test.js` (127.0.0.1 only). By hand, against a
+running probe:
+
+```
+TRAP_HOST=127.0.0.1 TRAP_PORT=1162 SNMP_COMMUNITY=<device community> node sim/sim-trap.js
+SNMP_V3_USER=<user> SNMP_V3_AUTH_KEY=<…> SNMP_V3_PRIV_KEY=<…> node sim/sim-trap.js upsOverload v3
+```
+
+The scenario sends 15 traps — 13 APC kinds plus two with no code — over v1, v2c and v3.
+In forward mode, send from another host: firewalld does not forward the host's
+own traffic to 162.
+
 ## Legacy endpoints (only with `CFLEX_LEGACY_FORWARD=1`)
 
 | Direction | Endpoint | Purpose |
