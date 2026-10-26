@@ -9,11 +9,31 @@
     session_store_unavailable: '세션 저장소(Redis)에 연결할 수 없습니다. / Session store unavailable.',
   };
   async function post(path, body) {
-    const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' });
+    const r = await fetch(B + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' });
     let j = null; try { j = await r.json(); } catch (e) { /* empty */ }
     return { status: r.status, json: j || {} };
   }
-  const next = () => { const n = new URLSearchParams(location.search).get('next'); return n && n.startsWith('/') && !n.startsWith('//') ? n : '/twin/'; };
+  // 로그인 후 착지. ?next= 가 있으면 그걸 쓴다 — api() 가 401 에서
+  // ?next=/settings 를 붙여 보내므로, 보던 화면으로 돌아온다.
+  //
+  // 기본값은 /settings 다. 전에는 /twin/ 이었는데, 콘솔이 다른 앱과 호스트를
+  // 공유하면 그 경로가 콘솔 것이 아닐 수 있다 — fms.runless.co.uk 에서는
+  // nginx 가 ^~ /twin/ 으로 먼저 잡아 FMS SPA 를 내보내고, 그쪽은 클라우드
+  // 세션이 없어 다시 로그인으로 보낸다. 로그인이 끝없이 반복됐다.
+  // 콘솔 자신이 확실히 소유한 경로로 착지한다.
+  const B = (typeof window !== 'undefined' && window.CFLEX_BASE) || '';
+
+  // 로그인 후 착지. ?next= 가 있으면 그걸 쓴다 — settings.js 가 401 에서 자기
+  // 접두사를 붙여 보내므로 보던 화면으로 정확히 돌아온다.
+  //
+  // 기본값은 이 콘솔의 /settings 다. 전에는 /twin/ 이었는데, 호스트를 공유하면
+  // 그 경로가 콘솔 것이 아닐 수 있다 — fms.runless.co.uk 에서는 nginx 가
+  // ^~ /twin/ 으로 먼저 잡아 기존 FMS SPA 를 내보내고, 그쪽은 클라우드 세션이
+  // 없어 다시 로그인으로 보냈다. 로그인이 끝없이 반복됐다.
+  const next = () => {
+    const n = new URLSearchParams(location.search).get('next');
+    return n && n.startsWith('/') && !n.startsWith('//') ? n : `${B}/settings`;
+  };
 
   $('#login').addEventListener('submit', async (e) => {
     e.preventDefault(); msg('');

@@ -16,6 +16,7 @@ const auth = require('./auth');
 const { createViews } = require('./views');
 const { createIngest } = require('./ingest');
 const { createSettings } = require('./settings');
+const { cookiePathFor } = require('./cookie-path');
 const { createPortal } = require('./portal');
 const { createSealer } = require('./seal');
 const { createConsoleNotify, announces, netFrom } = require('./notify');
@@ -49,7 +50,10 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
   const audit = (c, action, target, detail) => auditStmt.run(now(), c.session?.username || c.collector?.node_id || null, action,
     target == null ? null : String(target), detail == null ? null : JSON.stringify(detail), c.ip, config.nodeId);
 
-  const cookie = (token, maxAge) => `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict${config.cookieSecure ? '; Secure' : ''}; Max-Age=${maxAge}`;
+  // 세션 쿠키의 Path. 콘솔이 접두사 아래 붙어 있으면 그 접두사로 좁힌다 —
+  // 판정과 그 이유는 cookie-path.js 에.
+  const cookiePath = (req) => cookiePathFor(req?.headers?.['x-forwarded-prefix'], config.trustProxy);
+  const cookie = (token, maxAge, req) => `${COOKIE}=${token}; Path=${req ? cookiePath(req) : '/'}; HttpOnly; SameSite=Strict${config.cookieSecure ? '; Secure' : ''}; Max-Age=${maxAge}`;
   const intId = (v) => { const n = parseInt(v, 10); if (!Number.isFinite(n)) throw new HttpError(400, 'invalid_id'); return n; };
   const devRow = (ref) => {
     // twin passes the numeric id, or 'ups-<id>' from an alert row.
@@ -75,14 +79,14 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
     const { token } = await sessions.create(row, { ip: c.ip });
     c.session = { username: row.username };
     audit(c, 'login', row.username);
-    return { status: 200, headers: { 'Set-Cookie': cookie(token, config.session.absoluteS) },
+    return { status: 200, headers: { 'Set-Cookie': cookie(token, config.session.absoluteS, c.req) },
       body: { ok: true, user: settings.userOut(row), must_change: !!row.must_change } };
   });
 
   R('POST', '/v1/auth/logout', 'any', async (c) => {
     await sessions.destroy(c.token);
     audit(c, 'logout', c.session.username);
-    return { status: 200, headers: { 'Set-Cookie': cookie('', 0) }, body: { ok: true } };
+    return { status: 200, headers: { 'Set-Cookie': cookie('', 0, c.req) }, body: { ok: true } };
   });
 
   R('POST', '/v1/auth/password', 'any', async (c) => {
@@ -522,7 +526,11 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
 
   function serveStatic(req, res, pathname) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 404, { ok: false, error: 'not_found' });
-    if (pathname === '/' ) { res.writeHead(302, { Location: '/twin/' }); return res.end(); }
+    // 상대 Location 이다(RFC 7231 §7.1.2). 콘솔이 접두사 아래 붙으면
+    // (/console/) 절대 '/twin/' 은 호스트를 공유하는 다른 앱으로 튄다 —
+    // fms.runless.co.uk 에서 실제로 기존 FMS SPA 로 갔고, 로그인이 무한히
+    // 돌았다. 'twin/' 은 /console/ 에서 /console/twin/, / 에서 /twin/ 이다.
+    if (pathname === '/' ) { res.writeHead(302, { Location: 'twin/' }); return res.end(); }
     if (pathname === '/login' || pathname === '/settings') return serveFile(res, config.publicDir, `${pathname}.html`) || send(res, 404, { ok: false, error: 'not_found' });
     if (pathname.startsWith('/static/')) return serveFile(res, config.publicDir, pathname.slice('/static/'.length)) || send(res, 404, { ok: false, error: 'not_found' });
     if (pathname === '/twin' ) { res.writeHead(301, { Location: '/twin/' }); return res.end(); }

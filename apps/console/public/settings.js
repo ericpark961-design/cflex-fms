@@ -20,9 +20,15 @@
   const msg = (t, ok) => { const m = $('#msg'); m.textContent = t || ''; m.className = ok ? 'okmsg' : 'error'; };
   const when = (ms) => (ms ? new Date(ms).toLocaleString() : '—');
 
+  // 콘솔이 접두사 아래 있으면(/console/...) 모든 호출에 그 접두사를 붙인다.
+  // base.js 가 화면 경로를 보고 알아낸다 — 빌드나 서버 설정에 박아두면 두
+  // 배포가 갈라지고 어느 한쪽은 반드시 깨진다.
+  const B = (typeof window !== 'undefined' && window.CFLEX_BASE) || '';
+  const toLogin = () => location.replace(`${B}/login?next=${encodeURIComponent(`${B}/settings`)}`);
+
   async function api(path, opts = {}) {
-    const r = await fetch(path, { credentials: 'same-origin', ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
-    if (r.status === 401) { location.replace('/login?next=/settings'); throw new Error('unauthorized'); }
+    const r = await fetch(B + path, { credentials: 'same-origin', ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+    if (r.status === 401) { toLogin(); throw new Error('unauthorized'); }
     let j = {}; try { j = await r.json(); } catch (e) { /* empty */ }
     if (!r.ok || j.ok === false) { const e = new Error(j.message || j.error || `HTTP ${r.status}`); e.body = j; throw e; }
     return j;
@@ -458,7 +464,7 @@
     file.addEventListener('change', async () => { ta.value = await file.files[0].text(); });
     const out = el('div');
     const run = async (dry) => {
-      const r = await fetch(`/v1/console/import${dry ? '?dry_run=1' : ''}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'text/csv' }, body: ta.value });
+      const r = await fetch(`${B}/v1/console/import${dry ? '?dry_run=1' : ''}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'text/csv' }, body: ta.value });
       const j = await r.json().catch(() => ({}));
       if (!r.ok && !j.rows) { msg(j.message || j.error || `HTTP ${r.status}`); return; }
       msg(`${dry ? '검증' : '임포트'}: 생성 ${j.created} · 갱신 ${j.updated} · 실패 ${j.failed}`, j.failed === 0);
@@ -593,11 +599,11 @@
   }
 
   // ── boot ─────────────────────────────────────────────────────────────────
-  $('#logout').addEventListener('click', async () => { await send('POST', '/v1/auth/logout').catch(() => {}); location.replace('/login'); });
+  $('#logout').addEventListener('click', async () => { await send('POST', '/v1/auth/logout').catch(() => {}); location.replace(`${B}/login`); });
   window.addEventListener('hashchange', route);
   api('/v1/me').then((m) => {
     me = m;
-    if (m.must_change) { location.replace('/login?next=/settings'); return; }
+    if (m.must_change) { toLogin(); return; }
     $('#who').textContent = `${m.displayName} (${m.role})`;
     route();
   }).catch(() => {});
