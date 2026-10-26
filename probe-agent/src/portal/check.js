@@ -136,25 +136,49 @@ async function runChecks({
   }
 
   // ── 4. does the Portal require a device certificate? ────────────
-  // Asked in reverse: try WITHOUT a certificate. If that gets an answer, mTLS
-  // is not enforced and contract §1's authentication does not exist yet — a
-  // finding, not a pass.
+  // Asked in reverse: try WITHOUT a certificate and see whether it is REFUSED.
   //
-  // It has to be a REQUEST, not just a handshake. Under TLS 1.3 the server's
-  // certificate request is not a handshake-time failure: `secureConnect` fires
-  // for an anonymous client and the rejection lands on the first write. An
-  // earlier version tested the handshake and "passed" against a mock only
-  // because it withheld the CA and the SERVER cert failed to verify — the
-  // right answer for the wrong reason, which is how a diagnostic starts lying.
+  // Refusal can land in two places and both count as enforcement:
+  //
+  //   · TLS layer — the handshake or first write fails. Under TLS 1.3 this is
+  //     not a handshake-time error: `secureConnect` fires for an anonymous
+  //     client and the rejection arrives on the write, which is why this is a
+  //     request and not a handshake.
+  //   · Application layer — nginx runs `ssl_verify_client optional` so the
+  //     browser login on the same host keeps working, and the app enforces
+  //     per location with a 401. That is what the hand-off guide §6-2/3
+  //     prescribes, and it is correct.
+  //
+  // An earlier version called any HTTP answer "not enforced". It was right
+  // while the Portal replied 503 `mtls_ingress_not_activated`, and wrong the
+  // moment mTLS went live and started replying 401 `mtls_certificate_required`
+  // — it reported a working control as missing.
+  const CERT_REFUSAL = /mtls|client_?cert|certificate_required|ssl_client/i;
   const anon = await probe('POST', '/api/v1/heartbeat', { anonymous: true });
-  if (anon.status > 0) {
+  const refusedAtTls = anon.status === 0;
+  const refusedByApp = (anon.status === 401 || anon.status === 403)
+    && CERT_REFUSAL.test(anon.note || '');
+
+  if (refusedAtTls) {
+    add('MTLS', 'PASS', '포털이 장치 인증서를 요구한다 (TLS 단계 거부)',
+      `인증서 없는 요청 거부: ${anon.note}`);
+  } else if (refusedByApp) {
+    add('MTLS', 'PASS', '포털이 장치 인증서를 요구한다 (앱 단계 거부)',
+      `인증서 없이 ${anon.status} — ${String(anon.note).slice(0, 80)}\n`
+      + 'nginx ssl_verify_client optional + 경로별 강제. 같은 호스트의 웹 로그인을\n'
+      + '깨뜨리지 않는 방식이고 인계 가이드 §6-2·3 이 지시한 구성이다.');
+  } else if (anon.status >= 400) {
+    // Refused, but not for a reason that names a certificate. Could be a
+    // session gate, a rate limit, or a WAF — not proof of mTLS either way.
+    add('MTLS', 'WARN', '거부되긴 했으나 인증서 때문인지 확인되지 않는다',
+      `인증서 없이 ${anon.status} — ${String(anon.note).slice(0, 80)}\n`
+      + '세션 게이트·레이트 리밋일 수도 있다. 인증서 사유를 응답에 담아 주면 확정된다.',
+      '계약 §1');
+  } else {
     add('MTLS', 'FAIL', '포털이 장치 인증서를 요구하지 않는다',
       `클라이언트 인증서 없이 ${anon.status} 응답을 받았다.\n`
-      + 'mTLS 미구성 — 누구나 이 엔드포인트에 붙을 수 있다.',
+      + 'mTLS 미강제 — 누구나 이 엔드포인트에 붙을 수 있다.',
       '계약 §1 (인증: mTLS 장치 인증서) · 포털 WO-PTL-002');
-  } else {
-    add('MTLS', 'PASS', '포털이 장치 인증서를 요구한다',
-      `인증서 없는 요청 거부: ${anon.note}`);
   }
 
   // ── 5. our own device certificate ───────────────────────────────
@@ -200,6 +224,9 @@ async function runChecks({
     // Portal says so ("mtls_ingress_not_activated"), and calling that
     // "0/7 응답" would send someone to debug a route that already works.
     const gated = seen.filter(s => s.status === 503 && /"code"\s*:\s*"[a-z_]+"/.test(s.note));
+    // All seven refusing for want of a certificate is the healthy state before
+    // this node is enrolled — the routes work and the door is locked.
+    const needCert = seen.filter(s => s.status === 401 && CERT_REFUSAL.test(s.note || ''));
     const broken = seen.filter(s => s.status === 0 || (s.status >= 500 && !gated.includes(s)));
     if (gated.length === seen.length) {
       const code = (gated[0].note.match(/"code"\s*:\s*"([a-z_]+)"/) || [])[1] || '?';
@@ -207,6 +234,10 @@ async function runChecks({
         `${lines.join('\n')}\n\n코드 ${code} — 경로는 있고 포털이 의도적으로 막아둔 상태다.\n`
         + '503 이므로 Probe 는 백오프로 재시도하고 큐를 버리지 않는다.',
         '계약 §3 — 게이트 해제는 MTLS 선행');
+    } else if (needCert.length === seen.length) {
+      add('API', 'PASS', `계약 엔드포인트 ${seen.length}/${seen.length} 살아 있고 인증서를 요구한다`,
+        `${lines.join('\n')}\n\n7개 전부 401 mtls_certificate_required — 경로는 동작하고\n`
+        + '문은 잠겨 있다. 이 노드에 서명된 인증서가 들어오면 열린다.');
     } else {
       add('API', broken.length ? 'WARN' : 'PASS',
         `계약 엔드포인트 ${answered.length}/${seen.length} 응답`,
@@ -220,10 +251,13 @@ async function runChecks({
 
   // ── 7. mock namespace ──────────────────────────────────────────
   const mock = await probe('POST', '/api/v1/_mock/heartbeat');
-  const mockUp = mock.status > 0 && mock.status < 400 && !REDIRECT.includes(mock.status);
+  const mockNeedsCert = mock.status === 401 && CERT_REFUSAL.test(mock.note || '');
+  const mockUp = (mock.status > 0 && mock.status < 400 && !REDIRECT.includes(mock.status)) || mockNeedsCert;
   add('MOCK', mockUp ? 'PASS' : 'WARN', '목 서버 /api/v1/_mock',
     `${mock.status}${mock.location ? ` → ${mock.location}` : ''}`
-    + (mockUp ? '' : '\n없음 — Probe 의 SAT 와 계약 테스트가 자체 목에 의존하게 된다'),
+    + (mockNeedsCert
+      ? '\n존재한다 — 인증서를 요구하는 것이지 없는 것이 아니다.'
+      : mockUp ? '' : '\n없음 — Probe 의 SAT 와 계약 테스트가 자체 목에 의존하게 된다'),
     mockUp ? null : '계약 §7 · 포털 WO-PTL-001');
 
   // ── 8. clock drift ─────────────────────────────────────────────
