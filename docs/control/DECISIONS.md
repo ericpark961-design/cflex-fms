@@ -240,3 +240,25 @@ Q-09(B) 숨김 목록 밖의 항목(알람 워크벤치·티켓 버튼)은 그�
 
 ### 답 Q-2026-10-26-03 → **(A)** (관리자, 2026-10-26)
 베어 프로파일은 폴백 경로. Redis 설정 렌더링·promote는 문서 절차(`docs/install/REDIS_FAILOVER.md` §5)로 두고, 베어를 실제 채택할 때 별도 WO로 등록한다. 명세 밖 기능 추가 없음.
+
+### Q-2026-10-26-07 — better-sqlite3는 RHEL 8에서 prebuild가 로드되지 않는다: 이미지 안 소스 빌드의 검증 시점 (Claude Code, WO-INT-007)
+
+**실측(2026-10-25):**
+- better-sqlite3가 GitHub에 올리는 linux-x64 prebuild를 받아 보았다(9.6.0·10.1.0·11.0.0·11.10.0, Node 20 = v115, Node 22 = v127).
+  전부 `GLIBC_2.29` 심볼을 요구한다. RHEL 8.10 / UBI8의 glibc는 **2.28**이다.
+- 그래서 UBI8에서는 prebuild-install이 받은 바이너리의 로드 검사에 실패하고 `node-gyp rebuild`로 넘어간다.
+  지금까지의 이미지 빌드도 사실상 소스 빌드에 기대고 있었다.
+
+WO-INT-007에서 한 일:
+- Containerfile 2종이 `npm_config_build_from_source=true`로 소스 빌드를 **명시**한다. 빌드 직후 `:memory:` 로드 검사를 하고, 실패하면 빌드가 멈춘다.
+- `build-bundle`은 이미지마다 better-sqlite3 로드와 ABI 115를 검사한다. 아니면 번들을 만들지 않는다.
+- `ubi8/nodejs-20` 이미지 history로 툴체인을 확인했다: `make gcc gcc-c++`가 있고, `python3`는 platform-python(3.6)에 링크되어 있다.
+- **확인하지 못한 것:** RHEL nodejs:20의 npm에 딸린 node-gyp가 Python 3.6을 받아들이는지. Podman이 없어 실제 `podman build`를 못 했다.
+  이 Mac에서는 Node 20.20.2 + `--build-from-source`로 컴파일하고 로드까지 확인했다.
+
+- **(A)** 지금 구조를 유지한다. RingOn 빌드 호스트에서 처음 `podman build`(D-11과 같은 시점)를 할 때 확인한다.
+  python 때문에 실패하면 build 단계에만 `dnf install python39`(UBI 저장소, 빌드 호스트 전용, 현장 무관)를 한 줄 추가한다 — 권고.
+- **(B)** 지금 build 단계에 `USER 0` + `dnf install -y python39`를 미리 넣는다. 검증 없이 넣는 변경이고, 빌드 호스트가 UBI 저장소에 접근해야 한다.
+- **(C)** better-sqlite3를 순수 JS/WASM 드라이버로 바꾼다. 명세 밖이고 Collector 버퍼 성능을 다시 검증해야 한다 — 비권고.
+
+권고안 (A)로 진행했다.
