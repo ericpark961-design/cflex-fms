@@ -171,7 +171,7 @@
 - 다음 세션 계획: PR #6 검토 반영 → WO-INT-006(SNMP trap 162) 또는 관리자 지시 순서
 
 ### 2026-10-25 21:40 PDT — Claude Code (8차)
-- WO-INT-007: **검토요청** | 브랜치 `wo/INT-007-node20-sqlite` (base main `5e2e954`, 작업 트리 `../cflex-fms-wt-int007`) | 커밋 `a8a60e8`(코드) + control 커밋 | PR: 아래 링크
+- WO-INT-007: **검토요청** | 브랜치 `wo/INT-007-node20-sqlite` (base main `5e2e954`, 작업 트리 `../cflex-fms-wt-int007`) | 커밋 `a8a60e8`(코드) + control 커밋 | **PR #8** https://github.com/ericpark961-design/cflex-fms/pull/8
   - Node: **v20.20.2**(`npx -y node@20 -v`, ABI 115) / **v22.22.2**(시스템, ABI 127)
   - ① **`node:sqlite` 폴백 제거**:
     - `apps/console/src/db.js`는 better-sqlite3 단일 경로다. better-sqlite3를 `optionalDependencies`에서 `dependencies`로 옮겼다.
