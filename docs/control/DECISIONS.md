@@ -377,3 +377,24 @@ lockfile 미커밋 정책 유지(collector·app 공통). 번들 MANIFEST의 sha2
 
 ### 답 Q-2026-10-26-13 → **(A)** (관리자, 2026-10-26)
 이관 기본 경로 `$CONSOLE_DB` → `/opt/app/cflex/data/console.db`. 지시문의 `/var/lib/cflex`는 오기. 감사로그 전체 이관 승인.
+
+### Q-2026-10-26-14 — 부록 A에 없는 텔레메트리 키 37개(m_ext): 비UPS 수집기 (Claude Code, WO-INT-013)
+`PROBE_DATA_DICTIONARY.md` §1.10. PDU 11개, NetBotz 6개, CRAC 8개, 네트워크 12개, 합계 37개다(예: `phase_current_a`, `temp_c`, `leak`, `supply_temp_c`, `ports_up`). 이 키는 `adapt.collectorPoint`가 만들고 `telemetry.schema.json`의 `additionalProperties`가 허용하므로, 포털이 계약 §3.3대로 `m_ext`에 두고 경고한다.
+관련 사실: Local Console 구성(HAEA 기본)에서는 객체 피드가 비어 있어서 이 수집기들이 지금은 돌지 않는다(`fetchObjectConfig`). `m`이 평면 객체라 같은 metric이 여러 행이면 마지막 행만 남는다.
+- **(A)** 코드는 그대로 둔다. 사전에는 `m_ext`로 표기한다. 부록 A 등재 여부는 계약 v1.2 개정(WO-INT-012와 Q-05 묶음) 때 법인장이 HAEA 제공 범위를 정할 때 함께 정한다 — **권고, 이대로 진행했다.**
+- **(B)** 지금 부록 A v1.2 초안에 37개를 올린다(계약 변경이므로 양 팀 동시 반영이 필요하다).
+
+### Q-2026-10-26-15 — 부록 B 22개 중 10개는 발생 경로가 없다 (Claude Code, WO-INT-013)
+`codes.js` 사전은 부록 B와 22/22 일치한다(심각도 포함). 실제로 이벤트를 내는 코드는 12개다.
+발생 경로가 없는 코드: `UPS_BATTERY_FAILED`(분류 분기만 있음), `UPS_OVERLOAD_SHUTDOWN_IMMINENT`, `UPS_FAN_FAIL`, `COLLECTOR_DOWN`, `PORTAL_LINK_DOWN`, `UPS_SELFTEST_OK`, `UPS_RETURN_FROM_BATTERY`(UPS_ON_BATTERY clear로만 표현), `UPS_CONFIG_CHANGED`, `BATTERY_EOL_90D`, `CONFIG_CONFLICT`. 부록 B에 없는 알람 코드를 내는 곳은 0개다.
+- **(A)** D-12a 동결대로 둔다. 사전에는 `미구현`으로 표기한다. 노드 코드(COLLECTOR_DOWN·PORTAL_LINK_DOWN)는 포털이 heartbeat 부재로 판정하고, 나머지는 SAT 이후 필요성이 확인되면 별도 WO로 한다 — **권고, 이대로 진행했다.**
+- **(B)** 지금 별도 WO로 10개의 발생 경로를 구현한다(D-12a 예외 결정이 필요하다).
+
+### Q-2026-10-26-16 — 코드에서 읽은 버그 후보 5건 (기록만, 이 WO에서는 고치지 않음) (Claude Code, WO-INT-013)
+1. trap으로 연 `UPS_BATTERY_REPLACE`는 `POLL_SEEN`에 들어 있어 latched가 아니다. 그런데 폴이 이 조건을 관측하지 못하므로(아래 2) 폴링 중인 장비에서는 약 2폴 주기 뒤 해제된다(`apc-mib.js` POLL_SEEN, `engine.js` beginCycle).
+2. `bat_replace_flag`는 항상 false다. battery_status 매핑이 normal·low·depleted·unknown만 만들기 때문이다. 같은 이유로 `upsAdvBatteryReplaceIndicator`는 읽지만 쓰지 않는다.
+3. APC `upsBasicOutputStatus` 9(switchedBypass)·10(hardwareFailureBypass)는 unknown이 된다. 그래서 폴로는 UPS_ON_BYPASS가 나오지 않고 status는 null이다(trap 20·22로는 잡힌다).
+4. UPS-MIB 프로파일은 입력·출력 전압을 ÷ 10 한다. RFC 1628의 단위 정의와 대조할 대상이다.
+5. UPS 폴은 `SNMP_TIMEOUT_MS`·`SNMP_RETRIES`를 쓰지 않고 5000 ms / 1회로 고정되어 있다.
+- **(A)** 사전에는 사실대로 적고 코드는 바꾸지 않는다. SAT 실장비 확인 뒤, 관리자 승인 시 버그 수정 WO(반 세션, 1·2·3은 각 1~3줄)로 한다 — **권고, 이대로 진행했다.**
+- **(B)** 이 WO에서 바로 고친다(지시 범위 밖: 코드 변경 0).
