@@ -175,6 +175,14 @@
   - 완료 기준: Eric 직접 지시(배정 WO 없음) — cflex.fms.support 실연동 착수. 장치 CSR 생성기 + 연동 점검 도구 + 포털측 요구사항 문서
 - 블로커: 없음
 - 다음 세션 계획: 포털이 nginx mTLS + CA 발급(WO-PTL-002)을 켜면 cflex-portal-check 재실행 → 0 FAIL 확인. 그 사이 WO-INT-004/004b PR 검토 반영
+
+### 2026-10-25 23:04 PDT — Claude Code
+- WO-INT-004: **진행** | 진행 85% | 브랜치 `wo/INT-portal-integration` | 커밋 `f075a7b b4b38d0 19bbf26 8a442b8` | 테스트 node --test probe-agent 97개 0실패 (portal-link 11/11, e2e 5/5, 변이 4/4 포착) · apps/console 58/58 (ingest 화이트리스트 5/5, 변이 2/2) | 비고 막혀 있던 원인은 docs/spec/schemas 가 수동 배포에서 빠져 허트비트마다 ENOENT 로 죽은 것. Containerfile 은 복사한다. 배치 후 해결. — 알람은 계약 부록 B·schemas enum·codes.js 에 PORTAL_LINK_DOWN 이 이미 있었고 올리는 쪽만 없었다(새 코드 없음). PROBE_OFFLINE(포털·NOC용)과 청중·조치가 달라 중복이 아니며 emit() 으로 로컬 우선 전달한다 — postEvents() 는 끊긴 동안 아무에게도 안 간다.
+  - 완료 기준: 실제 Probe 연결: cap01 → https://cflex.fms.support 허트비트 60초 주기 성공. last_status 200, 계약 버전 보냄 1.1 받음 1.1, 큐 0, 오류 0. 플랫폼 CA(C-Flex Development TEST Issuer 2026) 서명 인증서 설치·사용 중, CN=HAEA.cap01, 공개키 7e1f1e9f989cc816… 일치. / 실제 배포: VM1 /opt/cflex-console. 기존 4개 pm2 앱(44일 무중단) 무영향, nginx 미변경, 백업 /tmp/src-*.bak. / 지시 4항: 6단계 등록 상태(등록대기/CSR접수/승인발급/설치확인/mTLS/수집전송) 분리, 근거(콘솔|프로브|검증)와 확인시각·stale 표시. 폐기·만료·갱신예정·연결실패·보고없음 플래그. / 기본 화면(상태 탭 맨 위)에 연동 서버와 연결 상태. 자기보고 5분 끊기면 정상이 아니라 확인 불가. / 개발 코드 + 격리 시험: PORTAL_LINK_DOWN(P3) 발생·복구. 정의서 docs/handoff/PORTAL_LINK_ALARM_DEFINITION.md
+  - 블로커: 플랫폼 발급 인증서 유효기간이 30일이다. 계약 §1 은 60일에 cert_renew 를 발행하므로 설치 당일부터 갱신창이다 — 재발급(2년) 요청 필요.
+  - (WO-INT-004 는 완료 상태다 — 상태를 바꾸지 않았다. 재개는 관리자가 한다)
+- 질문: Q-2026-10-25-12 · Q-2026-10-25-13
+- 다음 세션 계획: better-sqlite3 ^11→^10 핀 + UBI8 3개 이미지 재빌드(D-11 첫 항목) → 지시 5항 격리 HTTPS/mTLS 통합시험(새 인증서 성공·폐기 거절·테넌트/사이트 교차 거절·토큰 동시재사용 방지·동일 CSR 재시도)
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
