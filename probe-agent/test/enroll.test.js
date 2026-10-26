@@ -288,3 +288,25 @@ test('the token is sent as a header, never in the body', { skip }, async () => {
     assert.ok(!post.body.toString().includes('secret-token'), 'the token went into the body');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('plaintext to a remote host is refused, loopback is not', { skip }, async () => {
+  // These requests carry the collector key and the one-time enrolment token.
+  // The transport used to call https.request() whatever the URL said, so an
+  // http:// console failed with `EPROTO … wrong version number` — an SSL error
+  // naming nothing an operator can act on. Allowing it silently would be worse.
+  const t = require('../src/portal/transport');
+  await assert.rejects(
+    () => t.request({ method: 'GET', url: 'http://console.haeaus.internal/collector/v1/certs', headers: {} }),
+    (e) => e.code === 'plaintext_refused' && /credentials/.test(e.message),
+  );
+  await assert.rejects(
+    () => t.request({ method: 'GET', url: 'http://127.0.0.1:1/x', headers: {}, proxy: 'http://p:8080' }),
+    (e) => e.code === 'plaintext_refused',
+  );
+  // Loopback never crosses a network: a console and a collector on one host,
+  // and the end-to-end test. Connection refused, not a scheme refusal.
+  await assert.rejects(
+    () => t.request({ method: 'GET', url: 'http://127.0.0.1:1/x', headers: {} }),
+    (e) => e.code !== 'plaintext_refused',
+  );
+});

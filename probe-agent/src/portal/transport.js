@@ -90,20 +90,44 @@ async function request(o) {
   const t = o.tls || {};
   const tlsOpts = { cert: t.cert, key: t.key, ca: t.ca, servername: u.hostname, minVersion: 'TLSv1.2' };
 
+  // Plaintext is refused, except to loopback.
+  //
+  // This used to call https.request() whatever the URL said, so an `http://`
+  // destination failed with `EPROTO … wrong version number` — an SSL error
+  // that names nothing an operator can act on. And it cannot simply be
+  // allowed: these requests carry the collector key and the one-time
+  // enrolment token, and the Portal contract (§1) is HTTPS.
+  //
+  // Loopback is the exception because it never crosses a network: a console
+  // and a collector on the same host, and the end-to-end test.
+  const LOOPBACK = /^(127(\.\d+){3}|localhost|\[?::1\]?)$/;
+  const plaintext = u.protocol === 'http:';
+  if (plaintext && !LOOPBACK.test(u.hostname)) {
+    throw Object.assign(
+      new Error(`refusing plaintext to ${u.hostname}: this request carries credentials — use https://`),
+      { code: 'plaintext_refused' },
+    );
+  }
+  if (plaintext && o.proxy) {
+    // A CONNECT tunnel exists to carry TLS. Plaintext through a proxy would
+    // hand the credentials to the proxy as well.
+    throw Object.assign(new Error('refusing plaintext through a proxy'), { code: 'plaintext_refused' });
+  }
+
   let tunnel = null;
   if (o.proxy && !hostMatches(u.hostname, o.noProxy)) {
     tunnel = await connectTunnel(o.proxy, u.hostname, port, { timeoutMs, proxyTls: t });
   }
 
   return new Promise((resolve, reject) => {
-    const req = https.request({
+    const req = (plaintext ? http : https).request({
       method: o.method,
       host: u.hostname,
       port,
       path: u.pathname + u.search,
       headers: o.headers,
       timeout: timeoutMs,
-      ...tlsOpts,
+      ...(plaintext ? {} : tlsOpts),
       ...(tunnel
         ? { agent: false, createConnection: () => tls.connect({ socket: tunnel, ...tlsOpts }) }
         : { agent: false }),
