@@ -22,7 +22,7 @@
 | 11 | WO-INT-011 | 검토요청 | **포털 연동 1단계** (Eric 직접 지시, 사후 번호 부여) — `bin/cflex-csr.js`(장치 CSR, 키 노드 밖 불출), `bin/cflex-portal-check.js`(DNS/TCP/TLS/mTLS/API/버전/목 판정 — spec 01 §3.3 verify의 포털 절반), `docs/handoff/PORTAL_INTEGRATION_REQUIREMENTS.md`(포털이 켜야 할 6개 + nginx mTLS 설정), control-mcp 파서 충실성·완료 재개 금지 수정. 브랜치 `wo/INT-portal-integration` | 테스트(probe-agent 58/58, control-mcp 30/30) 관리자 재실행, PR, 실측 결과(3 FAIL: mTLS/CERT/API)가 Codex WO-PTL-001/002 입력으로 전달 |
 | 12 | WO-INT-012 | 대기 | **분산 구조 정리 (D-13)** — 포털 forwarder를 컬렉터에서 FMS(app)로 이동(컬렉터는 외부 경로 0), 컬렉터 `site_id` 스코프 다중 인스턴스 + FMS `device_id` 병합, 계약 00 v1.2 `collector_id`(하위호환), netcheck 표 갱신. 기능 추가 금지(D-12a). 007·008 이후 착수 | 컬렉터 2 + FMS 1 E2E 통과(장비 병합·알람 동일 alarm_id), 컬렉터 프로세스에 포털 설정/호출 0, 계약 테스트 v1.2 통과, 기존 테스트 전부 통과 |
 | 10 | WO-INT-010 | 대기 | **운영 DB 시뮬레이터 장비 4대 삭제** (Q-02 승인) — PDU·NetBotz·CRAC·스위치 시뮬 장비와 그 메트릭/알람 행. 사전 백업(export) → 삭제 스크립트 커밋 → 삭제 전후 행 수 STATUS 기록. `probe-agent/sim/` 코드는 유지. 운영 DB 접근은 이 WO에 한해 허용, 다른 데이터는 건드리지 않음 | 백업 파일 존재, 전후 행 수 보고, S1 '샘플 데이터 제거' 항목 닫힘 |
-| 13 | WO-INT-013 | 진행 | **Probe 데이터 사전 문서화 (명세 03 §9, 코드 변경 없음)** — `docs/knowledge/PROBE_DATA_DICTIONARY.md`: 폴링 OID·파생 메트릭·알람 엔진 규칙(임계·히스테리시스·30분 규칙·latched)·trap 매핑표(`apc-mib.js`)·`collect_diag` 번들 구성. 포털 K1 적재용 표 형식. 007 이후, 008 전 또는 병행 | 문서 1건, 표가 계약 00 부록 A/B 코드와 1:1 대응, 비밀값 0 |
+| 13 | WO-INT-013 | 검토요청 | **Probe 데이터 사전 문서화 (명세 03 §9, 코드 변경 없음)** — `docs/knowledge/PROBE_DATA_DICTIONARY.md`: 폴링 OID·파생 메트릭·알람 엔진 규칙(임계·히스테리시스·30분 규칙·latched)·trap 매핑표(`apc-mib.js`)·`collect_diag` 번들 구성. 포털 K1 적재용 표 형식. 007 이후, 008 전 또는 병행 | 문서 1건, 표가 계약 00 부록 A/B 코드와 1:1 대응, 비밀값 0 |
 
 ## B. Codex — 포털 (WO-PTL)
 

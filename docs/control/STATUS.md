@@ -350,6 +350,33 @@
 - 블로커: 없음
 - 다음 세션 계획: PR 검토 반영 → WO-INT-013(데이터 사전) 또는 WO-INT-012(D-13 분산 구조, 008 후속) — 관리자 지시 순서
 
+### 2026-10-26 09:33 PDT — Claude Code (10차)
+- WO-INT-013: **검토요청** | 브랜치 `wo/INT-013-data-dictionary` (base main `d328497`, 작업 트리 `../cflex-fms-wt-int013`) | 커밋 `987e3df` + STATUS `404ce65` + origin/main `7e8407c` 머지 `95969d5`(TASKS 1행 충돌 — 내 `검토요청`과 main `진행`, `검토요청`으로 해결) | **PR #10** https://github.com/ericpark961-design/cflex-fms/pull/10
+  - 만든 것: `docs/knowledge/PROBE_DATA_DICTIONARY.md` 1건. 표 21개, 행 327개. 열 이름은 영문 snake_case이고 셀 안에 줄바꿈·세로선이 없다(스크립트로 검사, 열 수 불일치 0).
+    - §1 폴링 OID: UPS APC PowerNet 13행 / UPS-MIB 12행, PDU 10, NetBotz 9, CRAC 7, 네트워크 20, 식별 OID 4. 주기·타임아웃·스케일·`m_ext` 표시를 넣었다.
+    - §2 파생 메트릭 17종. 계산식·입력·갱신 조건·전송 여부를 적었다.
+    - §3 알람 엔진: 공통 규칙 18행(중복 억제 키, 15분 update, flapping 3회/15분, 30분 comm-lost, 2시간 capacity hold, latched, 유지보수 창, 영속화), UPS 임계 기본값 8행, 부록 B 22코드 1:1 표.
+    - §4 trap: `apc-mib.js` 18행 전부(v2 OID·v1 enterprise/generic/specific·raise/clear·latched·SAT 대조 Q-06), 처리 경로 8단계(`SNMP_TRAP_UNKNOWN` 2종 포함).
+    - §5 `collect_diag`: **계약 정의만, 미구현.** commands 조회·결과·`/files` 업로드 코드가 없다. 추가하지 않았다(D-12a).
+    - §6 데이터 흐름: 현재 코드는 컬렉터 → Local Console + 포털 직접. D-13 최종 구조(FMS 경유)는 WO-INT-012에서 할 일이라 미구현이라고 적었다. 표별 출처 파일·커밋 15행, 시뮬레이터 6종(시뮬레이터 전용).
+  - **대조 결과(숫자):**
+    - 부록 A 27키: 생산 **11** / 미구현 **16**. 부록 A 밖 키(m_ext) **37**(PDU 11·NetBotz 6·CRAC 8·네트워크 12) → Q-14.
+    - 부록 B 22코드: 사전(`codes.js`) 일치 **22/22**, 심각도 일치 22/22. 발생 경로 있음 **12**, 미구현 **10** → Q-15. 부록 B 밖 알람 코드 **0**(`SNMP_TRAP_UNKNOWN`은 기록만, 이벤트 아님).
+    - trap 매핑 18행(raise 10 / clear 8) → 부록 B 코드 8개. raise가 있는 코드는 모두 clear가 있다.
+  - 테스트 (이 세션 실행):
+    ```
+    probe-agent  npm test (Node 22.22.2)   79/79 pass, skip 0 (console.e2e 4/4 — embedded PG)
+    ```
+    - 처음 두 번은 4 skip이었다(console 의존성 미설치 → embedded-postgres 미설치). `apps/console`에 `npm install --include=dev --no-package-lock`을 한 뒤 79/79로 통과했다.
+  - `git diff --stat main...HEAD`(머지 전): `docs/control/DECISIONS.md` +21, `docs/control/TASKS.md` 1줄, `docs/knowledge/PROBE_DATA_DICTIONARY.md` +453 — **`docs/` 밖 파일 0건**(코드·테스트·설정 변경 0).
+  - 금지 사항 확인: 비밀값 0(community·키는 변수 이름만), IP·호스트명 실값 0, Docker 0(Podman만), 장비 SET 0, 새 알람 코드·OID 0, 포털 코드 0, 수량 표기는 SOW 44대만(41·48 0건). grep으로 검사했다.
+  - 문서 작성 중 코드에서 찾은 사실(고치지 않음, Q-16): trap으로 연 `UPS_BATTERY_REPLACE`가 다음 폴 사이클에 해제됨, `bat_replace_flag`가 항상 false, APC 출력 상태 9·10이 unknown, UPS-MIB 전압 ÷10, UPS 폴 타임아웃 고정. 그 밖: Local Console 구성에서는 비UPS 수집기가 돌지 않음, 텔레메트리 `m`은 다중 행 metric의 마지막 값만 실음.
+  - 미수행 (통과로 치지 않음): PowerNet-MIB·NETBOTZ·LIEBERT 원문과 OID·객체 이름 대조(SAT, Q-06). PDU 객체 이름은 코드에 있는 2개 외에는 "표 + 열 번호"로만 적었다. 포털 측 CSV 변환 시험은 하지 않았다(Codex WO-PTL-008).
+  - 로컬 전용(커밋 안 함): `probe-agent/node_modules`, `apps/console/node_modules`, `.runtime/`. lockfile 없음.
+- 질문: `Q-2026-10-26-14`(m_ext 37키), `-15`(부록 B 미구현 10), `-16`(버그 후보 5건, 기록만) — 모두 권고안 (A)로 진행
+- 블로커: 없음
+- 다음 세션 계획: PR 검토 반영 → WO-INT-012(D-13 분산 구조) 또는 관리자가 지시하는 순서. Q-16을 승인하면 버그 수정 WO
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
