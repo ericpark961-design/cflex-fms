@@ -22,17 +22,37 @@ const transport = require('../../../probe-agent/src/portal/transport');
 
 const NO_DELIVERY = Object.freeze({ email: false, teams: false, itsm: null });
 
-/** The local-notify store interface (get/set/patch) over itsm_map. */
+/**
+ * The local-notify store interface (get/set/patch) over itsm_map.
+ *
+ * local-notify (probe-agent, frozen — D-12a) calls it synchronously; the
+ * database answers asynchronously. So the row an event needs is read first
+ * (`load`), get/set/patch work on that copy, and `flush` writes what changed
+ * before the answer goes back to the Collector.
+ */
 function itsmStore(db, now = Date.now) {
-  const get = db.prepare('SELECT value FROM itsm_map WHERE alarm_id = ?');
-  const put = db.prepare(`INSERT INTO itsm_map (alarm_id, value, updated) VALUES (?, ?, ?)
-    ON CONFLICT(alarm_id) DO UPDATE SET value = excluded.value, updated = excluded.updated`);
-  const read = (k) => { const r = get.get(String(k)); return r ? JSON.parse(r.value) : undefined; };
-  return {
-    get: read,
-    set(k, v) { put.run(String(k), JSON.stringify(v), now()); return v; },
-    patch(k, v) { const next = { ...(read(k) || {}), ...v }; put.run(String(k), JSON.stringify(next), now()); return next; },
+  const cache = new Map();
+  const dirty = new Set();
+  const put = (k, v) => db.run(`INSERT INTO itsm_map (alarm_id, value, updated) VALUES (?, ?, ?)
+    ON CONFLICT(alarm_id) DO UPDATE SET value = excluded.value, updated = excluded.updated`, k, JSON.stringify(v), now());
+  const store = {
+    get: (k) => cache.get(String(k)),
+    set(k, v) { cache.set(String(k), v); dirty.add(String(k)); return v; },
+    patch(k, v) { const next = { ...(cache.get(String(k)) || {}), ...v }; return store.set(k, next); },
+    async load(keys) {
+      for (const k of keys.map(String)) {
+        if (dirty.has(k)) continue;
+        const r = await db.one('SELECT value FROM itsm_map WHERE alarm_id = ?', k);
+        if (r) cache.set(k, JSON.parse(r.value)); else cache.delete(k);
+      }
+    },
+    async flush() {
+      for (const k of [...dirty]) { await put(k, cache.get(k)); dirty.delete(k); }
+      // Nothing kept between events: the other node may change a row next.
+      cache.clear();
+    },
   };
+  return store;
 }
 
 /**
@@ -46,16 +66,15 @@ function itsmStore(db, now = Date.now) {
  * @param {object} [o.log]
  */
 function createConsoleNotify({ db, settings, deps = {}, net = {}, replayMaxAgeMs = 15 * 60e3, now = Date.now, log = console }) {
-  const store = itsmStore(db, now);
-  const deviceLabel = db.prepare('SELECT label FROM devices WHERE device_id = ?');
-  const alarmRow = db.prepare('SELECT title FROM alarms WHERE alarm_id = ?');
-  const muted = db.prepare(`SELECT 1 FROM maintenance WHERE starts_at <= ? AND ends_at > ?
-    AND (device_id IS NULL OR device_id = ?) AND (site_id IS NULL OR site_id = ?) LIMIT 1`);
+  const deviceLabel = (id) => db.one('SELECT label FROM devices WHERE device_id = ?', id);
+  const alarmRow = (id) => db.one('SELECT title FROM alarms WHERE alarm_id = ?', id);
+  const muted = (...a) => db.one(`SELECT 1 FROM maintenance WHERE starts_at <= ? AND ends_at > ?
+    AND (device_id IS NULL OR device_id = ?) AND (site_id IS NULL OR site_id = ?) LIMIT 1`, ...a);
 
   // Built per use: a channel changed in Settings applies to the next alarm,
   // on both nodes, with nothing to restart.
-  const notifier = () => createLocalNotifier({
-    config: settings.getNotify({ open: true }), store, deps, request: transport.request,
+  const notifier = async (store) => createLocalNotifier({
+    config: await settings.getNotify({ open: true }), store, deps, request: transport.request,
     proxy: net.proxy || null, noProxy: net.noProxy || null, ca: net.ca, log,
   });
 
@@ -69,7 +88,9 @@ function createConsoleNotify({ db, settings, deps = {}, net = {}, replayMaxAgeMs
   async function forEvents(events, { replay = false } = {}) {
     const out = {};
     if (!events.length) return out;
-    const n = notifier();
+    // One store per request: two requests on this node never share a copy.
+    const store = itsmStore(db, now);
+    const n = await notifier(store);
     if (!n.enabled()) return out;
     const t = now();
     for (const ev of events) {
@@ -84,27 +105,30 @@ function createConsoleNotify({ db, settings, deps = {}, net = {}, replayMaxAgeMs
       // shown, and its ticket still resolves on clear, but no one is paged —
       // the Portal received it without local_notified and routes it itself.
       const stale = replay && t - Date.parse(ev.ts) > replayMaxAgeMs;
-      const inWindow = !!muted.get(t, t, ev.device_id || null, ev.site_id || null);
+      const inWindow = !!(await muted(t, t, ev.device_id || null, ev.site_id || null));
       const suppressed = det.maintenance || inWindow ? 'maintenance' : stale ? 'stale_replay' : null;
       const alarm = {
-        title: alarmRow.get(ev.alarm_id)?.title || ev.title,
-        label: (ev.device_id && deviceLabel.get(ev.device_id)?.label) || undefined,
+        title: (await alarmRow(ev.alarm_id))?.title || ev.title,
+        label: (ev.device_id && (await deviceLabel(ev.device_id))?.label) || undefined,
       };
       try {
+        await store.load([ev.alarm_id]);
         out[ev.event_id] = (await n.handle({ event: ev, suppressed, alarm, notifyAs })) || { ...NO_DELIVERY };
       } catch (e) {
         // A channel bug must not cost the Collector its answer for the rest.
         log.error(`[notify] ${ev.code} ${ev.event_id}: ${e.message}`);
         out[ev.event_id] = null;
+      } finally {
+        await store.flush();
       }
     }
     return out;
   }
 
   /** SOW acceptance: the test-ticket button. */
-  const testTicket = (o) => notifier().testTicket(o);
+  const testTicket = async (o) => (await notifier(itsmStore(db, now))).testTicket(o);
 
-  return { forEvents, testTicket, store };
+  return { forEvents, testTicket };
 }
 
 /** Does this event announce its alarm (a raise, or the late raise after a maintenance window)? */

@@ -1,4 +1,6 @@
--- Local Console schema (SQLite; PostgreSQL 16 in WO-INT-008). Idempotent.
+-- FIXTURE: the Local Console's SQLite schema as it shipped before WO-INT-008
+-- (apps/console/src/schema.sql at main ffdae05), so migrate-sqlite.test.js can build
+-- the file cflex-migrate-sqlite reads. Not used by the console any more.
 -- Times are epoch milliseconds.
 
 CREATE TABLE IF NOT EXISTS users (

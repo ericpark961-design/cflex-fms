@@ -8,8 +8,11 @@ Proxy credentials come from the URL and are never printed.
 """
 
 import base64
+import calendar
+import json
 import socket
 import ssl
+import time
 
 from . import netcheck, siteconf
 from .sysrun import ok
@@ -94,8 +97,56 @@ def _host(url):
     return h, p
 
 
-def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect=None):
+def console_cli(runner, as_cflex, profile, args, mutating=False):
+    """Run apps/console/src/cli.js on this app node, with the console's own environment."""
+    if profile == "container":
+        return as_cflex(["podman", "exec", "cflex-console", "node", "/opt/cflex/apps/console/src/cli.js"] + args, mutating=mutating)
+    env = "/opt/app/cflex/config/app/app.env"
+    return runner.run(["runuser", "-u", "cflex", "--", "sh", "-c",
+                       "set -a; . %s; set +a; cd /opt/app/cflex/current/apps/console && exec node src/cli.js %s" % (env, " ".join(args))],
+                      mutating=mutating)
+
+
+def _db_status(add, r):
+    """`cli.js db-status` (JSON) → schema / partitions / WAL archiving results."""
+    try:
+        st = json.loads((r[1] or "").strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        add("app → db (PostgreSQL)", False, ((r[2] or r[1] or "no answer").strip())[-300:])
+        return
+    add("app → db (PostgreSQL)", True, "PostgreSQL %s, wal_level=%s, archive_mode=%s" % (
+        st.get("server", {}).get("server_version"), st.get("server", {}).get("wal_level"), st.get("server", {}).get("archive_mode")))
+    sc = st.get("schema") or {}
+    add("db schema_migrations", not sc.get("pending") and sc.get("applied") == sc.get("expected"),
+        "version %s of %s%s" % (sc.get("applied"), sc.get("expected"), (" — pending: " + ", ".join(sc["pending"])) if sc.get("pending") else ""))
+    parts = st.get("partitions") or {}
+    missing = ["%s(%s)" % (t, ",".join(k for k in ("current", "next") if not p.get(k))) for t, p in sorted(parts.items()) if not (p.get("current") and p.get("next"))]
+    add("db month partitions", bool(parts) and not missing,
+        "this and next month present: " + ", ".join(sorted(parts)) if parts and not missing else "missing: " + (", ".join(missing) or "no partitioned tables"))
+    ar = st.get("archiver") or {}
+    add("db WAL archiving", not ar.get("failed"),
+        "archived %s, failed %s" % (ar.get("archived"), ar.get("failed")), warn=True)
+
+
+BACKUP_DIR = "/opt/data/backup"
+
+
+def last_backup(runner, now):
+    """→ (name, age_days) of the newest complete base-YYYYMMDD set, or (None, None)."""
+    rc, out, _ = runner.run(["ls", "-1", BACKUP_DIR])
+    best = None
+    for name in sorted((out or "").split()) if rc == 0 else []:
+        if len(name) == 13 and name.startswith("base-") and name[5:].isdigit() and runner.exists("%s/%s/CFLEX_BACKUP_OK" % (BACKUP_DIR, name)):
+            best = name
+    if not best:
+        return None, None
+    day = calendar.timegm(time.strptime(best[5:], "%Y%m%d"))
+    return best, int((now - day) // 86400)
+
+
+def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect=None, now=None):
     """→ [Result]. `connect` lets tests replace tcp/tls."""
+    now = time.time() if now is None else now
     tcp_f = (connect or {}).get("tcp", tcp)
     tls_f = (connect or {}).get("tls", tls)
     out = []
@@ -132,8 +183,10 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
     if role == "app":
         db = siteconf.get(site, "hosts.db") or {}
         good, d = tcp_f(db.get("ip"), db.get("port", 5432))
-        # The console still runs on SQLite (WO-INT-008), so the DB link is not yet load-bearing.
-        add("app → db %s" % db.get("port", 5432), good, d, warn=True)
+        # The console's only store since WO-INT-008: without db01 nothing is shown.
+        add("app → db %s" % db.get("port", 5432), good, d)
+        if good and (as_cflex or profile == "bare"):
+            _db_status(add, console_cli(runner, as_cflex, profile, ["db-status"]))
         rh = siteconf.redis_host(site) or {}
         if rh.get("id") != me[1]:
             good, d = tcp_f(rh.get("ip"), 6379)
@@ -160,6 +213,22 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
             if a.get("id") != me[1]:
                 good, d = tls_f(a.get("ip"), 443, cafile=ca, verify=bool(ca))
                 add("app → peer %s 443" % a.get("id"), good, d)
+    if role == "db":
+        # Daily base backup (cflex-pg-backup.timer); 14 days are kept, so older than that means none is usable.
+        name, age = last_backup(runner, now)
+        if name is None:
+            add("last base backup", False, "no complete base-YYYYMMDD in %s — run: systemctl --user start cflex-pg-backup "
+                "(docs/install/PG_BACKUP_RESTORE.md §2)" % BACKUP_DIR)
+        else:
+            # PASS up to a day old; WARN while still inside the 14 kept; FAIL beyond.
+            add("last base backup", age <= 1, "%s, %d day(s) old%s" % (name, age, "" if age <= 1 else " — the timer should make one a day"),
+                warn=age <= 14)
+        if profile == "container" and as_cflex:
+            r = as_cflex(["podman", "exec", "cflex-postgres", "psql", "-At", "-c",
+                          "SELECT current_setting('wal_level') || ' ' || current_setting('archive_mode')"], mutating=False)
+            got = (r[1] or "").strip()
+            add("db wal_level / archive_mode", ok(r) and got == "replica on", got or (r[2] or "no answer").strip()[:200])
+
     # Local notification paths: the app's (v3 FW-8). The Local Console sends them
     # (DECISIONS Q-2026-10-25-10 (A)); the collector has no channel and no route to them.
     if role == "collector":
@@ -189,13 +258,7 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
             add("send-test", False, "run --send-test on an app node (the Local Console sends notifications and the test ticket)", warn=True)
         else:
             # The Settings button's code path, from the console's CLI (apps/console/src/cli.js).
-            if profile == "container":
-                r = as_cflex(["podman", "exec", "cflex-console", "node", "/opt/cflex/apps/console/src/cli.js", "test-ticket"])
-            else:
-                env = "/opt/app/cflex/config/app/app.env"
-                r = runner.run(["runuser", "-u", "cflex", "--", "sh", "-c",
-                                "set -a; . %s; set +a; cd /opt/app/cflex/current/apps/console && exec node src/cli.js test-ticket" % env],
-                               mutating=True)
+            r = console_cli(runner, as_cflex, profile, ["test-ticket"], mutating=True)
             add("send-test (ServiceNow test ticket)", ok(r), (r[1] or r[2]).strip()[-300:])
     return out
 

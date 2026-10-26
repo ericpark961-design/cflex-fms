@@ -9,39 +9,39 @@
 // Replays are harmless: an event_id already stored is skipped, a telemetry
 // point already stored (device_id, ts) is ignored.
 const crypto = require('crypto');
-const { tx } = require('./db');
+const { LOCK_NS, LOCKS } = require('./db');
 const schema = require('../../../probe-agent/src/contract/schema');
 
 const ms = (iso) => Date.parse(iso);
 
 function createIngest(db, { now = Date.now } = {}) {
   const st = {
-    devByContract: db.prepare('SELECT id, device_id, site_id FROM devices WHERE device_id = ?'),
-    point: db.prepare(`INSERT OR IGNORE INTO telemetry (device_id, ts, battery_pct, load_pct, temp_c, runtime_min, comm_ok, m)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
-    latest: db.prepare(`UPDATE devices SET last_ts = ?, comm_ok = ?,
+    devByContract: (t, id) => t.one('SELECT id, device_id, site_id FROM devices WHERE device_id = ?', id),
+    point: (t, ...a) => t.run(`INSERT INTO telemetry (device_id, ts, battery_pct, load_pct, temp_c, runtime_min, comm_ok, m)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`, ...a),
+    latest: (t, ...a) => t.run(`UPDATE devices SET last_ts = ?, comm_ok = ?,
         battery_pct = COALESCE(?, battery_pct), load_pct = COALESCE(?, load_pct), temp_c = COALESCE(?, temp_c),
         runtime_min = COALESCE(?, runtime_min), output_v = COALESCE(?, output_v), input_v = COALESCE(?, input_v),
         ups_status = COALESCE(?, ups_status), firmware = COALESCE(?, firmware)
-      WHERE device_id = ? AND (last_ts IS NULL OR last_ts <= ?)`),
-    seen: db.prepare('SELECT local_notified FROM alarm_events WHERE event_id = ?'),
-    ev: db.prepare('INSERT INTO alarm_events (event_id, alarm_id, ts, kind, title, detail, local_notified) VALUES (?, ?, ?, ?, ?, ?, ?)'),
-    evNotified: db.prepare('UPDATE alarm_events SET local_notified = ? WHERE event_id = ?'),
-    alarmNotified: db.prepare('UPDATE alarms SET local_notified = ? WHERE alarm_id = ?'),
-    alarm: db.prepare('SELECT * FROM alarms WHERE alarm_id = ?'),
-    raise: db.prepare(`INSERT INTO alarms (alarm_id, device_id, site_id, code, severity, title, state, raised_at, updated_at, detail, local_notified, maintenance)
-      VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)`),
-    update: db.prepare(`UPDATE alarms SET severity = ?, title = ?, updated_at = ?, detail = ?, state = 'open', cleared_at = NULL,
-      local_notified = COALESCE(?, local_notified), maintenance = ? WHERE alarm_id = ?`),
-    clear: db.prepare(`UPDATE alarms SET state = 'cleared', cleared_at = ?, updated_at = ?, local_notified = COALESCE(?, local_notified) WHERE alarm_id = ?`),
-    collector: db.prepare('SELECT * FROM collectors WHERE node_id = ?'),
-    beat: db.prepare('UPDATE collectors SET last_seen = ?, heartbeat = ? WHERE node_id = ?'),
+      WHERE device_id = ? AND (last_ts IS NULL OR last_ts <= ?)`, ...a),
+    seen: (t, id) => t.one('SELECT local_notified FROM alarm_events WHERE event_id = ? LIMIT 1', id),
+    ev: (t, ...a) => t.run('INSERT INTO alarm_events (event_id, alarm_id, ts, kind, title, detail, local_notified) VALUES (?, ?, ?, ?, ?, ?, ?)', ...a),
+    evNotified: (t, ...a) => t.run('UPDATE alarm_events SET local_notified = ? WHERE event_id = ?', ...a),
+    alarmNotified: (t, ...a) => t.run('UPDATE alarms SET local_notified = ? WHERE alarm_id = ?', ...a),
+    alarm: (t, id) => t.one('SELECT * FROM alarms WHERE alarm_id = ?', id),
+    raise: (t, ...a) => t.run(`INSERT INTO alarms (alarm_id, device_id, site_id, code, severity, title, state, raised_at, updated_at, detail, local_notified, maintenance)
+      VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)`, ...a),
+    update: (t, ...a) => t.run(`UPDATE alarms SET severity = ?, title = ?, updated_at = ?, detail = ?, state = 'open', cleared_at = NULL,
+      local_notified = COALESCE(?, local_notified), maintenance = ? WHERE alarm_id = ?`, ...a),
+    clear: (t, ...a) => t.run(`UPDATE alarms SET state = 'cleared', cleared_at = ?, updated_at = ?, local_notified = COALESCE(?, local_notified) WHERE alarm_id = ?`, ...a),
+    collector: (id) => db.one('SELECT * FROM collectors WHERE node_id = ?', id),
+    beat: (...a) => db.run('UPDATE collectors SET last_seen = ?, heartbeat = ? WHERE node_id = ?', ...a),
   };
 
   /** Bearer key check for a collector node; returns the row or null. */
-  function authCollector(nodeId, key) {
+  async function authCollector(nodeId, key) {
     if (!nodeId || !key) return null;
-    const c = st.collector.get(String(nodeId));
+    const c = await st.collector(String(nodeId));
     if (!c) return null;
     const want = Buffer.from(c.key_hash, 'hex');
     const got = crypto.createHash('sha256').update(String(key)).digest();
@@ -57,21 +57,21 @@ function createIngest(db, { now = Date.now } = {}) {
     }
   }
 
-  function telemetry(body) {
+  async function telemetry(body) {
     validate('telemetry', body);
     let stored = 0, unknown = 0;
-    tx(db, () => {
+    await db.tx(async (t) => {
       for (const p of body.points) {
-        if (!st.devByContract.get(p.device_id)) { unknown++; continue; }
-        const t = ms(p.ts);
+        if (!(await st.devByContract(t, p.device_id))) { unknown++; continue; }
+        const ts = ms(p.ts);
         const m = p.m || {};
         const runtime = typeof m.runtime_s === 'number' ? m.runtime_s / 60 : null;
         const comm = m.comm_ok === false ? 0 : 1;
-        const r = st.point.run(p.device_id, t, m.bat_pct ?? null, m.load_pct ?? null, m.bat_temp_c ?? null, runtime, comm, JSON.stringify(m));
+        const r = await st.point(t, p.device_id, ts, m.bat_pct ?? null, m.load_pct ?? null, m.bat_temp_c ?? null, runtime, comm, JSON.stringify(m));
         stored += r.changes;
         const first = (a) => (Array.isArray(a) ? a[0] : null) ?? null;
-        st.latest.run(t, comm, m.bat_pct ?? null, m.load_pct ?? null, m.bat_temp_c ?? null, runtime,
-          first(m.out_v), first(m.in_v), m.status ?? null, m.fw ?? null, p.device_id, t);
+        await st.latest(t, ts, comm, m.bat_pct ?? null, m.load_pct ?? null, m.bat_temp_c ?? null, runtime,
+          first(m.out_v), first(m.in_v), m.status ?? null, m.fw ?? null, p.device_id, ts);
       }
     });
     return { accepted: stored, unknown_devices: unknown };
@@ -83,31 +83,34 @@ function createIngest(db, { now = Date.now } = {}) {
    * what was delivered for it the first time (`prior`), so a retried POST is
    * answered the same way without anyone being told twice.
    */
-  function events(body) {
+  async function events(body) {
     validate('events', body);
     let accepted = 0, duplicate = 0;
     const fresh = [];
     const prior = {};
-    tx(db, () => {
+    await db.tx(async (t) => {
+      // Both nodes may get the same batch (a collector retrying on the other
+      // node): one at a time, so the event_id check below sees the other's rows.
+      await t.one('SELECT pg_advisory_xact_lock(?, ?)', LOCK_NS, LOCKS.events);
       for (const e of body.events) {
-        const seen = st.seen.get(e.event_id);
+        const seen = await st.seen(t, e.event_id);
         if (seen) { duplicate++; prior[e.event_id] = json(seen.local_notified); continue; }
-        const t = ms(e.ts);
+        const ts = ms(e.ts);
         const det = e.detail || {};
         const ln = e.local_notified ? JSON.stringify(e.local_notified) : null;
         const maint = det.maintenance ? 1 : 0;
-        st.ev.run(e.event_id, e.alarm_id, t, e.kind, e.title, JSON.stringify(det), ln);
+        await st.ev(t, e.event_id, e.alarm_id, ts, e.kind, e.title, JSON.stringify(det), ln);
         fresh.push(e);
-        const cur = st.alarm.get(e.alarm_id);
+        const cur = await st.alarm(t, e.alarm_id);
         if (e.kind === 'alarm_raise' || (!cur && e.kind === 'alarm_update')) {
           // An update for an alarm we never saw raised (the console came up
           // after the raise) opens it from what the update says.
-          if (!cur) st.raise.run(e.alarm_id, e.device_id, e.site_id, e.code, e.severity, e.title, t, t, JSON.stringify(det), ln, maint);
-          else st.update.run(e.severity, e.title, t, JSON.stringify(det), ln, maint, e.alarm_id);
+          if (!cur) await st.raise(t, e.alarm_id, e.device_id, e.site_id, e.code, e.severity, e.title, ts, ts, JSON.stringify(det), ln, maint);
+          else await st.update(t, e.severity, e.title, ts, JSON.stringify(det), ln, maint, e.alarm_id);
         } else if (e.kind === 'alarm_update') {
-          st.update.run(e.severity, cur.title || e.title, t, JSON.stringify({ ...JSON.parse(cur.detail || '{}'), ...det }), ln, maint, e.alarm_id);
+          await st.update(t, e.severity, cur.title || e.title, ts, JSON.stringify({ ...JSON.parse(cur.detail || '{}'), ...det }), ln, maint, e.alarm_id);
         } else if (e.kind === 'alarm_clear') {
-          if (cur) st.clear.run(t, t, ln, e.alarm_id);
+          if (cur) await st.clear(t, ts, ts, ln, e.alarm_id);
         }
         // kind 'info' is history only.
         accepted++;
@@ -121,14 +124,14 @@ function createIngest(db, { now = Date.now } = {}) {
    * alarm was announced — its raise (or the late raise when a maintenance
    * window ended) — not the later update or clear.
    */
-  function recordNotified(ev, ln, { announces = ev.kind === 'alarm_raise' } = {}) {
+  async function recordNotified(ev, ln, { announces = ev.kind === 'alarm_raise' } = {}) {
     const v = JSON.stringify(ln);
-    st.evNotified.run(v, ev.event_id);
-    if (announces) st.alarmNotified.run(v, ev.alarm_id);
+    await st.evNotified(db, v, ev.event_id);
+    if (announces) await st.alarmNotified(db, v, ev.alarm_id);
   }
 
   /** Heartbeat: the contract fields plus, on this internal path only, the forwarder's Portal link state. */
-  function heartbeat(nodeId, body) {
+  async function heartbeat(nodeId, body) {
     const b = body && typeof body === 'object' ? body : {};
     const keep = {
       version: str(b.version, 32), uptime_s: num(b.uptime_s), queue_depth: num(b.queue_depth),
@@ -139,7 +142,7 @@ function createIngest(db, { now = Date.now } = {}) {
         sent: num(b.portal.sent), rejected: num(b.portal.rejected), queued: num(b.portal.queued),
       } : null,
     };
-    st.beat.run(now(), JSON.stringify(keep), nodeId);
+    await st.beat(now(), JSON.stringify(keep), nodeId);
     return { ack: true };
   }
 

@@ -2,7 +2,9 @@
 //
 // WO-INT-004 integration test. Two console instances (app01, app02) on one
 // database and one Redis, real HTTP on 0.0.0.0, the real RESP client against
-// a RESP server. What it pins down:
+// a RESP server. The database is PostgreSQL 16 (WO-INT-008; embedded-postgres,
+// test/support/pg.js) — both instances open it at the same moment, as two VMs
+// booting together would. What it pins down:
 //
 //   · stateless: a session made on app01 works on app02, and keeps working with app01 gone
 //   · local accounts: password policy, forced change, lockout shared across nodes
@@ -20,6 +22,10 @@ const { startMiniRedis } = require('./support/mini-redis');
 const { createApp } = require('../src/server');
 const { createRedis } = require('../src/redis');
 const dbmod = require('../src/db');
+const pgt = require('./support/pg');
+
+// Without PostgreSQL binaries every test here is reported as skipped (never as passed).
+const T = (name, o, f) => (typeof o === 'function' ? test(name, { skip: pgt.unavailable }, o) : test(name, { ...o, skip: o.skip || pgt.unavailable }, f));
 
 const ROOT = path.resolve(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cflex-console-'));
@@ -28,10 +34,11 @@ const ADMIN_PW = 'Initial-Root-2026!';
 const quiet = { log() {}, warn() {}, error() {} };
 const UUID = () => crypto.randomUUID();
 
+let pg;
 function configFor(nodeId, redisUrl, extra = {}) {
   const base = require('../src/config').load();
   return {
-    ...base, nodeId, redisUrl, dbPath: path.join(tmp, 'console.db'), secretKey: KEY, cookieSecure: false,
+    ...base, nodeId, redisUrl, db: pg.conn(), secretKey: KEY, cookieSecure: false,
     twinDir: path.join(tmp, 'twin'), tenant: 'HAEA', tenantName: 'HAEA', ...extra,
   };
 }
@@ -65,7 +72,7 @@ let redisSrv, A, B, dbA, dbB, rA, rB, urlA, urlB;
 
 async function start(nodeId, redisUrl) {
   const config = configFor(nodeId, redisUrl);
-  const db = dbmod.open(config.dbPath);
+  const db = await dbmod.open(config.db);
   const redis = createRedis(config.redisUrl);
   const tickets = [];
   const mails = [];
@@ -84,31 +91,35 @@ async function start(nodeId, redisUrl) {
 }
 
 test.before(async () => {
+  if (pgt.unavailable) return;
+  pg = await pgt.start();
   fs.mkdirSync(path.join(tmp, 'twin', 'assets'), { recursive: true });
   fs.writeFileSync(path.join(tmp, 'twin', 'index.html'), '<!doctype html><title>twin</title><script type="module" src="/twin/assets/index.js"></script>');
   fs.writeFileSync(path.join(tmp, 'twin', 'assets', 'index.js'), 'console.log(1)');
   redisSrv = await startMiniRedis();
-  const a = await start('app01', redisSrv.url);
-  const b = await start('app02', redisSrv.url);
+  // Both at once: the migrations run under an advisory lock, once.
+  const [a, b] = await Promise.all([start('app01', redisSrv.url), start('app02', redisSrv.url)]);
   A = a; B = b; dbA = a.db; dbB = b.db; rA = a.redis; rB = b.redis; urlA = a.url; urlB = b.url;
   // Bootstrap admin, as `node src/cli.js create-user admin admin` does.
-  A.app.settings.createUser({ username: 'admin', role: 'admin', password: ADMIN_PW, display_name: 'HAEA Admin' });
+  await A.app.settings.createUser({ username: 'admin', role: 'admin', password: ADMIN_PW, display_name: 'HAEA Admin' });
 });
 
 test.after(async () => {
-  for (const x of [A, B]) { if (x.app.server.listening) await new Promise(r => x.app.server.close(r)); x.redis.close(); }
+  if (pgt.unavailable) return;
+  for (const x of [A, B]) { if (x.app.server.listening) await new Promise(r => x.app.server.close(r)); x.redis.close(); await x.db.close(); }
   await redisSrv.close();
+  await pg.stop();
 });
 
 const ADMIN_PW2 = 'Changed-Root-2026#';
 let admin;
 
-test('config: the console binds every interface by default (no more 127.0.0.1-only)', () => {
+T('config: the console binds every interface by default (no more 127.0.0.1-only)', () => {
   assert.strictEqual(require('../src/config').load().bind, '0.0.0.0');
   assert.strictEqual(A.app.server.address().address, '0.0.0.0');
 });
 
-test('auth: a new account must change its password before it can read anything; policy is enforced', async () => {
+T('auth: a new account must change its password before it can read anything; policy is enforced', async () => {
   admin = client(urlA);
   assert.strictEqual((await admin.req('POST', '/v1/auth/login', { username: 'admin', password: 'wrong-password-1A' })).status, 401);
   const r = await admin.req('POST', '/v1/auth/login', { username: 'admin', password: ADMIN_PW });
@@ -125,7 +136,7 @@ test('auth: a new account must change its password before it can read anything; 
   assert.strictEqual((await admin.req('GET', '/v1/fms/summary')).status, 200);
 });
 
-test('stateless: the session from app01 works on app02; Redis holds only its hash', async () => {
+T('stateless: the session from app01 works on app02; Redis holds only its hash', async () => {
   const onB = client(urlB);
   onB.useCookie(admin.cookie);
   const me = await onB.req('GET', '/v1/me');
@@ -141,7 +152,7 @@ test('stateless: the session from app01 works on app02; Redis holds only its has
 
 // Users for the role tests.
 let viewer, operator;
-test('admin: users with the three roles; bad roles and weak passwords refused', async () => {
+T('admin: users with the three roles; bad roles and weak passwords refused', async () => {
   for (const [username, role] of [['vera', 'viewer'], ['otto', 'operator']]) {
     const r = await admin.req('POST', '/v1/console/users', { username, role, password: `Temp-${role}-Pass-2026`, must_change: false });
     assert.strictEqual(r.status, 201, JSON.stringify(r.json));
@@ -163,7 +174,7 @@ const SEED = [
 ].join('\n');
 
 let ups;   // the first imported device
-test('settings: sites, CSV import with the §2.2 inventory warnings, credentials sealed', async () => {
+T('settings: sites, CSV import with the §2.2 inventory warnings, credentials sealed', async () => {
   for (const [id, name] of [['HMA-FV', 'HMA Fountain Valley'], ['KUS-IRV', 'KUS Irvine']]) {
     assert.strictEqual((await admin.req('PUT', `/v1/console/sites/${id}`, { name, company: id.split('-')[0] })).status, 200);
   }
@@ -172,7 +183,7 @@ test('settings: sites, CSV import with the §2.2 inventory warnings, credentials
   const dry = await admin.req('POST', '/v1/console/import?dry_run=1', SEED, { 'content-type': 'text/csv' });
   assert.strictEqual(dry.status, 200, dry.text);
   assert.strictEqual(dry.json.dry_run, true);
-  assert.strictEqual(dbA.prepare('SELECT COUNT(*) AS c FROM devices').get().c, 0, 'dry run writes nothing');
+  assert.strictEqual((await dbA.one('SELECT COUNT(*) AS c FROM devices')).c, 0, 'dry run writes nothing');
 
   const imp = await admin.req('POST', '/v1/console/import', SEED, { 'content-type': 'text/csv' });
   assert.strictEqual(imp.json.created, 3);
@@ -196,13 +207,15 @@ test('settings: sites, CSV import with the §2.2 inventory warnings, credentials
   assert.strictEqual(creds.length, 1);
   assert.strictEqual(creds[0].secret_set, true);
   assert.ok(!JSON.stringify(creds).includes('haea-ro-test'));
-  assert.ok(!fs.readFileSync(path.join(tmp, 'console.db')).includes('haea-ro-test'), 'not in the database file in the clear');
+  for (const t of ['credentials', 'devices', 'settings', 'audit_log']) {
+    assert.ok(!JSON.stringify(await dbA.all(`SELECT * FROM ${t}`)).includes('haea-ro-test'), `not in ${t} in the clear`);
+  }
   const v3 = await admin.req('PUT', '/v1/console/credentials', { site_id: 'KUS-IRV', version: '3', username: 'cflexro', auth_proto: 'SHA', auth_key: 'auth-secret-kus', priv_proto: 'AES', priv_key: 'priv-secret-kus' });
   assert.strictEqual(v3.status, 200);
   assert.ok(!v3.text.includes('secret-kus'));
 });
 
-test('roles: Viewer reads but cannot ACK or configure; Operator cannot configure', async () => {
+T('roles: Viewer reads but cannot ACK or configure; Operator cannot configure', async () => {
   assert.strictEqual((await viewer.req('GET', '/v1/fms/assets')).status, 200);
   assert.strictEqual((await viewer.req('PUT', '/v1/console/sites/HMA-FV', { name: 'x' })).status, 403);
   assert.strictEqual((await viewer.req('POST', `/v1/fms/devices/${ups.id}/mute`, { minutes: 30 })).status, 403);
@@ -218,11 +231,11 @@ const col = (method, p, body) => fetch(urlB + p, {
   body: body === undefined ? undefined : JSON.stringify(body),
 }).then(async r => ({ status: r.status, json: await r.json() }));
 
-test('collector: key-authenticated pull of devices (with opened credentials) and config', async () => {
+T('collector: key-authenticated pull of devices (with opened credentials) and config', async () => {
   const k = await admin.req('POST', '/v1/console/collectors/cap01/key');
   collectorKey = k.json.key;
   assert.ok(collectorKey.length >= 40);
-  assert.ok(!JSON.stringify(dbA.prepare('SELECT * FROM collectors').all()).includes(collectorKey), 'stored as a hash');
+  assert.ok(!JSON.stringify(await dbA.all('SELECT * FROM collectors')).includes(collectorKey), 'stored as a hash');
   assert.strictEqual((await fetch(urlB + '/collector/v1/devices', { headers: { 'x-cflex-node': 'cap01', authorization: 'Bearer nope' } })).status, 401);
   const d = await col('GET', '/collector/v1/devices');
   assert.strictEqual(d.status, 200);
@@ -235,7 +248,7 @@ test('collector: key-authenticated pull of devices (with opened credentials) and
 
 const iso = (t) => new Date(t).toISOString();
 let alarmId, alertRowId;
-test('collector → console: telemetry and an On-Battery P1 become a critical device and an open alarm', async () => {
+T('collector → console: telemetry and an On-Battery P1 become a critical device and an open alarm', async () => {
   const t0 = Date.now() - 10 * 60e3;
   const points = [];
   for (let i = 0; i < 10; i++) points.push({ device_id: ups.device_id, ts: iso(t0 + i * 60e3), m: { comm_ok: true, bat_pct: 100 - i, load_pct: 40, bat_temp_c: 24.5, runtime_s: 1800, status: 'online', out_v: [120.1], in_v: [119.8] } });
@@ -272,7 +285,7 @@ test('collector → console: telemetry and an On-Battery P1 become a critical de
   assert.strictEqual((await viewer.req('GET', '/v1/fms/alerts?cbu=KUS-IRV')).json.alerts.length, 0, 'site filter');
 });
 
-test('alarms: Operator ACKs and comments (on the other node); detail shows history; clear closes it', async () => {
+T('alarms: Operator ACKs and comments (on the other node); detail shows history; clear closes it', async () => {
   assert.strictEqual((await viewer.req('POST', `/v1/fms/alerts/${alertRowId}/ack`, {})).status, 403);
   const ack = await operator.req('POST', `/v1/fms/alerts/${alertRowId}/ack`, { comment: 'generator test, expected' });
   assert.strictEqual(ack.json.acked_by, 'otto');
@@ -289,10 +302,13 @@ test('alarms: Operator ACKs and comments (on the other node); detail shows histo
   assert.strictEqual((await viewer.req('GET', '/v1/fms/assets')).json.assets.find(x => x.id === ups.id).status, 'ok');
 });
 
-test('device detail: 24 h trend from telemetry, thresholds, the device facts', async () => {
+T('device detail: 24 h trend from telemetry, thresholds, the device facts', async () => {
   const r = (await viewer.req('GET', `/v1/fms/assets/${ups.id}?range=24h`)).json;
-  assert.ok(r.metrics.length >= 2 && r.metrics.length <= 96, String(r.metrics.length));
+  // 10 points one minute apart in 15-minute buckets: one or two, depending on where the clock puts the boundary.
+  assert.ok(r.metrics.length >= 1 && r.metrics.length <= 2, String(r.metrics.length));
   assert.ok(r.metrics.every(m => m.battery_pct >= 91 && m.battery_pct <= 100));
+  const h = (await viewer.req('GET', `/v1/fms/assets/${ups.id}?range=1h`)).json;
+  assert.deepStrictEqual(h.metrics.map(m => m.battery_pct), [100, 99, 98, 97, 96, 95, 94, 93, 92, 91], '1 h: one-minute buckets, one point each');
   assert.deepStrictEqual(r.thresholds.battery_pct, { critical: 30, warn: 60, direction: 'below' });
   assert.deepStrictEqual([r.asset.serial, r.asset.firmware, r.asset.battery_installed, r.asset.battery_due], ['AS2535281781', 'UPS 16.9', '2025-08', '2030-07']);
   assert.strictEqual(r.alerts.length, 1);
@@ -302,7 +318,7 @@ test('device detail: 24 h trend from telemetry, thresholds, the device facts', a
   assert.strictEqual(f.fleet.devices, 3);
 });
 
-test('maintenance: Operator mutes a device; the collector config carries the window', async () => {
+T('maintenance: Operator mutes a device; the collector config carries the window', async () => {
   const m = await operator.req('POST', `/v1/fms/devices/${ups.id}/mute`, { minutes: 90, reason: 'battery swap' });
   assert.ok(m.json.muted_until > Date.now() + 80 * 60e3);
   const a = (await viewer.req('GET', '/v1/fms/assets')).json.assets.find(x => x.id === ups.id);
@@ -313,7 +329,7 @@ test('maintenance: Operator mutes a device; the collector config carries the win
   assert.strictEqual((await col('GET', '/collector/v1/config')).json.maintenance.length, 0);
 });
 
-test('notify channels: secrets stored sealed, answered as {set:true}; the test-ticket button runs create→update→resolve', async () => {
+T('notify channels: secrets stored sealed, answered as {set:true}; the test-ticket button runs create→update→resolve', async () => {
   const put = await admin.req('PUT', '/v1/console/notify', {
     policy: { local_itsm: true, itsm_min: 'P2' },
     email: { to: ['noc@haea.example'], from: 'fms@haea.example', smtp: { host: 'relay.haea.example', port: 587, auth: { user: 'relay', pass: 'smtp-secret-pw' } } },
@@ -325,8 +341,8 @@ test('notify channels: secrets stored sealed, answered as {set:true}; the test-t
   assert.deepStrictEqual(put.json.notify.teams.webhook, { set: true });
   for (const s of ['smtp-secret-pw', 'secret-hook', 'sn-secret-pw']) {
     assert.ok(!put.text.includes(s));
-    assert.ok(!JSON.stringify(dbA.prepare('SELECT * FROM settings').all()).includes(s), `${s} sealed at rest`);
-    assert.ok(!JSON.stringify(dbA.prepare('SELECT * FROM audit_log').all()).includes(s), `${s} not in the audit log`);
+    assert.ok(!JSON.stringify(await dbA.all('SELECT * FROM settings')).includes(s), `${s} sealed at rest`);
+    assert.ok(!JSON.stringify(await dbA.all('SELECT * FROM audit_log')).includes(s), `${s} not in the audit log`);
   }
   // A later PUT without the secret keeps it.
   await admin.req('PUT', '/v1/console/notify', { servicenow: { assignmentGroup: 'Facilities' } });
@@ -346,7 +362,7 @@ test('notify channels: secrets stored sealed, answered as {set:true}; the test-t
   for (const s of ['smtp-secret-pw', 'secret-hook', 'sn-secret-pw']) assert.ok(!cfg.includes(s), s);
 });
 
-test('local notification (Q-10 A): the console notifies collector events and answers with local_notified', async () => {
+T('local notification (Q-10 A): the console notifies collector events and answers with local_notified', async () => {
   const before = { mails: B.mails.length, tickets: B.tickets.length };
   const id = UUID();
   const raise = { event_id: UUID(), alarm_id: id, device_id: ups.device_id, site_id: 'HMA-FV', ts: iso(Date.now()), kind: 'alarm_raise',
@@ -378,7 +394,7 @@ test('local notification (Q-10 A): the console notifies collector events and ans
   assert.strictEqual(resolve.body.state, '6', 'resolved');
 });
 
-test('local notification: a maintenance window on the console suppresses paging; a stale replay is recorded, not paged', async () => {
+T('local notification: a maintenance window on the console suppresses paging; a stale replay is recorded, not paged', async () => {
   const m = await operator.req('POST', `/v1/fms/devices/${ups.id}/mute`, { minutes: 30, reason: 'battery swap' });
   const n = { mails: B.mails.length, tickets: B.tickets.length };
   const ev = { event_id: UUID(), alarm_id: UUID(), device_id: ups.device_id, site_id: 'HMA-FV', ts: iso(Date.now()), kind: 'alarm_raise',
@@ -398,7 +414,7 @@ test('local notification: a maintenance window on the console suppresses paging;
   assert.strictEqual((await viewer.req('GET', '/v1/fms/alerts?hours=2')).json.alerts.filter(a => a.alarm_id === old.alarm_id).length, 1, 'but it is on the list');
 });
 
-test('profile internal (Q-09 B): no portal-scope API is served — routing, control, copilot, power chain, topology, tickets, incidents', async () => {
+T('profile internal (Q-09 B): no portal-scope API is served — routing, control, copilot, power chain, topology, tickets, incidents', async () => {
   assert.strictEqual(A.config.profile, 'internal', 'the console default');
   const portalish = /copilot|power-chain|topology|\/routes|\/control|tickets|incidents|sites-map|noc|wall/;
   assert.deepStrictEqual(A.app.router.routes.filter(r => portalish.test(r.re.source)).map(r => r.re.source), []);
@@ -407,7 +423,7 @@ test('profile internal (Q-09 B): no portal-scope API is served — routing, cont
   }
 });
 
-test('lockout: five wrong passwords lock the account on both nodes, even against the right one', async () => {
+T('lockout: five wrong passwords lock the account on both nodes, even against the right one', async () => {
   const u = client(urlA);
   for (let i = 0; i < 5; i++) assert.strictEqual((await u.req('POST', '/v1/auth/login', { username: 'vera', password: `Wrong-Pass-${i}-2026` })).status, 401);
   assert.strictEqual((await client(urlB).req('POST', '/v1/auth/login', { username: 'vera', password: 'Temp-viewer-Pass-2026' })).status, 423);
@@ -416,7 +432,7 @@ test('lockout: five wrong passwords lock the account on both nodes, even against
   assert.strictEqual((await client(urlB).req('POST', '/v1/auth/login', { username: 'vera', password: 'Temp-viewer-Pass-2026' })).status, 200);
 });
 
-test('roles take effect at once: a demoted operator loses ACK on the next request; the last admin cannot be demoted', async () => {
+T('roles take effect at once: a demoted operator loses ACK on the next request; the last admin cannot be demoted', async () => {
   const otto = (await admin.req('GET', '/v1/console/users')).json.users.find(x => x.username === 'otto');
   await admin.req('PUT', `/v1/console/users/${otto.id}`, { role: 'viewer' });
   assert.strictEqual((await operator.req('POST', `/v1/fms/alerts/${alertRowId}/unack`, {})).status, 403);
@@ -426,25 +442,27 @@ test('roles take effect at once: a demoted operator loses ACK on the next reques
   assert.strictEqual((await admin.req('PUT', `/v1/console/users/${me.userId}`, { role: 'viewer' })).json.error, 'last_admin');
 });
 
-test('audit log: logins, ACKs and settings are recorded; rows cannot be changed or deleted', async () => {
+T('audit log: logins, ACKs and settings are recorded; rows cannot be changed or deleted', async () => {
   const actions = new Set((await admin.req('GET', '/v1/console/audit?limit=500')).json.entries.map(e => e.action));
   for (const a of ['login', 'login_failed', 'login_locked', 'password_change', 'user_create', 'import', 'credential_put', 'alarm_ack', 'alarm_comment', 'maintenance_set', 'notify_put', 'test_ticket', 'collector_key_issued']) {
     assert.ok(actions.has(a), a);
   }
-  assert.throws(() => dbA.prepare('UPDATE audit_log SET actor = ? WHERE id = 1').run('x'), /append-only/);
-  assert.throws(() => dbA.prepare('DELETE FROM audit_log').run(), /append-only/);
-  const nodes = new Set(dbA.prepare('SELECT DISTINCT node FROM audit_log').all().map(r => r.node));
+  await assert.rejects(dbA.run('UPDATE audit_log SET actor = ? WHERE id = (SELECT MIN(id) FROM audit_log)', 'x'), /append-only/);
+  await assert.rejects(dbA.run('DELETE FROM audit_log'), /append-only/);
+  // The partition-move switch lets a DELETE through only; an UPDATE is refused even with it.
+  await assert.rejects(dbA.tx(async (t) => { await t.exec(`SET LOCAL cflex.partition_move = 'on'`); await t.run('UPDATE audit_log SET actor = ?', 'x'); }), /append-only/);
+  const nodes = new Set((await dbA.all('SELECT DISTINCT node FROM audit_log')).map(r => r.node));
   assert.ok(nodes.has('app01') && nodes.has('app02'), 'both nodes write the one log');
 });
 
-test('CSRF: state-changing requests must be JSON (cross-site forms cannot send it)', async () => {
+T('CSRF: state-changing requests must be JSON (cross-site forms cannot send it)', async () => {
   const r = await admin.req('POST', `/v1/fms/alerts/${alertRowId}/unack`, 'x=1', { 'content-type': 'application/x-www-form-urlencoded' });
   assert.strictEqual(r.status, 415);
   const t = await admin.req('POST', '/v1/console/import', 'site,label\nHMA,X', { 'content-type': 'text/plain' });
   assert.strictEqual(t.status, 415);
 });
 
-test('static: twin under /twin/, /login and /settings pages, CSP same-origin only on every response', async () => {
+T('static: twin under /twin/, /login and /settings pages, CSP same-origin only on every response', async () => {
   const ui = await client(urlA).req('GET', '/twin/');
   assert.strictEqual(ui.status, 200);
   assert.match(ui.text, /<title>twin<\/title>/);
@@ -513,7 +531,7 @@ test('profile internal (Q-09 B): the deployed twin console build has no route to
   assert.deepStrictEqual(hits, [], 'built with CONSOLE_PROFILE=portal? rebuild with `npm run build:console`');
 });
 
-test('cli test-ticket (installer `verify --send-test`): the Settings channels, create → update → resolve, audited', async () => {
+T('cli test-ticket (installer `verify --send-test`): the Settings channels, create → update → resolve, audited', async () => {
   const { startDummyServiceNow } = require('../../../packages/notify/test/support/dummy-servicenow');
   const { execFile } = require('node:child_process');
   const sn = await startDummyServiceNow();
@@ -521,14 +539,17 @@ test('cli test-ticket (installer `verify --send-test`): the Settings channels, c
   try {
     const keyFile = path.join(dir, 'console.key');
     fs.writeFileSync(keyFile, KEY, { mode: 0o600 });
-    const db = dbmod.open(path.join(dir, 'console.db'));
+    // Its own database on the same server, the way the CLI finds db01: CFLEX_DB_URL + the password file.
+    await pg.createDatabase('cli_test');
+    const conn = pg.conn('cli_test');
+    const db = await dbmod.open(conn);
     const { createSettings } = require('../src/settings');
     const { createSealer } = require('../src/seal');
-    createSettings(db, { sealer: createSealer(KEY), tenant: 'HAEA' })
+    await createSettings(db, { sealer: createSealer(KEY), tenant: 'HAEA' })
       .putNotify({ servicenow: { instanceUrl: sn.url, user: 'svc', pass: 'secret' } }, 'test');
-    db.close();
-    const run = () => new Promise((resolve) => execFile(process.execPath, [path.join(ROOT, 'src/cli.js'), 'test-ticket'], {
-      cwd: dir, env: { PATH: process.env.PATH, CONSOLE_DB: path.join(dir, 'console.db'), CONSOLE_SECRET_KEY_FILE: keyFile, CONSOLE_NODE_ID: 'app01' },
+    await db.close();
+    const run = (cmd = 'test-ticket') => new Promise((resolve) => execFile(process.execPath, [path.join(ROOT, 'src/cli.js'), cmd], {
+      cwd: dir, env: { PATH: process.env.PATH, CFLEX_DB_URL: conn.url, CFLEX_DB_PASSWORD_FILE: conn.passwordFile, CONSOLE_SECRET_KEY_FILE: keyFile, CONSOLE_NODE_ID: 'app01' },
     }, (err, stdout) => resolve({ code: err ? err.code : 0, out: stdout })));
     const ok = await run();
     assert.strictEqual(ok.code, 0, ok.out);
@@ -538,17 +559,23 @@ test('cli test-ticket (installer `verify --send-test`): the Settings channels, c
     const bad = await run();
     assert.strictEqual(bad.code, 1);
     assert.match(bad.out, /^FAIL ServiceNow test ticket at create/);
-    const Database = require('better-sqlite3');
-    const ro = new Database(path.join(dir, 'console.db'), { readonly: true });
-    assert.deepStrictEqual(ro.prepare(`SELECT actor LIKE 'cli:%' AS cli, json_extract(detail, '$.ok') AS ok FROM audit_log WHERE action = 'test_ticket' ORDER BY id`).all().map(r => [r.cli, r.ok]), [[1, 1], [1, 0]]);
-    ro.close();
+    const ro = await dbmod.open(conn, { migrate: false, partitions: false });
+    assert.deepStrictEqual((await ro.all(`SELECT actor LIKE 'cli:%' AS cli, (detail::json->>'ok')::boolean AS ok FROM audit_log WHERE action = 'test_ticket' ORDER BY id`)).map(r => [r.cli, r.ok]), [[true, true], [true, false]]);
+    await ro.close();
+    // `verify` on an app node reads this (install/lib/cflex_install/verify.py).
+    const st = await run('db-status');
+    assert.strictEqual(st.code, 0, st.out);
+    const s = JSON.parse(st.out);
+    assert.deepStrictEqual([s.ok, s.schema.applied, s.schema.pending], [true, s.schema.expected, []]);
+    assert.ok(Object.values(s.partitions).every(p => p.current && p.next), JSON.stringify(s.partitions));
+    assert.strictEqual(s.server.wal_level, 'replica');
   } finally {
     await sn.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('SAT 6: app01 stops — app02 keeps serving the same logged-in user', async () => {
+T('SAT 6: app01 stops — app02 keeps serving the same logged-in user', async () => {
   await new Promise(r => A.app.server.close(r));
   const onB = client(urlB);
   onB.useCookie(admin.cookie);
@@ -558,7 +585,7 @@ test('SAT 6: app01 stops — app02 keeps serving the same logged-in user', async
   await assert.rejects(fetch(urlA + '/healthz'));
 });
 
-test('Redis down: the API answers 503 (and /healthz says so for nginx), not 500 and not a crash', async () => {
+T('Redis down: the API answers 503 (and /healthz says so for nginx), not 500 and not a crash', async () => {
   await redisSrv.close();
   const onB = client(urlB);
   onB.useCookie(admin.cookie);

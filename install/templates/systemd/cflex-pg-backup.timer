@@ -1,0 +1,13 @@
+# C-Flex daily PostgreSQL base backup (db01). Rendered by cflex-install @@INSTALLER_VERSION@@.
+# Once a day at 02:30 site time; a run missed while the VM was off happens at the next boot.
+[Unit]
+Description=C-Flex PostgreSQL base backup, daily (@@NODE_ID@@)
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=10min
+Persistent=true
+Unit=cflex-pg-backup.service
+
+[Install]
+WantedBy=timers.target

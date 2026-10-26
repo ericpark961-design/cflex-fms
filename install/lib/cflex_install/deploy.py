@@ -126,7 +126,9 @@ def dirs_for(role, profile):
               (BASE + "/secrets/app", 0o700), (BASE + "/secrets/redis", 0o700), (BASE + "/data", 0o750),
               (BASE + "/redis", 0o750)]
     if role == "db":
-        d += [(BASE + "/secrets/db", 0o700), ("/opt/data/pgsql", 0o700), ("/opt/data/backup", 0o750)]
+        # WAL archive next to the base backups; the backup script and the postgresql.conf fragment (WO-INT-008).
+        d += [(BASE + "/secrets/db", 0o700), ("/opt/data/pgsql", 0o700), (render.BACKUP_DIR, 0o750), (render.WAL_DIR, 0o750),
+              (BASE + "/bin", 0o755), (BASE + "/config/db", 0o750), (render.PG_CFG_DIR, 0o750)]
     d += [(BASE + "/releases", 0o755)] if profile == "bare" else [(BASE + "/bundles", 0o750)]
     return d
 
@@ -197,6 +199,14 @@ def _secrets(c):
         # Both app nodes run Redis (primary + replica, Q-2026-10-25-11): the same password is the
         # one clients use and the one the replica authenticates to the primary with — on either
         # node, since a promotion swaps the roles.
+        # The console's PostgreSQL password is db01's (generated there, below): copied, never invented here.
+        pg = BASE + "/secrets/app/pg.pass"
+        if not c.runner.exists(pg):
+            hint = "%s missing — copy it from %s:%s/secrets/db/pg.pass (same value on db01 and both app nodes; " \
+                   "never by e-mail/chat), owner cflex, 0600" % (pg, "db01", BASE)
+            if not c.runner.dry_run:
+                raise DeployError(hint)
+            made.append("pg.pass MISSING (dry run: %s)" % hint)
         pw = (c.runner.read(BASE + "/secrets/app/redis.pass") or "").strip()
         if c.runner.dry_run and not pw:
             pw = "dry-run"
@@ -369,7 +379,12 @@ def _restart(c):
     c.must(c.as_cflex(["systemctl", "--user", "daemon-reload"]), "systemctl --user daemon-reload")
     for u in _units(c):
         c.must(c.as_cflex(["systemctl", "--user", "restart", u + ".service"]), "restart " + u)
-    return "restarted: " + ", ".join(_units(c))
+    out = "restarted: " + ", ".join(_units(c))
+    if c.role == "db":
+        # The daily base backup (render._db_files), a user timer of cflex like the Quadlet units.
+        c.must(c.as_cflex(["systemctl", "--user", "enable", "--now", "cflex-pg-backup.timer"]), "enable cflex-pg-backup.timer")
+        out += "; cflex-pg-backup.timer enabled"
+    return out
 
 
 def wait_healthy(c, timeout=HEALTH_TIMEOUT_S, sleep=time.sleep, clock=time.time):
@@ -457,6 +472,9 @@ def _bare_restart(c):
     for u in BARE_UNITS[c.role]:
         c.must(c.runner.run(["systemctl", "enable", "--now", u + ".service"], mutating=True), "enable " + u)
         c.must(c.runner.run(["systemctl", "restart", u + ".service"], mutating=True), "restart " + u)
+    if c.role == "db":
+        c.must(c.runner.run(["systemctl", "enable", "--now", "cflex-pg-backup.timer"], mutating=True), "enable cflex-pg-backup.timer")
+        return "cflex-pg-backup.timer enabled (PostgreSQL itself: docs/install/PG_BACKUP_RESTORE.md §1)"
     return "restarted: " + ", ".join(BARE_UNITS[c.role]) if BARE_UNITS[c.role] else "n/a"
 
 
@@ -567,10 +585,17 @@ def check_standby_first(c, standby_done):
 
 
 def run_migrations(c, direction):
+    """The schema is the console's: cflex-app applies db/migrations at start (schema_migrations,
+    one advisory lock for both nodes). Nothing runs from here; this only says what will happen."""
     migs = (c.bundle.manifest.get("migrations") if c.bundle else None) or []
     if not migs:
         return "no migrations in this bundle"
-    raise DeployError("bundle lists migrations but this installer cannot run them yet (WO-INT-008)")
+    last = migs[-1].get("file") if isinstance(migs[-1], dict) else migs[-1]
+    if direction == "down":
+        # Migrations only add (tables, columns, partitions); the older console runs on the newer schema.
+        # Going back past a migration is a restore (docs/install/PG_BACKUP_RESTORE.md), not a script.
+        return "schema kept at %s (migrations are additive; a schema rollback is a restore — PG_BACKUP_RESTORE.md)" % last
+    return "%d migration(s) up to %s — applied by cflex-app at start (advisory lock, schema_migrations)" % (len(migs), last)
 
 
 def upgrade(c, standby_done=False):

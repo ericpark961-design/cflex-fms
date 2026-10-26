@@ -4,14 +4,17 @@ Spec 01 §2.2, WO-INT-004. The API and pages behind nginx 443 on app01/app02. Th
 `apps/twin`, built for the console with `npm run build:console` and served at `/twin/`.
 Two pages twin does not have are served here: `/login` and `/settings`.
 
-One npm dependency: `better-sqlite3`, the only SQLite driver, in production and in the tests
-(`npm install` first). There is no `node:sqlite` fallback: Node 20 does not have it (WO-INT-007).
+The store is PostgreSQL 16 on db01 (WO-INT-008), through `pg` (pure JS). `better-sqlite3` remains only for
+`bin/cflex-migrate-sqlite.js`, which reads the pre-008 SQLite file once during the upgrade; there is no
+`node:sqlite` fallback (Node 20 does not have it, WO-INT-007). The tests run a real PostgreSQL 16 from the
+devDependency `embedded-postgres` (`npm install --include=dev`); without it the database tests report as skipped.
 Redis is reached over RESP by `src/redis.js`, so no client package is needed.
 
 ## Run
 
 ```sh
-# Node 20+. Redis 6 reachable at REDIS_URL. 32-byte key file for stored secrets.
+# Node 20+. PostgreSQL 16 (CFLEX_DB_*), Redis 6 at REDIS_URL, 32-byte key file for stored secrets.
+# The schema is applied at start (migrations/, schema_migrations; one advisory lock for both nodes).
 cp console.env.example /opt/app/cflex/config/console.env    # edit
 node src/cli.js create-user admin admin       # password on stdin; must be changed at first login
 node src/cli.js collector-key cap01           # prints the collector key once
@@ -28,9 +31,9 @@ The process keeps nothing of its own:
 - **Sessions are in Redis.** The token is an HttpOnly, SameSite=Strict cookie. Redis stores only its SHA-256.
   The idle timeout is 30 min and the absolute limit is 12 h.
 - **Login-failure counters are in Redis**, so 5 failures lock an account on both nodes for 15 min.
-- **Data is in the database.** For now that is SQLite on a path both nodes use. It becomes PostgreSQL on
-  db01 with WO-INT-008. Two VMs cannot share one SQLite file, so the production app01/app02 split
-  depends on WO-INT-008.
+- **Data is in PostgreSQL on db01**, one database for both nodes. `telemetry`, `alarm_events` and
+  `audit_log` are partitioned by month (`src/partitions.js`): made 3 months ahead, dropped past retention
+  (raw 3 y, events/audit 10 y), by whichever node holds the advisory lock. Backups: `docs/install/PG_BACKUP_RESTORE.md`.
 
 The integration test runs two instances on one database and one Redis. It checks that a session made
 on app01 is honoured by app02, and that app02 keeps serving once app01 is stopped (SAT 6).
@@ -48,7 +51,8 @@ Role changes and disabling take effect on the next request, not the next login.
 Passwords must be at least 12 characters, use 3 of the 4 character classes, and not contain the
 username. They are hashed with scrypt, and users must change theirs at first login.
 
-The audit log is append-only: SQLite triggers refuse UPDATE and DELETE on it.
+The audit log is append-only: a trigger refuses UPDATE and DELETE on it (the one exception is
+moving rows out of the default partition into a new month partition, in one transaction).
 
 SAML 2.0 can be turned on through `CONSOLE_SAML=1`, but that only reports the flag. Nothing is
 implemented until the IdP date is known (spec §6-5).
@@ -105,7 +109,9 @@ The notification secrets never leave the console: `GET /collector/v1/config` has
 ## Test
 
 ```sh
-npm test                           # integration: two app instances, a RESP server, real HTTP
+npm install --include=dev          # pg, better-sqlite3, embedded-postgres (PostgreSQL 16 for the tests)
+npm test                           # integration: two app instances on one PostgreSQL, a RESP server, real HTTP;
+                                   # migrations/partitions/retention (db.test.js); SQLite → PG (migrate-sqlite.test.js)
 (cd ../twin && npm run build:console)   # then re-run: the twin bundle scan stops being skipped
 ```
 

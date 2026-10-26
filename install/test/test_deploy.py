@@ -207,6 +207,7 @@ class Promote(unittest.TestCase):
             r = FakeRunner()
             r.files[deploy.BASE + "/secrets/app/redis.pass"] = "pw"
             r.files[deploy.BASE + "/secrets/app/console.key"] = "k"
+            r.files[deploy.BASE + "/secrets/app/pg.pass"] = "p"
             deploy._secrets(ctx(self.site, "app", hid, r))
             self.assertEqual(r.files[deploy.BASE + "/secrets/redis/auth.conf"], "requirepass pw\nmasterauth pw\n", hid)
 

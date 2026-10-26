@@ -7,7 +7,6 @@
 // answers `{ set: true }` where a secret is stored. Only the Collector's
 // config pull (ingest path, collector key) receives them opened.
 const crypto = require('crypto');
-const { tx } = require('./db');
 const auth = require('./auth');
 const adapt = require('../../../probe-agent/src/contract/adapt');
 const { DEFAULT_THRESHOLDS } = require('./views');
@@ -78,29 +77,29 @@ const ALIAS = {
 
 function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
   const ctx = { tenant, siteId: null };
-  const getSetting = (k, d) => json(db.prepare('SELECT value FROM settings WHERE key = ?').get(k)?.value, d);
-  const putSetting = (k, v, by) => db.prepare(`INSERT INTO settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
-    .run(k, JSON.stringify(v), by, now());
+  const getSetting = async (k, d) => json((await db.one('SELECT value FROM settings WHERE key = ?', k))?.value, d);
+  const putSetting = (k, v, by) => db.run(`INSERT INTO settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+    k, JSON.stringify(v), by, now());
 
   // ── sites ────────────────────────────────────────────────────────────────
-  const listSites = () => db.prepare('SELECT * FROM sites ORDER BY id').all();
-  function putSite(id, b) {
+  const listSites = () => db.all('SELECT * FROM sites ORDER BY id');
+  async function putSite(id, b) {
     const sid = String(id || b.id || '').toUpperCase();
     if (!SITE_RE.test(sid)) throw bad('invalid_site_id', 'site id must match ^[A-Z0-9][A-Z0-9-]{0,31}$ (contract site code)');
     const name = clean(b.name, 128);
     if (!name) throw bad('name_required');
-    db.prepare(`INSERT INTO sites (id, name, company, timezone) VALUES (?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET name = excluded.name, company = excluded.company, timezone = excluded.timezone`)
-      .run(sid, name, clean(b.company, 64), clean(b.timezone, 64) || 'America/Los_Angeles');
-    return db.prepare('SELECT * FROM sites WHERE id = ?').get(sid);
+    await db.run(`INSERT INTO sites (id, name, company, timezone) VALUES (?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name = excluded.name, company = excluded.company, timezone = excluded.timezone`,
+      sid, name, clean(b.company, 64), clean(b.timezone, 64) || 'America/Los_Angeles');
+    return db.one('SELECT * FROM sites WHERE id = ?', sid);
   }
-  function resolveSite(v) {
+  async function resolveSite(v) {
     const s = String(v || '').trim().toUpperCase();
     if (!s) return null;
-    const exact = db.prepare('SELECT id FROM sites WHERE id = ?').get(s);
+    const exact = await db.one('SELECT id FROM sites WHERE id = ?', s);
     if (exact) return exact.id;
-    const pre = db.prepare('SELECT id FROM sites WHERE id LIKE ?').all(`${s}-%`);
+    const pre = await db.all('SELECT id FROM sites WHERE id LIKE ?', `${s}-%`);
     return pre.length === 1 ? pre[0].id : null;
   }
 
@@ -123,10 +122,10 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
   }
 
   /** The §2.2 inventory checks: warnings, not refusals — the site's data is what it is. */
-  function checks(d, selfId = null) {
+  async function checks(d, selfId = null) {
     const w = [];
     if (d.serial) {
-      const dup = db.prepare('SELECT id, label FROM devices WHERE (serial = ? OR serial_alt LIKE ?) AND id IS NOT ?').all(d.serial, `%"${d.serial}"%`, selfId);
+      const dup = await db.all('SELECT id, label FROM devices WHERE (serial = ? OR serial_alt LIKE ?) AND id IS DISTINCT FROM ?::bigint', d.serial, `%"${d.serial}"%`, selfId);
       if (dup.length) w.push({ code: 'serial_duplicate', message: `serial ${d.serial} also on ${dup.map(x => x.label).join(', ')}` });
       const sy = serialYearMonth(d.serial);
       if (sy && d.mfg_date && /^\d{4}-\d{2}$/.test(d.mfg_date)) {
@@ -136,7 +135,7 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
     } else {
       w.push({ code: 'serial_missing', message: 'no serial: device_id is provisional (ledger-based) until it is known' });
     }
-    const lab = db.prepare('SELECT id FROM devices WHERE site_id = ? AND label = ? AND id IS NOT ?').all(d.site_id, d.label, selfId);
+    const lab = await db.all('SELECT id FROM devices WHERE site_id = ? AND label = ? AND id IS DISTINCT FROM ?::bigint', d.site_id, d.label, selfId);
     if (lab.length) w.push({ code: 'label_duplicate', message: `label ${d.label} already used ${lab.length}× at ${d.site_id}` });
     if (!d.in_sow) w.push({ code: 'not_in_sow', message: 'not in Exhibit 1: in_sow=false' });
     return w;
@@ -145,54 +144,54 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
   const contractId = (row) => adapt.deviceIdFor({ id: row.id, site_id: row.site_id, serial: row.serial }, { ...ctx, siteId: row.site_id });
 
   /** Insert or update one device; returns {device, warnings, created}. Keeps telemetry/alarms on a device_id change. */
-  function saveDevice(b, { id = null } = {}) {
-    const site = resolveSite(b.site_id || b.site);
+  async function saveDevice(b, { id = null } = {}) {
+    const site = await resolveSite(b.site_id || b.site);
     if (!site) throw bad('unknown_site', `site ${b.site_id || b.site || '(blank)'} is not configured`);
     const d = normDevice(b, site);
     if (!d.label) throw bad('label_required');
-    const warnings = checks(d, id);
+    const warnings = await checks(d, id);
     const t = now();
     const isNew = !id;
-    return tx(db, () => {
+    return db.tx(async (tx) => {
       let row;
       if (id) {
-        row = db.prepare('SELECT * FROM devices WHERE id = ?').get(id);
+        row = await tx.one('SELECT * FROM devices WHERE id = ?', id);
         if (!row) throw Object.assign(new Error('not found'), { status: 404, code: 'not_found' });
-        db.prepare(`UPDATE devices SET site_id=?, label=?, vendor=?, model=?, serial=?, serial_alt=?, nmc_ip=?, building=?, floor=?, room=?, rack=?,
-          firmware=?, mfg_date=?, battery_installed=?, battery_due=?, in_sow=?, polling_enabled=?, thresholds=COALESCE(?, thresholds), updated_at=? WHERE id=?`)
-          .run(d.site_id, d.label, d.vendor, d.model, d.serial, d.serial_alt, d.nmc_ip, d.building, d.floor, d.room, d.rack,
+        await tx.run(`UPDATE devices SET site_id=?, label=?, vendor=?, model=?, serial=?, serial_alt=?, nmc_ip=?, building=?, floor=?, room=?, rack=?,
+          firmware=?, mfg_date=?, battery_installed=?, battery_due=?, in_sow=?, polling_enabled=?, thresholds=COALESCE(?, thresholds), updated_at=? WHERE id=?`,
+          d.site_id, d.label, d.vendor, d.model, d.serial, d.serial_alt, d.nmc_ip, d.building, d.floor, d.room, d.rack,
             d.firmware, d.mfg_date, d.battery_installed, d.battery_due, d.in_sow, d.polling_enabled, d.thresholds, t, id);
       } else {
-        const r = db.prepare(`INSERT INTO devices (device_id, site_id, label, vendor, model, serial, serial_alt, nmc_ip, building, floor, room, rack,
+        const r = await tx.run(`INSERT INTO devices (device_id, site_id, label, vendor, model, serial, serial_alt, nmc_ip, building, floor, room, rack,
           firmware, mfg_date, battery_installed, battery_due, in_sow, polling_enabled, thresholds, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-          .run(`tmp-${crypto.randomUUID()}`, d.site_id, d.label, d.vendor, d.model, d.serial, d.serial_alt, d.nmc_ip, d.building, d.floor, d.room, d.rack,
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+          `tmp-${crypto.randomUUID()}`, d.site_id, d.label, d.vendor, d.model, d.serial, d.serial_alt, d.nmc_ip, d.building, d.floor, d.room, d.rack,
             d.firmware, d.mfg_date, d.battery_installed, d.battery_due, d.in_sow, d.polling_enabled, d.thresholds, t, t);
-        id = Number(r.lastInsertRowid);
+        id = r.rows[0].id;
       }
-      row = db.prepare('SELECT * FROM devices WHERE id = ?').get(id);
+      row = await tx.one('SELECT * FROM devices WHERE id = ?', id);
       const cid = contractId(row);
       if (row.device_id !== cid) {
         // A serial learned later changes the contract ID (Q-2026-10-25-05);
         // the console keeps the device's history under the new one.
-        for (const tbl of ['telemetry', 'alarms', 'maintenance', 'credentials']) db.prepare(`UPDATE ${tbl} SET device_id = ? WHERE device_id = ?`).run(cid, row.device_id);
-        db.prepare('UPDATE devices SET device_id = ? WHERE id = ?').run(cid, id);
+        for (const tbl of ['telemetry', 'alarms', 'maintenance', 'credentials']) await tx.run(`UPDATE ${tbl} SET device_id = ? WHERE device_id = ?`, cid, row.device_id);
+        await tx.run('UPDATE devices SET device_id = ? WHERE id = ?', cid, id);
       }
-      return { device: db.prepare('SELECT * FROM devices WHERE id = ?').get(id), warnings, created: isNew };
+      return { device: await tx.one('SELECT * FROM devices WHERE id = ?', id), warnings, created: isNew };
     });
   }
 
-  function deleteDevice(id) {
-    const r = db.prepare('DELETE FROM devices WHERE id = ?').run(id);
+  async function deleteDevice(id) {
+    const r = await db.run('DELETE FROM devices WHERE id = ?', id);
     if (!r.changes) throw Object.assign(new Error('not found'), { status: 404, code: 'not_found' });
   }
 
   // ── credentials ──────────────────────────────────────────────────────────
   /** {site_id?, device_id?, version, community? | username, auth_proto, auth_key, priv_proto, priv_key}. */
-  function putCredential(b, by) {
+  async function putCredential(b, by) {
     const version = String(b.version || '').replace(/^v/i, '');
     if (!['1', '2c', '3'].includes(version)) throw bad('invalid_version', 'version must be 1, 2c or 3');
-    const site = b.site_id ? resolveSite(b.site_id) : null;
+    const site = b.site_id ? await resolveSite(b.site_id) : null;
     if (b.site_id && !site) throw bad('unknown_site');
     const did = b.device_id ? String(b.device_id) : null;
     if (!site && !did) throw bad('scope_required', 'site_id or device_id');
@@ -202,13 +201,13 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
     if (version === '3' && !b.username) throw bad('username_required');
     const hasSecret = Object.values(secret).some(Boolean);
     const sealed = hasSecret ? sealer.seal(secret) : null;
-    db.prepare(`INSERT INTO credentials (site_id, device_id, version, username, auth_proto, priv_proto, secret, updated_by, updated_at)
+    await db.run(`INSERT INTO credentials (site_id, device_id, version, username, auth_proto, priv_proto, secret, updated_by, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(site_id, device_id) DO UPDATE SET version=excluded.version, username=excluded.username, auth_proto=excluded.auth_proto,
-        priv_proto=excluded.priv_proto, secret=COALESCE(excluded.secret, credentials.secret), updated_by=excluded.updated_by, updated_at=excluded.updated_at`)
-      .run(site, did, version, clean(b.username, 64), clean(b.auth_proto, 16), clean(b.priv_proto, 16), sealed, by, now());
+        priv_proto=excluded.priv_proto, secret=COALESCE(excluded.secret, credentials.secret), updated_by=excluded.updated_by, updated_at=excluded.updated_at`,
+      site, did, version, clean(b.username, 64), clean(b.auth_proto, 16), clean(b.priv_proto, 16), sealed, by, now());
   }
-  const listCredentials = () => db.prepare('SELECT id, site_id, device_id, version, username, auth_proto, priv_proto, secret IS NOT NULL AS secret_set, updated_by, updated_at FROM credentials ORDER BY site_id, device_id').all()
+  const listCredentials = async () => (await db.all('SELECT id, site_id, device_id, version, username, auth_proto, priv_proto, secret IS NOT NULL AS secret_set, updated_by, updated_at FROM credentials ORDER BY site_id NULLS FIRST, device_id NULLS FIRST'))
     .map(c => ({ ...c, secret_set: !!c.secret_set }));
 
   // ── CSV import ───────────────────────────────────────────────────────────
@@ -217,7 +216,7 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
    * `dryRun` validates and reports without writing. Credential columns, when
    * present, become a per-device credential (sealed).
    */
-  function importCsv(text, { dryRun = false, by } = {}) {
+  async function importCsv(text, { dryRun = false, by } = {}) {
     const rows = parseCsv(text);
     if (rows.length < 2) throw bad('empty_csv', 'a header row and at least one data row');
     const head = rows[0].map(h => h.trim().toLowerCase());
@@ -232,21 +231,21 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
       for (const [k, i] of Object.entries(col)) v[k] = r[i] != null ? r[i].trim() : '';
       const line = { row: n + 1, label: v.label, site: v.site };
       try {
-        const site = resolveSite(v.site);
+        const site = await resolveSite(v.site);
         if (!site) throw bad('unknown_site', `site ${v.site} is not configured`);
         const serial = clean(v.serial)?.toUpperCase();
-        const existing = (serial && db.prepare('SELECT id FROM devices WHERE serial = ?').get(serial))
-          || db.prepare('SELECT id FROM devices WHERE site_id = ? AND label = ?').get(site, clean(v.label));
+        const existing = (serial && await db.one('SELECT id FROM devices WHERE serial = ?', serial))
+          || await db.one('SELECT id FROM devices WHERE site_id = ? AND label = ?', site, clean(v.label));
         if (dryRun) {
           const d = normDevice({ ...v, site_id: site }, site);
           line.action = existing ? 'update' : 'create';
-          line.warnings = checks(d, existing?.id ?? null);
+          line.warnings = await checks(d, existing?.id ?? null);
         } else {
-          const res = saveDevice({ ...v, site_id: site }, { id: existing?.id ?? null });
+          const res = await saveDevice({ ...v, site_id: site }, { id: existing?.id ?? null });
           line.action = existing ? 'update' : 'create';
           line.device_id = res.device.device_id;
           line.warnings = res.warnings;
-          if (v.snmp_version) putCredential({ device_id: res.device.device_id, version: v.snmp_version, community: v.snmp_community, username: v.snmp_user,
+          if (v.snmp_version) await putCredential({ device_id: res.device.device_id, version: v.snmp_version, community: v.snmp_community, username: v.snmp_user,
             auth_proto: v.snmp_auth_proto, auth_key: v.snmp_auth_key, priv_proto: v.snmp_priv_proto, priv_key: v.snmp_priv_key }, by);
         }
         if (line.action === 'create') created++; else updated++;
@@ -259,8 +258,8 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
   }
 
   // ── thresholds ───────────────────────────────────────────────────────────
-  const getThresholds = () => ({ ...DEFAULT_THRESHOLDS, ...getSetting('thresholds', {}) });
-  function putThresholds(b, by) {
+  const getThresholds = async () => ({ ...DEFAULT_THRESHOLDS, ...await getSetting('thresholds', {}) });
+  async function putThresholds(b, by) {
     const out = {};
     for (const [k, v] of Object.entries(b || {})) {
       if (!DEFAULT_THRESHOLDS[k]) throw bad('unknown_metric', k);
@@ -268,7 +267,7 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
       if (!Number.isFinite(crit) || !Number.isFinite(warn)) throw bad('invalid_threshold', k);
       out[k] = { critical: crit, warn, direction: DEFAULT_THRESHOLDS[k].direction };
     }
-    putSetting('thresholds', { ...getSetting('thresholds', {}), ...out }, by);
+    await putSetting('thresholds', { ...await getSetting('thresholds', {}), ...out }, by);
     return getThresholds();
   }
 
@@ -279,8 +278,8 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
   const at = (o, p) => p.reduce((x, k) => (x == null ? undefined : x[k]), o);
   const setAt = (o, p, v) => { let x = o; for (const k of p.slice(0, -1)) x = x[k] = x[k] && typeof x[k] === 'object' ? x[k] : {}; if (v === undefined) delete x[p[p.length - 1]]; else x[p[p.length - 1]] = v; };
 
-  function getNotify({ open = false } = {}) {
-    const n = getSetting('notify', {});
+  async function getNotify({ open = false } = {}) {
+    const n = await getSetting('notify', {});
     for (const p of SECRET_PATHS) {
       const v = at(n, p);
       if (v && typeof v === 'object' && v.sealed) setAt(n, p, open ? sealer.open(v.sealed).v : { set: true });
@@ -288,8 +287,8 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
     return n;
   }
 
-  function putNotify(b, by) {
-    const cur = getSetting('notify', {});
+  async function putNotify(b, by) {
+    const cur = await getSetting('notify', {});
     const next = { ...cur };
     for (const k of ['productName', 'siteName', 'dashboardUrl', 'policy', 'email', 'teams', 'servicenow']) {
       if (b[k] === undefined) continue;
@@ -306,12 +305,12 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
       for (const k of ['email_min', 'teams_min', 'itsm_min']) if (next.policy[k] != null && !P.includes(next.policy[k])) throw bad('invalid_policy', k);
       for (const k of ['local_email', 'local_teams', 'local_itsm', 'notify_clear']) if (next.policy[k] != null) next.policy[k] = !!next.policy[k];
     }
-    putSetting('notify', next, by);
+    await putSetting('notify', next, by);
     return getNotify();
   }
 
-  function channelsHealth() {
-    const n = getNotify();
+  async function channelsHealth() {
+    const n = await getNotify();
     return [
       { channel: 'email', configured: !!(n.email?.smtp?.host && (n.email?.to || []).length), enabled: n.policy?.local_email !== false },
       { channel: 'teams', configured: !!n.teams?.webhook, enabled: n.policy?.local_teams !== false },
@@ -322,59 +321,61 @@ function createSettings(db, { sealer, tenant, now = Date.now } = {}) {
   // ── users ────────────────────────────────────────────────────────────────
   const userOut = (u) => u && ({ id: u.id, username: u.username, display_name: u.display_name, email: u.email, role: u.role,
     must_change: !!u.must_change, disabled: !!u.disabled, created_at: u.created_at, last_login_at: u.last_login_at, pw_changed_at: u.pw_changed_at });
-  const listUsers = () => db.prepare('SELECT * FROM users ORDER BY username').all().map(userOut);
+  const listUsers = async () => (await db.all('SELECT * FROM users ORDER BY lower(username), id')).map(userOut);
 
-  function createUser(b) {
+  async function createUser(b) {
     const username = clean(b.username, 64);
     if (!username || !/^[A-Za-z0-9._@-]{3,64}$/.test(username)) throw bad('invalid_username');
     if (!auth.ROLES[b.role]) throw bad('invalid_role', 'admin | operator | viewer');
     const why = auth.passwordProblem(b.password, username);
     if (why) throw bad('weak_password', why);
-    if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) throw Object.assign(new Error('exists'), { status: 409, code: 'user_exists' });
+    if (await db.one('SELECT 1 FROM users WHERE lower(username) = lower(?)', username)) throw Object.assign(new Error('exists'), { status: 409, code: 'user_exists' });
     const t = now();
-    const r = db.prepare(`INSERT INTO users (username, display_name, email, role, pw_hash, pw_changed_at, must_change, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(username, clean(b.display_name), clean(b.email), b.role, auth.hashPassword(b.password), t, b.must_change === false ? 0 : 1, t);
-    return userOut(db.prepare('SELECT * FROM users WHERE id = ?').get(Number(r.lastInsertRowid)));
+    const r = await db.run(`INSERT INTO users (username, display_name, email, role, pw_hash, pw_changed_at, must_change, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING *`,
+      username, clean(b.display_name), clean(b.email), b.role, auth.hashPassword(b.password), t, b.must_change === false ? 0 : 1, t);
+    if (!r.rows.length) throw Object.assign(new Error('exists'), { status: 409, code: 'user_exists' });
+    return userOut(r.rows[0]);
   }
 
-  function updateUser(id, b) {
-    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  async function updateUser(id, b) {
+    const u = await db.one('SELECT * FROM users WHERE id = ?', id);
     if (!u) throw Object.assign(new Error('not found'), { status: 404, code: 'not_found' });
     if (b.role != null && !auth.ROLES[b.role]) throw bad('invalid_role');
     // The last enabled admin cannot demote or disable itself out of existence.
     const demoting = (b.role && b.role !== 'admin') || b.disabled === true;
-    if (u.role === 'admin' && demoting && db.prepare(`SELECT COUNT(*) AS c FROM users WHERE role = 'admin' AND disabled = 0`).get().c <= 1) {
+    if (u.role === 'admin' && demoting && (await db.one(`SELECT COUNT(*) AS c FROM users WHERE role = 'admin' AND disabled = 0`)).c <= 1) {
       throw Object.assign(new Error('last admin'), { status: 409, code: 'last_admin' });
     }
     if (b.password != null) {
       const why = auth.passwordProblem(b.password, u.username);
       if (why) throw bad('weak_password', why);
-      db.prepare('UPDATE users SET pw_hash = ?, pw_changed_at = ?, must_change = 1 WHERE id = ?').run(auth.hashPassword(b.password), now(), id);
+      await db.run('UPDATE users SET pw_hash = ?, pw_changed_at = ?, must_change = 1 WHERE id = ?', auth.hashPassword(b.password), now(), id);
     }
-    db.prepare(`UPDATE users SET display_name = COALESCE(?, display_name), email = COALESCE(?, email), role = COALESCE(?, role),
-      disabled = COALESCE(?, disabled) WHERE id = ?`)
-      .run(clean(b.display_name), clean(b.email), b.role || null, b.disabled == null ? null : (b.disabled ? 1 : 0), id);
-    return userOut(db.prepare('SELECT * FROM users WHERE id = ?').get(id));
+    await db.run(`UPDATE users SET display_name = COALESCE(?, display_name), email = COALESCE(?, email), role = COALESCE(?, role),
+      disabled = COALESCE(?::integer, disabled) WHERE id = ?`,
+      clean(b.display_name), clean(b.email), b.role || null, b.disabled == null ? null : (b.disabled ? 1 : 0), id);
+    return userOut(await db.one('SELECT * FROM users WHERE id = ?', id));
   }
 
   // ── collectors ───────────────────────────────────────────────────────────
   /** A new key for a collector node; shown once, stored as its SHA-256. */
-  function issueCollectorKey(nodeId) {
+  async function issueCollectorKey(nodeId) {
     const id = String(nodeId || '').trim();
     if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(id)) throw bad('invalid_node_id');
     const key = crypto.randomBytes(32).toString('base64url');
     const h = crypto.createHash('sha256').update(key).digest('hex');
-    db.prepare(`INSERT INTO collectors (node_id, key_hash, created_at) VALUES (?, ?, ?)
-      ON CONFLICT(node_id) DO UPDATE SET key_hash = excluded.key_hash`).run(id, h, now());
+    await db.run(`INSERT INTO collectors (node_id, key_hash, created_at) VALUES (?, ?, ?)
+      ON CONFLICT(node_id) DO UPDATE SET key_hash = excluded.key_hash`, id, h, now());
     return { node_id: id, key };
   }
-  const listCollectors = () => db.prepare('SELECT node_id, created_at, last_seen, heartbeat FROM collectors ORDER BY node_id').all()
+  const listCollectors = async () => (await db.all('SELECT node_id, created_at, last_seen, heartbeat FROM collectors ORDER BY node_id'))
     .map(c => ({ ...c, heartbeat: json(c.heartbeat) }));
 
   /** What a collector polls: devices with their credentials opened (device override, else site default). */
-  function collectorDevices() {
-    const creds = db.prepare('SELECT * FROM credentials').all();
-    return db.prepare('SELECT * FROM devices WHERE polling_enabled = 1 ORDER BY site_id, label').all().map(d => {
+  async function collectorDevices() {
+    const creds = await db.all('SELECT * FROM credentials ORDER BY id');
+    return (await db.all('SELECT * FROM devices WHERE polling_enabled = 1 ORDER BY site_id, label')).map(d => {
       const c = creds.find(x => x.device_id === d.device_id) || creds.find(x => x.device_id == null && x.site_id === d.site_id);
       const s = c?.secret ? sealer.open(c.secret) : {};
       return {

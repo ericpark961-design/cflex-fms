@@ -129,7 +129,7 @@ test('better-sqlite3: built from source in the image, loaded before packaging, o
   for (const f of ['images/collector/Containerfile', 'images/app/Containerfile']) {
     const run = read(f).match(/^RUN cd (?:probe-agent|apps\/console) \\\n(?: .*\\\n)* .*$/m)[0];
     assert.match(run, /npm_config_build_from_source=true npm install --omit=dev/, f);
-    assert.match(run, /node -e "require\('better-sqlite3'\)\(':memory:'\)\.close\(\)"/, f);
+    assert.match(run, /node -e "require\('better-sqlite3'\)\(':memory:'\)\.close\(\)[;"]/, f);
   }
   // The bundle is Node 20's ABI and the bare profile accepts nothing but Node 20.
   assert.match(read('install/lib/cflex_install/bundle.py'), /^NODE_ABI = "115"$/m);
@@ -145,6 +145,39 @@ test('better-sqlite3: built from source in the image, loaded before packaging, o
   }
   assert.ok(JSON.parse(read('apps/console/package.json')).dependencies['better-sqlite3']);
   assert.ok(JSON.parse(read('probe-agent/package.json')).dependencies['better-sqlite3']);
+});
+
+test('PostgreSQL 16 (WO-INT-008): pg the one new driver, no extension/pg_partman/repmgr, schema shipped in image and bundle, backup wired', () => {
+  const pkg = JSON.parse(read('apps/console/package.json'));
+  assert.deepStrictEqual(Object.keys(pkg.dependencies).sort(), ['better-sqlite3', 'pg'], 'pg added, nothing else');
+  assert.deepStrictEqual(Object.keys(pkg.devDependencies || {}), ['embedded-postgres'], 'the test PostgreSQL is a devDependency only');
+  assert.match(pkg.devDependencies['embedded-postgres'], /^16\./, 'PostgreSQL 16 in the tests, as on db01');
+  // The app image's npm install drops devDependencies, so embedded-postgres never ships.
+  assert.match(read('images/app/Containerfile'), /npm install --omit=dev/);
+  assert.match(read('images/app/Containerfile'), /require\('pg'\)/);
+  assert.match(read('images/app/Containerfile'), /^COPY --chown=0:0 apps\/console\/migrations apps\/console\/migrations$/m);
+  assert.match(read('install/lib/cflex_install/bundle.py'), /"requires": \["pg"\]/);
+  const migs = fs.readdirSync(path.join(REPO, 'apps/console/migrations')).filter(f => f.endsWith('.sql'));
+  assert.ok(migs.length >= 1 && migs.every(f => /^\d{4}_[a-z0-9_]+\.sql$/.test(f)), migs.join());
+  const sql = migs.map(f => read(path.join('apps/console/migrations', f))).join('\n');
+  const code = ['db.js', 'partitions.js'].map(f => read(path.join('apps/console/src', f))).join('\n');
+  for (const bad of [/CREATE\s+EXTENSION/i, /pg_partman/i, /repmgr/i, /\bcitext\b/i, /pgcrypto/i]) {
+    assert.doesNotMatch(sql.split('\n').filter(l => !/^\s*--/.test(l)).join('\n'), bad, String(bad));
+    assert.doesNotMatch(code.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n'), bad, String(bad));
+  }
+  assert.match(sql, /PARTITION BY RANGE \(ts\)/);
+  // db01: the fragment mounted where rhel8/postgresql-16 reads it; replica WAL + archiving; the timer daily.
+  assert.match(read('install/templates/quadlet/cflex-postgres.container'), /^Volume=@@PG_CFG_DIR@@:\/opt\/app-root\/src\/postgresql-cfg:ro,Z$/m);
+  const conf = read('install/templates/postgres/cflex-postgresql.conf');
+  for (const k of [/^wal_level = replica$/m, /^archive_mode = on$/m, /^archive_command = /m]) assert.match(conf, k);
+  assert.match(read('install/templates/systemd/cflex-pg-backup.timer'), /^OnCalendar=\*-\*-\* 02:30:00$/m);
+  assert.match(read('install/scripts/cflex-pg-backup.sh'), /-X stream/);
+  // The Collector's buffer stays SQLite.
+  assert.match(read('probe-agent/src/buffer.js'), /require\('better-sqlite3'\)/);
+  assert.doesNotMatch(read('probe-agent/src/buffer.js'), /require\('pg'\)/);
+  // Secrets: the app reads db01's password from a file; the env template carries no value.
+  assert.match(read('install/templates/env/app.env'), /^CFLEX_DB_PASSWORD_FILE=@@SECRETS_DIR@@\/pg\.pass$/m);
+  assert.doesNotMatch(read('install/templates/env/app.env'), /^CFLEX_DB_URL=.*:[^@/]+@/m);
 });
 
 test('nginx: no port 80, no default site, no off-origin log of bodies', () => {
