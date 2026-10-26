@@ -183,6 +183,12 @@
   - (WO-INT-004 는 완료 상태다 — 상태를 바꾸지 않았다. 재개는 관리자가 한다)
 - 질문: Q-2026-10-25-12 · Q-2026-10-25-13
 - 다음 세션 계획: better-sqlite3 ^11→^10 핀 + UBI8 3개 이미지 재빌드(D-11 첫 항목) → 지시 5항 격리 HTTPS/mTLS 통합시험(새 인증서 성공·폐기 거절·테넌트/사이트 교차 거절·토큰 동시재사용 방지·동일 CSR 재시도)
+
+### 2026-10-25 23:07 PDT — Claude Code
+- WO-INT-004: **진행** | 진행 85% | 브랜치 `wo/INT-portal-integration` | 커밋 `6eb0388 (HEAD)` | 테스트 앞 보고와 동일 | 비고 미푸시 — auto 모드에서 git push 가 차단됐다(Claude Code 분류기). 커밋 5개(f075a7b b4b38d0 19bbf26 8a442b8 6eb0388)는 로컬 wo/INT-portal-integration 에 있다. 사용자 승인 후 push 하거나 Bash push 권한 규칙이 필요하다.
+  - 완료 기준: 앞 보고 참조
+  - 블로커: push 차단 — 관리자가 main 으로 합치려면 푸시가 먼저 필요하다
+  - (WO-INT-004 는 완료 상태다 — 상태를 바꾸지 않았다. 재개는 관리자가 한다)
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
