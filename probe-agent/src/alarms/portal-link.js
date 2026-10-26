@@ -193,9 +193,14 @@ function createPortalLink({
       alarm: { title: `포털 연결 끊김 (${endpoint})`, label: '포털 연결' },
       event: event('alarm_raise', {
         alarm_id: alarm.alarm_id,
-        title: never
+        // 조치 문구는 제목에 넣는다. local-notify 의 notification() 은
+        // detail 에서 value/threshold 만 꺼내므로 detail.hint 는 메일·Teams·
+        // ITSM 에 실리지 않는다 — 공유 notify 패키지를 고치는 대신 제목에
+        // 싣는다. 원인 분류가 사람에게 닿지 않으면 분류한 의미가 없다.
+        title: (never
           ? `포털에 한 번도 연결되지 않았다 (${endpoint})`
-          : `포털 연결 끊김 ${Math.round((t - alarm.since) / 1000)} s (${endpoint})`,
+          : `포털 연결 끊김 ${Math.round((t - alarm.since) / 1000)} s (${endpoint})`)
+          + (HINT[cause] ? ` — ${HINT[cause]}` : ''),
         detail: {
           endpoint,
           cause,
