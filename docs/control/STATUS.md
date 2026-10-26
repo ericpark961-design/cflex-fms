@@ -189,6 +189,13 @@
   - 완료 기준: 앞 보고 참조
   - 블로커: push 차단 — 관리자가 main 으로 합치려면 푸시가 먼저 필요하다
   - (WO-INT-004 는 완료 상태다 — 상태를 바꾸지 않았다. 재개는 관리자가 한다)
+
+### 2026-10-26 08:25 PDT — Claude Code
+- WO-INT-004: **진행** | 진행 85% | 브랜치 `wo/INT-portal-integration` | 커밋 `34c9428` | 테스트 apps/console 75/75 · probe-agent 97개 0실패 | 비고 사용자 지시로 중단 — 미완성 상태가 쓰기 거칠다는 판단. 재개 전 선결: (1) 콘솔에 UPS 0대 — 기존 fms.db 의 ups_devices 47건이 이관되지 않아 프로브가 폴링할 대상이 없고 큐가 계속 0이다. (2) 플랫폼 발급 인증서 30일 — 계약 §1 은 60일에 cert_renew 이므로 설치 당일부터 갱신창, 2년 재발급 필요. (3) D-11 UBI8/RHEL 미검증, better-sqlite3 ^11 핀 미적용. VM1 은 Ubuntu 라 목표 OS 검증 아님.
+  - 완료 기준: 실제 Probe 연결(cap01 → cflex.fms.support 60초 주기, last_status 200, 계약 1.1 송수신) / PORTAL_LINK_DOWN 발생·복구 알람 + 정의서 / 기본 화면에 연동 서버·연결 상태 / 콘솔을 fms.runless.co.uk/console/ 로 격리 노출
+  - 블로커: 없음 — 중단은 우선순위 판단이다
+  - (WO-INT-004 는 완료 상태다 — 상태를 바꾸지 않았다. 재개는 관리자가 한다)
+- 다음 세션 계획: 재개 시: ups_devices 47건 콘솔 이관 → 프로브 폴링 → 포털로 실제 측정 데이터. 그 다음 better-sqlite3 ^10 핀 + UBI8 재빌드(D-11).
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
