@@ -3,6 +3,8 @@
 // the SOW test ticket for the installer's `verify --send-test`.
 //
 //   node src/cli.js create-user <username> <admin|operator|viewer>   password on stdin
+//   node src/cli.js set-password <username>                          password on stdin
+//   node src/cli.js list-users
 //   node src/cli.js collector-key <node-id>                          prints the key once
 //   node src/cli.js test-ticket [--keep-open]                        ServiceNow create → update → resolve
 //                                                                    with the channels in Settings (exit 0 ok, 1 failed)
@@ -41,6 +43,29 @@ async function main() {
     const u = settings.createUser({ username: a, role: b, password, must_change: true });
     audit('user_create', u.username, { role: u.role });
     console.log(`created ${u.username} (${u.role}); the password must be changed at first login`);
+  } else if (cmd === 'set-password') {
+    // 잊은 비밀번호를 복구하는 유일한 경로. 이게 없어서 2026-10-26 에
+    // haeaadmin 으로 로그인할 방법이 사라졌다 — create-user 는 새 계정만
+    // 만들고, 기존 계정의 해시를 고칠 공식 수단이 없었다.
+    //
+    // must_change 는 settings.updateUser 가 강제로 1 로 올린다. 여기서 넣는
+    // 값은 임시 비밀번호이고, 본인이 첫 로그인에서 자기 것으로 바꾼다 —
+    // 복구를 수행한 사람이 그 계정의 상시 비밀번호를 알지 못하게 한다.
+    if (!a) throw new Error('usage: set-password <username>');
+    const u = settings.listUsers().find((x) => x.username === a);
+    if (!u) throw new Error(`no such user: ${a} (list-users 로 확인하라)`);
+    const password = await readSecret('new password: ');
+    settings.updateUser(u.id, { password });
+    audit('user_password_reset', u.username, { role: u.role, by: 'cli' });
+    console.log(`${u.username} 의 비밀번호를 바꿨다; 첫 로그인에서 본인이 다시 바꿔야 한다`);
+  } else if (cmd === 'list-users') {
+    for (const u of settings.listUsers()) {
+      console.log([
+        String(u.username).padEnd(22), String(u.role).padEnd(9),
+        `disabled=${u.disabled ? 1 : 0}`, `must_change=${u.must_change ? 1 : 0}`,
+        `last_login=${u.last_login_at ? new Date(u.last_login_at).toISOString() : '없음'}`,
+      ].join(' '));
+    }
   } else if (cmd === 'collector-key') {
     if (!a) throw new Error('usage: collector-key <node-id>');
     const k = settings.issueCollectorKey(a);
@@ -58,7 +83,7 @@ async function main() {
       : `FAIL ServiceNow test ticket at ${r.step || 'config'}: ${r.error}`);
     process.exitCode = r.ok ? 0 : 1;
   } else {
-    console.log('commands: create-user <username> <role> | collector-key <node-id> | test-ticket [--keep-open]');
+    console.log('commands: create-user <username> <role> | set-password <username> | list-users | collector-key <node-id> | test-ticket [--keep-open]');
     process.exitCode = 2;
   }
 }
