@@ -144,6 +144,26 @@ function createIngest(db, { now = Date.now } = {}) {
         site_id: str(b.portal.site_id, 32), api_version: str(b.portal.api_version, 16),
         api_version_seen: str(b.portal.api_version_seen, 16),
         last_status: num(b.portal.last_status), proxy: str(b.portal.proxy, 200),
+        // 연결 상태. 알람을 올릴지 판단한 그 상태기계가 그대로 보고하므로
+        // 화면과 알람이 갈리지 않는다. 화이트리스트에 넣지 않으면 조용히
+        // 버려진다 — cert 블록이 그렇게 사라진 적이 있다.
+        link: b.portal.link && typeof b.portal.link === 'object' ? {
+          link: str(b.portal.link.link, 16),
+          ever_up: !!b.portal.link.ever_up,
+          last_success: str(b.portal.link.last_success, 32),
+          quiet_s: num(b.portal.link.quiet_s),
+          failures: num(b.portal.link.failures),
+          last_status: num(b.portal.link.last_status),
+          cause: str(b.portal.link.cause, 16),
+          hint: str(b.portal.link.hint, 200),
+          alarm_id: str(b.portal.link.alarm_id, 64),
+          down_since: str(b.portal.link.down_since, 32),
+          thresholds: b.portal.link.thresholds && typeof b.portal.link.thresholds === 'object' ? {
+            down_after_s: num(b.portal.link.thresholds.down_after_s),
+            min_failures: num(b.portal.link.thresholds.min_failures),
+            reraise_s: num(b.portal.link.thresholds.reraise_s),
+          } : null,
+        } : null,
       } : null,
       // What the node says it holds on disk. Kept separate from the
       // enrolment row, which is what the CONSOLE registered: "a certificate
