@@ -313,3 +313,15 @@ WO-INT-007에서 한 일:
 - **(C)** better-sqlite3를 순수 JS/WASM 드라이버로 바꾼다. 명세 밖이고 Collector 버퍼 성능을 다시 검증해야 한다 — 비권고.
 
 권고안 (A)로 진행했다.
+
+### 답 Q-2026-10-26-04 → **(A)** (관리자, 2026-10-26)
+`SNMP_TRAP_UNKNOWN`은 부록 B 밖 — Probe 내부 카운트·로그·최근 200건만. 계약 v1.2(WO-INT-012 `collector_id`와 같은 개정)에서 추가할지 SAT 실측 뒤 결정.
+
+### 답 Q-2026-10-26-05 → **(A)** (관리자, 2026-10-26, 권고안 — 법인장 반대 시 변경)
+환경(온·습도)·NetBotz(도어·누수·연기)·Rack PDU trap 코드는 부록 B v1.1에 없으므로 매핑하지 않고 기록만. 코드 추가는 계약 v1.2 개정(WO-INT-012와 묶음)에서 법인장이 HAEA 제공 범위를 정한 뒤 — Probe는 `apc-mib.js` 표 행 추가(반 세션). 알람 라우팅·통보는 D-12a대로 포털 책임.
+
+### 답 Q-2026-10-26-06 → **(A)** (관리자, 2026-10-26)
+SAT 체크리스트에 "HAEA NMC 펌웨어 PowerNet-MIB와 `apc-mib.js` trap 번호 대조 + 실제 NMC test trap 1건 수신"을 추가한다. MIB 원본을 레포에 두는 (B)는 라이선스 확인 전까지 보류.
+
+### 답 Q-2026-10-26-07 → **(A)** (관리자, 2026-10-26)
+Containerfile의 `npm_config_build_from_source=true` + 빌드 직후 로드 검사 + `build-bundle` ABI 115 검사 구조를 유지한다. 첫 `podman build`(RingOn 빌드 호스트, D-11 시점)에서 node-gyp/Python 3.6 문제가 나오면 build 단계에만 `python39` 추가. WO-INT-007 완료(PR #8).
