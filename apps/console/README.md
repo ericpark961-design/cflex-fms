@@ -17,7 +17,9 @@ node src/cli.js collector-key cap01           # prints the collector key once
 node src/server.js                            # listens on CONSOLE_BIND:CONSOLE_PORT (0.0.0.0:8080)
 ```
 
-nginx: `deploy/console/nginx-cflex-console.conf` (TLS 443 → app01:8080, app02:8080 backup).
+nginx: rendered per node by `cflex-install` (`install/templates/nginx/cflex-console.conf`; bare-profile
+reference copy in `deploy/console/nginx-cflex-console.conf`). TLS 443 → the local app on 127.0.0.1:8080; local
+app down → the peer node's nginx on 443. Nothing between the nodes uses 8080 (firewall request v3, Q-2026-10-25-10).
 
 ## Stateless (app01 / app02)
 
@@ -65,19 +67,32 @@ implemented until the IdP date is known (spec §6-5).
 | `POST /collector/v1/{heartbeat,telemetry,events}` · `GET /collector/v1/{devices,config}` | collector key | |
 | `GET /healthz` | — | 503 when Redis is down |
 
-Portal-scope endpoints get honest empty answers rather than twin's sample fallback (D-01, D-05):
-- `GET /v1/fms/routes` returns no routes.
-- `GET /v1/fms/control/actions` returns no actions.
-- Copilot, power chain, topology, tickets and incidents return 404.
+**Profile** (`CONSOLE_PROFILE`, DECISIONS Q-2026-10-25-09 (B)). The default, `internal`, serves no
+portal-scope API at all: alarm routing, control actions, copilot, power chain, topology, tickets and
+incidents all answer 404, and the internal twin build has no screen that asks. `portal` adds back the
+two honest empty answers the full twin build reads (`/v1/fms/routes`, `/v1/fms/control/actions`)
+instead of falling back to its sample data. Nothing else differs.
 
 **Collector payloads** are the contract's own (00 §3.3, §3.4) and are validated with
 `docs/spec/schemas`. Replays are harmless: an `event_id` or a `(device_id, ts)` that is already stored
 is skipped.
 
+**Local notification is sent from here** (Q-2026-10-25-10 (A); firewall request v3 FW-8:
+app → SMTP relay 25/587, app → proxy → Teams/ServiceNow 443). `POST /collector/v1/events` stores the
+events, then notifies with the channels in Settings (`src/notify.js` → probe-agent `local-notify.js`) and
+answers `{accepted, duplicate, local_notified: {event_id: {email, teams, itsm}}}`. The collector puts
+that in the event it sends the Portal. Details:
+- alarm_id → ServiceNow INC is in the `itsm_map` table, so a clear on app02 resolves what app01 opened.
+- A replayed `event_id` gets the stored answer; nobody is told twice.
+- Suppressed (nothing sent, an open INC still resolves on clear): the event's `detail.maintenance`, a
+  window set here since the collector last pulled its config, and a replay (`X-CFlex-Replay: 1`, the
+  collector could not reach the console) older than `CONSOLE_NOTIFY_REPLAY_MAX_S` (900).
+- An event that already carries `local_notified` (a collector notifying by itself) is not notified again.
+
 **Secrets** (SNMP community and v3 keys, SMTP password, Teams webhook, ServiceNow password) are sealed
 with AES-256-GCM (`CONSOLE_SECRET_KEY_FILE`). Reading them back returns `{ "set": true }`. Only the
-collector's `GET /collector/v1/{devices,config}` returns them opened, because the collector needs them
-to poll and to notify.
+collector's `GET /collector/v1/devices` returns SNMP credentials opened, because the collector polls.
+The notification secrets never leave the console: `GET /collector/v1/config` has no channel section.
 
 ## No external calls
 

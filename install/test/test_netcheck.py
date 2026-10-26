@@ -75,6 +75,13 @@ class NetCheck(unittest.TestCase):
         fw7 = by["FW-7"]["checks"]
         self.assertEqual(fw7[0]["verdict"], "PASS")  # collector → app 443, live
         self.assertTrue(all(c["verdict"] == "N/A" for c in fw7[1:]))
+        # Q-2026-10-25-10 (A): cap01 → SMTP relay / proxy (Teams, ServiceNow) is not the collector's;
+        # the report says so in each line, not only as a bare N/A.
+        fw8 = {c["check"]: c for c in by["FW-8"]["checks"]}
+        for k in ("app → SMTP 릴레이", "app → 프록시 → Teams 443", "app → ServiceNow 443"):
+            self.assertEqual(fw8[k]["verdict"], "N/A", k)
+            self.assertIn("해당 없음", fw8[k]["observed"])
+            self.assertIn("Local Console(app)이 발송", fw8[k]["observed"])
         # sshd on IPv4 and IPv6 both belong to FW-6 — no extra line for the second socket.
         extras = {(e["addr"], e["verdict"]) for e in rep["extras"]}
         self.assertIn(("0.0.0.0:9090", "WARN"), extras)            # cockpit: not ours, recorded

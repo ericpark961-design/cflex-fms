@@ -134,6 +134,19 @@ test('nginx: no port 80, no default site, no off-origin log of bodies', () => {
   assert.match(srv, /listen @@LISTEN_PORT@@ ssl http2;/);
 });
 
+test('nginx, both profiles: between the app nodes only 443 — the app is reached on 127.0.0.1:8080 and nowhere else (Q-2026-10-25-10)', () => {
+  for (const f of ['install/templates/nginx/cflex-console.conf', 'deploy/console/nginx-cflex-console.conf']) {
+    const code = read(f).split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+    const to8080 = [...code.matchAll(/(?:server|proxy_pass)\s+(?:https?:\/\/)?([^\s;:]+):8080/g)].map(m => m[1]);
+    assert.deepStrictEqual([...new Set(to8080)], ['127.0.0.1'], `${f}: ${to8080.join(', ')}`);
+    assert.doesNotMatch(code, /\bbackup;/, `${f}: no 8080 backup upstream on the peer`);
+  }
+  // The peer hop itself is rendered into @@PEER_LOCATION@@ (render.py); the reference copy shows it.
+  const ref = read('deploy/console/nginx-cflex-console.conf');
+  assert.match(ref, /error_page 502 504 = @peer;/);
+  assert.match(ref, /proxy_pass https:\/\/10\.138\.14\.68:443;/);
+});
+
 test('RHEL only: install.sh has no apt/NodeSource/git clone; bare path uses AppStream nodejs:20', () => {
   const sh = read('probe-agent/install.sh');
   const code = sh.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');

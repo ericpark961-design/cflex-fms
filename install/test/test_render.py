@@ -77,14 +77,23 @@ class Render(unittest.TestCase):
         self.assertIn("PublishPort=10.138.14.66:1162:1162/udp", fwd)
         self.assertIn("PublishPort=10.138.14.66:162:1162/udp", sys_)
 
-    def test_standby_uses_remote_redis_and_publishes_nothing_but_443(self):
+    def test_standby_uses_the_primary_and_keeps_a_replica(self):
+        # Q-2026-10-25-11 (A): the console on app02 uses app01's Redis; app02's own Redis replicates it.
         f = render.render(self.site, "app", me(self.site, "app", "app02"), "2.0.0", podman_version="4.9.4")
-        self.assertNotIn(QD + "cflex-redis.container", f)
+        self.assertIn(QD + "cflex-redis.container", f)
         env = f["/opt/app/cflex/config/app/app.env"][0]
         self.assertIn("REDIS_URL=redis://10.138.14.67:6379/0", env)
         self.assertIn("CONSOLE_BIND=127.0.0.1", env)
+        conf = f["/opt/app/cflex/config/redis/redis.conf"][0]
+        self.assertIn("\nreplicaof 10.138.14.67 6379\n", conf)
+        self.assertIn("\nreplica-read-only yes\n", conf)
+        self.assertNotRegex(conf, r"(?m)^\s*(masterauth|requirepass)\b", "the password stays in auth.conf")
+        self.assertIn("redis-cli.sh", " ".join(f))
         pubs = re.findall(r"(?m)^PublishPort=(.+)$", "\n".join(units(f).values()))
-        self.assertEqual(pubs, ["10.138.14.68:8443:8443/tcp"])
+        self.assertEqual(pubs, ["10.138.14.68:8443:8443/tcp", "10.138.14.68:6379:6379/tcp"])
+        p = render.render(self.site, "app", me(self.site, "app", "app01"), "2.0.0")
+        self.assertNotIn("replicaof", p["/opt/app/cflex/config/redis/redis.conf"][0].replace("# ", ""), "app01 is the primary")
+        self.assertIn("REDIS_URL=redis://127.0.0.1:6379/0", p["/opt/app/cflex/config/app/app.env"][0])
 
     def test_nginx_peer_fallback(self):
         f = render.render(self.site, "app", me(self.site, "app", "app01"), "2.0.0")
@@ -105,6 +114,13 @@ class Render(unittest.TestCase):
         self.assertIn("HTTPS_PROXY=\n", env, "placeholder proxy from the example must not be written")
         self.assertIn("CFLEX_URL=https://10.138.14.67", env)
         self.assertIn("CFLEX_TRAP_PORT=1162", env)
+        # WO-INT-004c: the Local Console, both app nodes active first; key and CA by path; no notify channel.
+        self.assertIn("CFLEX_CONSOLE_URL=https://10.138.14.67,https://10.138.14.68\n", env)
+        self.assertIn("CFLEX_CONSOLE_KEY_FILE=/opt/app/cflex/secrets/collector.key\n", env)
+        self.assertIn("CFLEX_CONSOLE_CA=/opt/app/cflex/certs/console-ca.pem\n", env)
+        self.assertNotIn("CFLEX_NOTIFY_CONFIG", env)
+        bare = render.render(self.site, "collector", me(self.site, "collector", "cap01"), "2.0.0", profile="bare")
+        self.assertIn("CFLEX_CONSOLE_KEY_FILE=/opt/app/cflex/secrets/collector/collector.key\n", bare["/opt/app/cflex/config/collector/collector.env"][0])
 
     def test_bare_profile(self):
         f = render.render(self.site, "collector", me(self.site, "collector", "cap01"), "2.0.0", profile="bare")

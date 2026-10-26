@@ -18,9 +18,11 @@ function secretFile(k) {
 
 function load() {
   return {
-    // Behind nginx on 443 (deploy/console/nginx-cflex-console.conf). 0.0.0.0 so
-    // the nginx on the other app node can reach this one too; firewalld only
-    // opens 443 to users, so the API port itself is not reachable from outside.
+    // Behind nginx on 443. The default is every interface (WO-INT-004); the
+    // installer sets 127.0.0.1, because the nginx in front is always on the
+    // same host (or network namespace) and the other node is reached through
+    // its nginx on 443, never on this port (Q-2026-10-25-10). firewalld opens
+    // only 443 either way.
     bind: env('CONSOLE_BIND', '0.0.0.0'),
     port: int('CONSOLE_PORT', 8080),
     nodeId: env('CONSOLE_NODE_ID', require('os').hostname()),
@@ -48,6 +50,20 @@ function load() {
     // Data with no poll inside this window shows as "no data" (the old backend's 5 minutes).
     staleMs: int('CONSOLE_STALE_S', 300) * 1000,
     saml: { enabled: env('CONSOLE_SAML', '0') === '1' },
+    // DECISIONS Q-2026-10-25-09 (B): the HAEA build serves only the internal
+    // screens' API. `portal` keeps the compatibility answers twin's portal
+    // screens used to get (empty routes / control actions); nothing else differs.
+    profile: env('CONSOLE_PROFILE', 'internal') === 'portal' ? 'portal' : 'internal',
+    // Local notification goes out from here (Q-2026-10-25-10 (A), v3 FW-8):
+    // SMTP to the relay directly, Teams/ServiceNow through HAEA's proxy.
+    notify: {
+      proxy: env('HTTPS_PROXY', env('https_proxy', null)),
+      noProxy: env('NO_PROXY', env('no_proxy', null)),
+      caPath: env('CONSOLE_PROXY_CA', null),
+      // A Collector re-sending events after the console was down: older than
+      // this, they are stored but nobody is paged (the Portal has them).
+      replayMaxMs: int('CONSOLE_NOTIFY_REPLAY_MAX_S', 900) * 1000,
+    },
   };
 }
 

@@ -3,7 +3,8 @@
 //   /v1/auth/*, /v1/me          local accounts, sessions in Redis
 //   /v1/fms/*                   what apps/twin reads (same keys as before)
 //   /v1/console/*               alarms detail/comment, maintenance, settings, users, status
-//   /collector/v1/*             the Collector: telemetry/events/heartbeat in, devices/config out
+//   /collector/v1/*             the Collector: telemetry/events/heartbeat in, devices/config out;
+//                               alarm events are notified from here (notify.js)
 //   /twin/*                     the existing UI (apps/twin, console build)
 //   /login, /settings           the two pages twin does not have
 //
@@ -16,6 +17,7 @@ const { createViews } = require('./views');
 const { createIngest } = require('./ingest');
 const { createSettings } = require('./settings');
 const { createSealer } = require('./seal');
+const { createConsoleNotify, announces, netFrom } = require('./notify');
 
 const COOKIE = 'cflex_sid';
 
@@ -25,7 +27,7 @@ const COOKIE = 'cflex_sid';
  * @param {object} o.db         db.js open()
  * @param {object} o.redis      redis.js client
  * @param {Function} [o.now]
- * @param {object} [o.notifyDeps]  injected into the test-ticket notifier (tests)
+ * @param {object} [o.notifyDeps]  injected into the notifier: {http, smtpSend} (tests)
  * @param {object} [o.log]
  */
 function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log = console }) {
@@ -35,6 +37,9 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
   const ingest = createIngest(db, { now });
   const sealer = createSealer(config.secretKey);
   const settings = createSettings(db, { sealer, tenant: config.tenant, now });
+  const notify = createConsoleNotify({
+    db, settings, deps: notifyDeps || {}, now, log, replayMaxAgeMs: config.notify?.replayMaxMs, net: netFrom(config.notify),
+  });
   const router = createRouter();
   const R = (m, p, role, h) => router.add(m, p, { role }, h);
 
@@ -123,10 +128,15 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
   R('GET', '/v1/fms/fleet-live', 'viewer', (c) => views.fleetLive(parseInt(c.query.minutes, 10) || 60, c.query.cbu));
   R('GET', '/v1/fms/channels/health', 'viewer', () => ({ ok: true, channels: settings.channelsHealth() }));
   // Alarm routing and device control are the Portal's (D-01) and device
-  // writes are forbidden (D-05): the screens get honest empty lists, not the
-  // sample data they would otherwise fall back to.
-  R('GET', '/v1/fms/routes', 'viewer', () => ({ ok: true, routes: [], stats: {}, note: 'alarm routing is configured in the portal' }));
-  R('GET', '/v1/fms/control/actions', 'viewer', () => ({ ok: true, actions: [] }));
+  // writes are forbidden (D-05). The internal build (Q-2026-10-25-09 (B))
+  // has no screen that asks, so it does not answer at all — 404, like
+  // copilot, power chain, topology, tickets and incidents. A `portal`
+  // profile keeps the honest empty lists the full twin build reads instead
+  // of falling back to its sample data.
+  if (config.profile === 'portal') {
+    R('GET', '/v1/fms/routes', 'viewer', () => ({ ok: true, routes: [], stats: {}, note: 'alarm routing is configured in the portal' }));
+    R('GET', '/v1/fms/control/actions', 'viewer', () => ({ ok: true, actions: [] }));
+  }
 
   // ── alarms: detail, ACK, comments (operator) ─────────────────────────────
   R('GET', '/v1/fms/alerts/:id', 'viewer', (c) => {
@@ -246,17 +256,10 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
     audit(c, 'notify_put', null, { keys: Object.keys(c.body || {}) });
     return { ok: true, notify: n };
   });
-  // SOW acceptance: the "test ticket" button. Same code path as the
-  // collector's cflex-test-ticket (probe-agent local-notify testTicket).
+  // SOW acceptance: the "test ticket" button. Same channels and code path as
+  // the alarm notifications (notify.js → probe-agent local-notify testTicket).
   R('POST', '/v1/console/notify/test-ticket', 'admin', async (c) => {
-    const { createLocalNotifier } = require('../../../probe-agent/src/alarms/local-notify');
-    const transport = require('../../../probe-agent/src/portal/transport');
-    const n = createLocalNotifier({
-      config: settings.getNotify({ open: true }), deps: notifyDeps || {}, request: transport.request,
-      proxy: process.env.HTTPS_PROXY || process.env.https_proxy || null, noProxy: process.env.NO_PROXY || null,
-      log: { warn() {}, error() {}, log() {} },
-    });
-    const r = await n.testTicket({ resolve: c.body?.resolve !== false });
+    const r = await notify.testTicket({ resolve: c.body?.resolve !== false });
     audit(c, 'test_ticket', r.number || null, { ok: r.ok, step: r.step || null });
     return { ok: !!r.ok, ...r };
   });
@@ -300,13 +303,31 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
   // ── collector (key auth) ─────────────────────────────────────────────────
   R('POST', '/collector/v1/heartbeat', 'collector', (c) => ingest.heartbeat(c.collector.node_id, c.body));
   R('POST', '/collector/v1/telemetry', 'collector', (c) => ingest.telemetry(c.body));
-  R('POST', '/collector/v1/events', 'collector', (c) => ingest.events(c.body));
+  // Alarm events: stored, then notified here (Q-2026-10-25-10 (A)). The answer
+  // carries event_id → local_notified, which the Collector puts in the event
+  // it sends the Portal. A replayed event gets what was delivered the first
+  // time; nobody is told twice.
+  R('POST', '/collector/v1/events', 'collector', async (c) => {
+    const r = ingest.events(c.body);
+    const sent = await notify.forEvents(r.fresh, { replay: c.req.headers['x-cflex-replay'] === '1' });
+    const localNotified = {};
+    for (const [id, ln] of Object.entries(r.prior)) if (ln) localNotified[id] = ln;
+    for (const ev of r.fresh) {
+      const ln = sent[ev.event_id];
+      if (!ln) continue;
+      ingest.recordNotified(ev, ln, { announces: announces(ev) });
+      localNotified[ev.event_id] = ln;
+    }
+    return { accepted: r.accepted, duplicate: r.duplicate, local_notified: localNotified };
+  });
   R('GET', '/collector/v1/devices', 'collector', () => ({ ok: true, devices: settings.collectorDevices() }));
+  // No notification channels in here: the Collector does not notify, so the
+  // SMTP / Teams / ServiceNow secrets never leave the console.
   R('GET', '/collector/v1/config', 'collector', () => {
     const t = now();
     const devs = new Map(db.prepare('SELECT device_id, id FROM devices').all().map(d => [d.device_id, d.id]));
     return {
-      ok: true, thresholds: settings.getThresholds(), notify: settings.getNotify({ open: true }),
+      ok: true, thresholds: settings.getThresholds(),
       // In the shape probe-agent's alarm engine takes (setMaintenance).
       maintenance: db.prepare('SELECT * FROM maintenance WHERE ends_at > ?').all(t).map(w => ({
         device_id: w.device_id, ledger_id: w.device_id ? devs.get(w.device_id) ?? null : null, site_id: w.site_id,
@@ -404,7 +425,7 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, log =
   const server = http.createServer((req, res) => { handle(req, res); });
   server.headersTimeout = 20_000;
   server.requestTimeout = 60_000;
-  return { server, router, sessions, settings, views, ingest };
+  return { server, router, sessions, settings, views, ingest, notify };
 }
 
 const clip = (v, n) => (v == null || String(v).trim() === '' ? null : String(v).trim().slice(0, n));

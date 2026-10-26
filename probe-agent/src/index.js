@@ -1,8 +1,8 @@
 // index.js — cflex-probe main entry
 // Responsibilities:
-//   1. Fetch device config from cflex on boot + periodically (config sync)
+//   1. Fetch device config from the Local Console (or, without one, cflex) on boot + periodically
 //   2. Poll all UPS devices on POLL_INTERVAL_MS schedule
-//   3. Forward telemetry + alerts to cflex
+//   3. Forward telemetry + alarm events to the Local Console and the Portal
 //   4. Drain local buffer when cflex reachable
 //   5. Send heartbeat every HEARTBEAT_INTERVAL_MS
 //   6. Purge old buffered events daily
@@ -19,11 +19,14 @@ let polling = false;
 
 async function loadDevices() {
   const remote = await forwarder.fetchDeviceConfig();
-  if (remote && remote.length) {
+  // The Local Console's answer is the inventory, even when it is empty (every
+  // device removed or polling disabled). null = unreachable: keep the last list.
+  const fromConsole = forwarder.consoleConfigured();
+  if (remote && (remote.length || fromConsole)) {
     devices = remote;
-    console.log(`[probe] loaded ${devices.length} UPS from cflex`);
+    console.log(`[probe] loaded ${devices.length} UPS from ${fromConsole ? 'the Local Console' : 'cflex'}`);
   } else if (!devices.length) {
-    console.log('[probe] no devices from cflex yet — polling disabled');
+    console.log(`[probe] no devices from ${fromConsole ? 'the Local Console' : 'cflex'} yet — polling disabled`);
   }
   // The rest of the room: PDUs, NetBotz, CRACs, switches. A separate feed
   // because they live in a separate table and have separate collectors; a
@@ -122,12 +125,12 @@ async function pollAll() {
 async function bootstrap() {
   console.log(`[probe] starting cflex-probe v${require('../package.json').version}`);
   console.log(`[probe] tenant=${cfg.tenantId} probe_id=${cfg.probeId}`);
-  console.log(`[probe] cflex=${cfg.cflexUrl}`);
+  console.log(cfg.console.url ? `[probe] console=${cfg.console.url}` : `[probe] cflex=${cfg.cflexUrl}`);
 
   await loadDevices();
 
-  // Reload device config every 5 minutes
-  setInterval(loadDevices, 5 * 60 * 1000);
+  // Reload device config (and the console's thresholds and maintenance windows), every 5 minutes by default
+  setInterval(loadDevices, cfg.configReloadMs);
 
   // Poll cycle
   setInterval(pollAll, cfg.pollIntervalMs);

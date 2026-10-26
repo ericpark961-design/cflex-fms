@@ -68,16 +68,19 @@ async function start(nodeId, redisUrl) {
   const db = dbmod.open(config.dbPath);
   const redis = createRedis(config.redisUrl);
   const tickets = [];
+  const mails = [];
   const notifyDeps = {
+    // Teams and ServiceNow both go through http; a webhook answers 200, ServiceNow its incident.
     http: async (url, body, o = {}) => {
       tickets.push({ url, body, method: o.method || 'POST' });
       return { ok: true, status: 201, json: { result: { sys_id: 'a'.repeat(32), number: 'INC0099001' } } };
     },
+    smtpSend: async (m) => { mails.push(m); return { messageId: `<${mails.length}@test>` }; },
   };
   const app = createApp({ config, db, redis, notifyDeps, log: quiet });
   // The production bind: every interface. The test then talks to it on loopback.
   await new Promise((r) => app.server.listen(0, config.bind, r));
-  return { app, db, redis, config, tickets, url: `http://127.0.0.1:${app.server.address().port}` };
+  return { app, db, redis, config, tickets, mails, url: `http://127.0.0.1:${app.server.address().port}` };
 }
 
 test.before(async () => {
@@ -249,8 +252,11 @@ test('collector → console: telemetry and an On-Battery P1 become a critical de
   const raise = { event_id: UUID(), alarm_id: alarmId, device_id: ups.device_id, site_id: 'HMA-FV', ts: iso(Date.now()), kind: 'alarm_raise',
     severity: 'P1', code: 'UPS_ON_BATTERY', title: 'UPS on battery', detail: { metric: 'output_source', value: 'onBattery' }, source: 'rule',
     local_notified: { email: true, teams: false, itsm: 'INC0012345' } };
-  assert.deepStrictEqual((await col('POST', '/collector/v1/events', { events: [raise] })).json, { accepted: 1, duplicate: 0 });
-  assert.deepStrictEqual((await col('POST', '/collector/v1/events', { events: [raise] })).json, { accepted: 0, duplicate: 1 });
+  // This event says what was delivered already (a collector that still notifies by itself), so the
+  // console — which has no channels configured yet anyway — sends nothing and answers nothing new.
+  assert.deepStrictEqual((await col('POST', '/collector/v1/events', { events: [raise] })).json, { accepted: 1, duplicate: 0, local_notified: {} });
+  assert.deepStrictEqual((await col('POST', '/collector/v1/events', { events: [raise] })).json,
+    { accepted: 0, duplicate: 1, local_notified: { [raise.event_id]: raise.local_notified } }, 'a replay is answered with what was stored');
 
   a = (await viewer.req('GET', '/v1/fms/assets')).json.assets.find(x => x.id === ups.id);
   assert.strictEqual(a.status, 'critical');
@@ -333,8 +339,72 @@ test('notify channels: secrets stored sealed, answered as {set:true}; the test-t
   assert.deepStrictEqual([tt.json.ok, tt.json.number, tt.json.updated, tt.json.resolved], [true, 'INC0099001', true, true]);
   assert.strictEqual(A.tickets.length, 3);
   assert.match(A.tickets[0].url, /^https:\/\/haea\.service-now\.example\/api\/now\/table\/incident/);
-  // The collector receives the opened config — its notifier needs the password.
-  assert.strictEqual((await col('GET', '/collector/v1/config')).json.notify.servicenow.pass, 'sn-secret-pw');
+  // Q-2026-10-25-10 (A): the console notifies, so the channel secrets stay here —
+  // the collector's config pull no longer carries them, opened or sealed.
+  const cfg = await fetch(urlB + '/collector/v1/config', { headers: { 'x-cflex-node': 'cap01', authorization: `Bearer ${collectorKey}` } }).then(r => r.text());
+  assert.strictEqual(JSON.parse(cfg).notify, undefined);
+  for (const s of ['smtp-secret-pw', 'secret-hook', 'sn-secret-pw']) assert.ok(!cfg.includes(s), s);
+});
+
+test('local notification (Q-10 A): the console notifies collector events and answers with local_notified', async () => {
+  const before = { mails: B.mails.length, tickets: B.tickets.length };
+  const id = UUID();
+  const raise = { event_id: UUID(), alarm_id: id, device_id: ups.device_id, site_id: 'HMA-FV', ts: iso(Date.now()), kind: 'alarm_raise',
+    severity: 'P1', code: 'UPS_ON_BATTERY', title: 'Output source: onBattery', detail: { metric: 'output_source', value: 'onBattery' }, source: 'rule' };
+  const r = await col('POST', '/collector/v1/events', { events: [raise] });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  assert.deepStrictEqual(r.json.local_notified[raise.event_id], { email: true, teams: true, itsm: 'INC0099001' });
+  assert.strictEqual(B.mails.length - before.mails, 1, 'one e-mail to the one recipient');
+  assert.match(B.mails.at(-1).subject, /\[P1\].*HMA-UPS-1W-B/);
+  assert.ok(B.tickets.slice(before.tickets).some(t => /webhook/.test(t.url)), 'Teams');
+  assert.ok(B.tickets.slice(before.tickets).some(t => /table\/incident$/.test(t.url)), 'ServiceNow create');
+  // What reached the alarm list is what was delivered.
+  const al = (await viewer.req('GET', '/v1/fms/alerts?hours=1')).json.alerts.find(x => x.alarm_id === id);
+  assert.deepStrictEqual(al.local_notified, { email: true, teams: true, itsm: 'INC0099001' });
+
+  // The collector retries (lost response): same answer, nobody told twice.
+  const n = { mails: B.mails.length, tickets: B.tickets.length };
+  const again = await col('POST', '/collector/v1/events', { events: [raise] });
+  assert.deepStrictEqual(again.json, { accepted: 0, duplicate: 1, local_notified: { [raise.event_id]: { email: true, teams: true, itsm: 'INC0099001' } } });
+  assert.deepStrictEqual([B.mails.length, B.tickets.length], [n.mails, n.tickets]);
+
+  // The clear goes to the other node: it finds the INC the raise opened (itsm_map, not process memory) and resolves it.
+  const clear = { ...raise, event_id: UUID(), ts: iso(Date.now() + 1000), kind: 'alarm_clear', title: 'Cleared: Output source: onBattery', detail: {} };
+  const ca = await fetch(urlA + '/collector/v1/events', { method: 'POST', headers: { 'content-type': 'application/json', 'x-cflex-node': 'cap01', authorization: `Bearer ${collectorKey}` }, body: JSON.stringify({ events: [clear] }) }).then(x => x.json());
+  assert.strictEqual(ca.local_notified[clear.event_id].itsm, 'INC0099001');
+  const resolve = A.tickets.at(-1);
+  assert.strictEqual(resolve.method, 'PATCH');
+  assert.match(resolve.url, /table\/incident\/a{32}$/);
+  assert.strictEqual(resolve.body.state, '6', 'resolved');
+});
+
+test('local notification: a maintenance window on the console suppresses paging; a stale replay is recorded, not paged', async () => {
+  const m = await operator.req('POST', `/v1/fms/devices/${ups.id}/mute`, { minutes: 30, reason: 'battery swap' });
+  const n = { mails: B.mails.length, tickets: B.tickets.length };
+  const ev = { event_id: UUID(), alarm_id: UUID(), device_id: ups.device_id, site_id: 'HMA-FV', ts: iso(Date.now()), kind: 'alarm_raise',
+    severity: 'P1', code: 'UPS_ON_BATTERY', title: 'Output source: onBattery', detail: {}, source: 'rule' };
+  const r = await col('POST', '/collector/v1/events', { events: [ev] });
+  assert.deepStrictEqual(r.json.local_notified[ev.event_id], { email: false, teams: false, itsm: null }, 'window set after the collector last pulled its config still applies');
+  assert.deepStrictEqual([B.mails.length, B.tickets.length], [n.mails, n.tickets]);
+  await operator.req('POST', `/v1/fms/devices/${ups.id}/unmute`, {});
+  assert.ok(m.json.muted_until);
+
+  const old = { ...ev, event_id: UUID(), alarm_id: UUID(), ts: iso(Date.now() - 60 * 60e3) };
+  const replay = await fetch(urlB + '/collector/v1/events', { method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-cflex-node': 'cap01', authorization: `Bearer ${collectorKey}`, 'x-cflex-replay': '1' },
+    body: JSON.stringify({ events: [old] }) }).then(x => x.json());
+  assert.deepStrictEqual(replay.local_notified[old.event_id], { email: false, teams: false, itsm: null });
+  assert.deepStrictEqual([B.mails.length, B.tickets.length], [n.mails, n.tickets], 'an hour-old raise replayed after an outage pages nobody');
+  assert.strictEqual((await viewer.req('GET', '/v1/fms/alerts?hours=2')).json.alerts.filter(a => a.alarm_id === old.alarm_id).length, 1, 'but it is on the list');
+});
+
+test('profile internal (Q-09 B): no portal-scope API is served — routing, control, copilot, power chain, topology, tickets, incidents', async () => {
+  assert.strictEqual(A.config.profile, 'internal', 'the console default');
+  const portalish = /copilot|power-chain|topology|\/routes|\/control|tickets|incidents|sites-map|noc|wall/;
+  assert.deepStrictEqual(A.app.router.routes.filter(r => portalish.test(r.re.source)).map(r => r.re.source), []);
+  for (const p of ['/v1/fms/routes', '/v1/fms/control/actions', '/v1/fms/topology', '/v1/fms/copilot', '/v1/fms/power-chain/1', '/v1/incidents/1/workbench']) {
+    assert.strictEqual((await viewer.req('GET', p)).status, 404, p);
+  }
 });
 
 test('lockout: five wrong passwords lock the account on both nodes, even against the right one', async () => {
@@ -426,6 +496,56 @@ test('no external CDN: the console pages reference nothing off-origin', () => {
 const TWIN_BUILD = path.resolve(ROOT, '../twin/dist-console');
 test('no external CDN: the console build of twin (apps/twin, npm run build:console) references nothing off-origin', { skip: !fs.existsSync(TWIN_BUILD) && 'twin console build not present — run `npm run build:console` in apps/twin' }, () => {
   assert.deepStrictEqual(externalRefs(TWIN_BUILD), []);
+});
+
+// The build apps/twin's profile.test.mjs proves clean is built fresh there; this checks the one that
+// would be deployed from this tree (the default build:console is the internal profile).
+test('profile internal (Q-09 B): the deployed twin console build has no route to a portal screen', { skip: !fs.existsSync(TWIN_BUILD) && 'twin console build not present — run `npm run build:console` in apps/twin' }, () => {
+  const hits = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(html|js)$/.test(e.name)) for (const m of fs.readFileSync(p, 'utf8').matchAll(/#\/(?:twin|wall|map|powerchain)(?=[?/"'`]|$)|panel=copilot|["'`]\/v1\/fms\/(?:copilot|power-chain|topology|sites-map|routes|control)\b/g)) hits.push(`${e.name}: ${m[0]}`);
+    }
+  };
+  walk(TWIN_BUILD);
+  assert.deepStrictEqual(hits, [], 'built with CONSOLE_PROFILE=portal? rebuild with `npm run build:console`');
+});
+
+test('cli test-ticket (installer `verify --send-test`): the Settings channels, create → update → resolve, audited', async () => {
+  const { startDummyServiceNow } = require('../../../packages/notify/test/support/dummy-servicenow');
+  const { execFile } = require('node:child_process');
+  const sn = await startDummyServiceNow();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cflex-cli-'));
+  try {
+    const keyFile = path.join(dir, 'console.key');
+    fs.writeFileSync(keyFile, KEY, { mode: 0o600 });
+    const db = dbmod.open(path.join(dir, 'console.db'));
+    const { createSettings } = require('../src/settings');
+    const { createSealer } = require('../src/seal');
+    createSettings(db, { sealer: createSealer(KEY), tenant: 'HAEA' })
+      .putNotify({ servicenow: { instanceUrl: sn.url, user: 'svc', pass: 'secret' } }, 'test');
+    db.close();
+    const run = () => new Promise((resolve) => execFile(process.execPath, [path.join(ROOT, 'src/cli.js'), 'test-ticket'], {
+      cwd: dir, env: { PATH: process.env.PATH, CONSOLE_DB: path.join(dir, 'console.db'), CONSOLE_SECRET_KEY_FILE: keyFile, CONSOLE_NODE_ID: 'app01' },
+    }, (err, stdout) => resolve({ code: err ? err.code : 0, out: stdout })));
+    const ok = await run();
+    assert.strictEqual(ok.code, 0, ok.out);
+    assert.match(ok.out, /^OK {2}ServiceNow test ticket INC\d+ created, updated and resolved/);
+    assert.strictEqual([...sn.state.incidents.values()][0].state, '6');
+    sn.state.faults.push({ status: 503 });
+    const bad = await run();
+    assert.strictEqual(bad.code, 1);
+    assert.match(bad.out, /^FAIL ServiceNow test ticket at create/);
+    const { DatabaseSync } = require('node:sqlite');
+    const ro = new DatabaseSync(path.join(dir, 'console.db'), { readOnly: true });
+    assert.deepStrictEqual(ro.prepare(`SELECT actor LIKE 'cli:%' AS cli, json_extract(detail, '$.ok') AS ok FROM audit_log WHERE action = 'test_ticket' ORDER BY id`).all().map(r => [r.cli, r.ok]), [[1, 1], [1, 0]]);
+    ro.close();
+  } finally {
+    await sn.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('SAT 6: app01 stops — app02 keeps serving the same logged-in user', async () => {

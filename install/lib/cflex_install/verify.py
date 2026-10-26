@@ -2,7 +2,8 @@
 
 Connectivity is TCP (+ TLS handshake where the far end is HTTPS), through the
 HAEA proxy when site.yaml has one. Nothing is sent except with --send-test,
-which runs the existing test-ticket command (WO-INT-003) inside the collector.
+which runs the console's test-ticket command on an app node (the Local Console
+sends local notifications, DECISIONS Q-2026-10-25-10).
 Proxy credentials come from the URL and are never printed.
 """
 
@@ -101,10 +102,9 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
     add = lambda n, good, d, warn=False: out.append(Result(n, "PASS" if good else ("WARN" if warn else "FAIL"), d))
 
     # services
-    from .deploy import CONTAINERS, BARE_UNITS
+    from .deploy import CONTAINERS, BARE_UNITS, redis_info
     if profile == "container":
-        names = [n for n in CONTAINERS[role] if n != "cflex-redis" or (siteconf.redis_host(site) or {}).get("id") == me[1]]
-        for n in names:
+        for n in CONTAINERS[role]:
             r = as_cflex(["podman", "healthcheck", "run", n], mutating=False) if as_cflex else (1, "", "no runner")
             add("service " + n, ok(r), "healthy" if ok(r) else (r[2] or r[1] or "unhealthy").strip()[:200])
     else:
@@ -121,6 +121,10 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
         for a in apps:
             good, d = tls_f(a.get("ip"), 443, cafile=ca, verify=bool(ca))
             add("collector → %s 443" % a.get("id"), good, d + ("" if ca else " (no console-ca.pem: not verified)"))
+        # The console refuses a collector without its key (WO-INT-004c): inventory, telemetry, events.
+        key = "/opt/app/cflex/secrets/collector/collector.key"
+        add("collector key (Local Console)", runner.exists(key),
+            "present" if runner.exists(key) else "%s missing — issue it on the console: node src/cli.js collector-key %s" % (key, me[1]))
     if role in ("collector", "app") and siteconf.get(site, "portal.enabled", True):
         h, p = _host(siteconf.get(site, "portal.url"))
         good, d = tls_f(h, p or 443, proxy=proxy)
@@ -134,13 +138,33 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
         if rh.get("id") != me[1]:
             good, d = tcp_f(rh.get("ip"), 6379)
             add("app → redis on %s" % rh.get("id"), good, d)
+        # Primary + replica (Q-2026-10-25-11 (A)): this node's Redis plays the part site.yaml gives it.
+        if profile == "container" and as_cflex:
+            info = redis_info(as_cflex)
+            if info is None:
+                add("redis replication", False, "cflex-redis does not answer INFO")
+            elif rh.get("id") == me[1]:
+                n = int(info.get("connected_slaves") or 0)
+                add("redis replication", info.get("role") == "master" and n > 0,
+                    "primary, %d replica(s) connected" % n if info.get("role") == "master"
+                    else "role=%s, but site.yaml makes this node the primary" % info.get("role"),
+                    warn=info.get("role") == "master")   # no replica yet: the peer is down or not installed
+            elif info.get("role") == "master":
+                add("redis replication", False, "this node was promoted — set install.redis_host: %s in site.yaml "
+                    "(docs/install/REDIS_FAILOVER.md §3)" % me[1], warn=True)
+            else:
+                up = info.get("master_link_status") == "up"
+                add("redis replication", up, "replica of %s, link %s, last sync %ss ago" % (
+                    rh.get("id"), info.get("master_link_status"), info.get("master_last_io_seconds_ago", "?")))
         for a in apps:
             if a.get("id") != me[1]:
                 good, d = tls_f(a.get("ip"), 443, cafile=ca, verify=bool(ca))
                 add("app → peer %s 443" % a.get("id"), good, d)
-    # Local notification paths. Spec §1 lists them for the app; today the collector's alarm
-    # engine sends them (WO-INT-003), so both roles check whatever is configured (Q-2026-10-25-10).
-    if role in ("app", "collector"):
+    # Local notification paths: the app's (v3 FW-8). The Local Console sends them
+    # (DECISIONS Q-2026-10-25-10 (A)); the collector has no channel and no route to them.
+    if role == "collector":
+        add("collector → SMTP/proxy (알림)", True, "해당 없음 — 로컬 알림은 Local Console(app)이 발송 (Q-2026-10-25-10)")
+    if role == "app":
         smtp = siteconf.get(site, "notify.smtp") or {}
         if smtp.get("host") and "<" not in str(smtp.get("host")):
             good, d = tcp_f(smtp["host"], smtp.get("port", 587), banner=True)
@@ -161,12 +185,17 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
             add("%s → Teams" % role, False, "notify.teams.webhook not set", warn=True)
 
     if send_test:
-        if role != "collector":
-            add("send-test", False, "run --send-test on the collector (the alarm engine and test-ticket CLI live there)", warn=True)
+        if role != "app":
+            add("send-test", False, "run --send-test on an app node (the Local Console sends notifications and the test ticket)", warn=True)
         else:
-            cmd = ["node", "/opt/cflex/probe-agent/bin/cflex-test-ticket.js"]
-            r = as_cflex(["podman", "exec", "cflex-collector"] + cmd) if profile == "container" else \
-                runner.run(["runuser", "-u", "cflex", "--", "node", "/opt/app/cflex/current/probe-agent/bin/cflex-test-ticket.js"], mutating=True)
+            # The Settings button's code path, from the console's CLI (apps/console/src/cli.js).
+            if profile == "container":
+                r = as_cflex(["podman", "exec", "cflex-console", "node", "/opt/cflex/apps/console/src/cli.js", "test-ticket"])
+            else:
+                env = "/opt/app/cflex/config/app/app.env"
+                r = runner.run(["runuser", "-u", "cflex", "--", "sh", "-c",
+                                "set -a; . %s; set +a; cd /opt/app/cflex/current/apps/console && exec node src/cli.js test-ticket" % env],
+                               mutating=True)
             add("send-test (ServiceNow test ticket)", ok(r), (r[1] or r[2]).strip()[-300:])
     return out
 
