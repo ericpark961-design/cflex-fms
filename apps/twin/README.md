@@ -20,6 +20,18 @@ back out is "FMS 1.x (관리)".
 
 Anything still sample is marked by the yellow badge, bottom right. Do not remove it.
 
+## Builds
+
+| command | for | screens |
+| --- | --- | --- |
+| `npm run build` → `dist/` | the portal | all of the above |
+| `npm run build:console` → `dist-console/` | the HAEA Local Console (`apps/console` serves it at `/twin/`) | `CONSOLE_PROFILE=internal` (default): dashboard, devices, device detail, alarms; the menu's last entry is the console's Settings. No 3D twin, NOC wall, power chain, map or Copilot (DECISIONS Q-2026-10-25-09 (B)) — no route, no menu link, no API call; three and maplibre are not bundled |
+| `CONSOLE_PROFILE=portal npm run build:console` | the console variant with every screen | all |
+
+The portal screens' code stays where it is (WO-PTL-007 moves it to the portal). `src/profile.js`
+explains how the internal build leaves it out; `node src/profile.test.mjs` builds both profiles and
+checks the output. Both console builds drop Google Fonts and map tiles (no internet on site).
+
 ## Layout
 
 | file | what it is |

@@ -498,6 +498,21 @@ test('no external CDN: the console build of twin (apps/twin, npm run build:conso
   assert.deepStrictEqual(externalRefs(TWIN_BUILD), []);
 });
 
+// The build apps/twin's profile.test.mjs proves clean is built fresh there; this checks the one that
+// would be deployed from this tree (the default build:console is the internal profile).
+test('profile internal (Q-09 B): the deployed twin console build has no route to a portal screen', { skip: !fs.existsSync(TWIN_BUILD) && 'twin console build not present — run `npm run build:console` in apps/twin' }, () => {
+  const hits = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(html|js)$/.test(e.name)) for (const m of fs.readFileSync(p, 'utf8').matchAll(/#\/(?:twin|wall|map|powerchain)(?=[?/"'`]|$)|panel=copilot|["'`]\/v1\/fms\/(?:copilot|power-chain|topology|sites-map|routes|control)\b/g)) hits.push(`${e.name}: ${m[0]}`);
+    }
+  };
+  walk(TWIN_BUILD);
+  assert.deepStrictEqual(hits, [], 'built with CONSOLE_PROFILE=portal? rebuild with `npm run build:console`');
+});
+
 test('SAT 6: app01 stops — app02 keeps serving the same logged-in user', async () => {
   await new Promise(r => A.app.server.close(r));
   const onB = client(urlB);

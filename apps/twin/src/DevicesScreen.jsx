@@ -22,6 +22,7 @@ import { devId } from './ids';
 import { t } from './i18n';
 import { CbuBar } from './cbubar';
 import { inventory, buildTree, sortedKeys, allKeys, filterRows, totals, UNSET } from './tree';
+import { INTERNAL } from './profile';
 
 const SC = { ok: '#42be65', warn: '#f1c21b', critical: '#fa4d56', unreachable: '#6f6f6f', nodata: '#6f6f6f' };
 const KIND_LABEL = {
@@ -186,8 +187,11 @@ export default function DevicesScreen() {
         </div>
       </div>
       <div style={{ padding: '10px 0', display: 'flex', flexDirection: 'column' }}>
-        {[['#/', t('시설 대시보드')], ['#/devices', t('장비 인벤토리')], ['#/powerchain', t('전력체인')],
-          ['#/alarms', t('알람 센터')], ['#/map', t('알람 지도')], ['#/twin', t('3D 디지털트윈')], ['#/wall', t('NOC 월')]]
+        {(INTERNAL
+          // The Local Console's menu (Q-2026-10-25-09 (B)): no portal screens; Settings is the console's page.
+          ? [['#/', t('시설 대시보드')], ['#/devices', t('장비 인벤토리')], ['#/alarms', t('알람 센터')], ['/settings', t('설정')]]
+          : [['#/', t('시설 대시보드')], ['#/devices', t('장비 인벤토리')], ['#/powerchain', t('전력체인')],
+            ['#/alarms', t('알람 센터')], ['#/map', t('알람 지도')], ['#/twin', t('3D 디지털트윈')], ['#/wall', t('NOC 월')]])
           .map(([h, l]) => {
             const on = h === '#/devices';
             return <a key={h} href={h} style={{ padding: '11px 16px 11px 13px', fontSize: 14, textDecoration: 'none', color: on ? '#f4f4f4' : '#c6c6c6', background: on ? '#262626' : 'transparent', borderLeft: `3px solid ${on ? '#4589ff' : 'transparent'}`, fontWeight: on ? 600 : 400 }}>{l}</a>;

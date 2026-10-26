@@ -11,6 +11,7 @@ import React, { useEffect, useState } from 'react';
 import { store, ticketForAlert, createTicketFromAlert, askCopilot } from './data';
 import { t } from './i18n';
 import { tx, lang } from './theme';
+import { INTERNAL } from './profile';
 
 const PRI = { P1: '#fa4d56', P2: '#f1c21b', P3: '#4589ff', P4: '#8d8d8d' };
 const fmtAgo = (ms) => {
@@ -86,8 +87,8 @@ export function AlarmPanel({ alarm, onClose }) {
             {dev.vendor} {dev.model} · {dev.location} / {dev.room} · <span className="mono">{dev.ip}</span>
           </div>}
 
-          {/* resolution */}
-          <section>
+          {/* resolution — the copilot's; not in the internal build (Q-2026-10-25-09 (B)) */}
+          {!INTERNAL && <section>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
               <span style={{ fontSize: 11, color: '#8d8d8d', fontWeight: 600, letterSpacing: '.04em' }}>{t('해결 방안')}</span>
               <button onClick={ask} disabled={busy === 'advice'} style={{ ...btn(true), marginLeft: 'auto' }}>
@@ -104,7 +105,7 @@ export function AlarmPanel({ alarm, onClose }) {
                 </div>
               </div>
             )}
-          </section>
+          </section>}
 
           {/* ticket */}
           <section>
