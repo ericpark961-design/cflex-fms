@@ -351,7 +351,7 @@
 - 다음 세션 계획: PR 검토 반영 → WO-INT-013(데이터 사전) 또는 WO-INT-012(D-13 분산 구조, 008 후속) — 관리자 지시 순서
 
 ### 2026-10-26 09:33 PDT — Claude Code (10차)
-- WO-INT-013: **검토요청** | 브랜치 `wo/INT-013-data-dictionary` (base main `d328497`, 작업 트리 `../cflex-fms-wt-int013`) | 커밋 `987e3df` + origin/main 머지 + 이 STATUS 커밋 | PR: 아래 링크
+- WO-INT-013: **검토요청** | 브랜치 `wo/INT-013-data-dictionary` (base main `d328497`, 작업 트리 `../cflex-fms-wt-int013`) | 커밋 `987e3df` + STATUS `404ce65` + origin/main `7e8407c` 머지 `95969d5`(TASKS 1행 충돌 — 내 `검토요청`과 main `진행`, `검토요청`으로 해결) | **PR #10** https://github.com/ericpark961-design/cflex-fms/pull/10
   - 만든 것: `docs/knowledge/PROBE_DATA_DICTIONARY.md` 1건. 표 21개, 행 327개. 열 이름은 영문 snake_case이고 셀 안에 줄바꿈·세로선이 없다(스크립트로 검사, 열 수 불일치 0).
     - §1 폴링 OID: UPS APC PowerNet 13행 / UPS-MIB 12행, PDU 10, NetBotz 9, CRAC 7, 네트워크 20, 식별 OID 4. 주기·타임아웃·스케일·`m_ext` 표시를 넣었다.
     - §2 파생 메트릭 17종. 계산식·입력·갱신 조건·전송 여부를 적었다.
