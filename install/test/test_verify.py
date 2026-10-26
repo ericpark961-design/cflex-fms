@@ -6,18 +6,20 @@ from helpers import FakeRunner, example_site, me
 from cflex_install import verify
 
 
-def one_shot_server(reply):
-    """127.0.0.1:<port> that answers the first connection with `reply` and closes."""
+def one_shot_server(reply, wait_for_request=True):
+    """127.0.0.1:<port> that answers the first connection with `reply` and closes.
+    wait_for_request=False: server speaks first (SMTP banner semantics)."""
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     s.listen(1)
 
     def serve():
         c, _ = s.accept()
-        try:
-            c.recv(4096)
-        except socket.error:
-            pass
+        if wait_for_request:
+            try:
+                c.recv(4096)
+            except socket.error:
+                pass
         c.sendall(reply)
         c.close()
         s.close()
@@ -40,7 +42,7 @@ class Verify(unittest.TestCase):
         self.assertNotIn("u:p", detail)
 
     def test_smtp_banner(self):
-        port = one_shot_server(b"220 relay.haea.local ESMTP\r\n")
+        port = one_shot_server(b"220 relay.haea.local ESMTP\r\n", wait_for_request=False)
         good, detail = verify.tcp("127.0.0.1", port, timeout=3, banner=True)
         self.assertTrue(good, detail)
 
