@@ -108,8 +108,25 @@ const TOOLS = [
     inputSchema: S('', { id: str('I-날짜-번호'), body: str('답') }, ['id', 'body']),
   },
   {
+    name: 'interface_propose',
+    description: '최종안을 번호 붙여 올린다. 합의는 \'둘 다 말했다\'가 아니라 **같은 번호의 최종안에 양측이 명시 동의**한 것이다. 내용을 고쳤으면 새 번호로 올린다 — 이전 동의는 무효가 된다.',
+    inputSchema: S('', {
+      id: str('I-날짜-번호'),
+      text: str('최종안 본문. 상대가 그대로 동의할 수 있을 만큼 구체적으로'),
+      version: str('번호. 생략하면 최신+1'),
+    }, ['id', 'text']),
+  },
+  {
+    name: 'interface_agree',
+    description: '특정 번호의 최종안에 **명시 동의**한다. 번호가 최신안과 다르면 거부된다 — 상대가 그 뒤에 고쳤다는 뜻이다.',
+    inputSchema: S('', {
+      id: str('I-날짜-번호'), version: str('동의하는 최종안 번호'),
+      note: str('조건이나 단서 (있으면)'),
+    }, ['id', 'version']),
+  },
+  {
     name: 'interface_settle',
-    description: '스레드를 합의로 내린다. **양쪽이 답한 스레드만** 가능하다 — 한쪽만 적힌 것은 합의가 아니다. 코드에 반영됐으면 커밋 해시를 적는다.',
+    description: '스레드를 합의로 내린다. **양측이 같은 최신 최종안에 명시 동의**해야 한다 — 양쪽이 답했다는 것만으로는 안 된다. 코드에 반영됐으면 커밋 해시를 적는다.',
     inputSchema: S('', {
       id: str('I-날짜-번호'), resolution: str('합의 내용 한 줄'),
       commit: str('반영 커밋 해시 (있으면)'),
@@ -321,12 +338,21 @@ function hInterfaceThreads({ open_only = true }) {
   const me = C.AGENTS[AGENT] || '관리자';
   const open = b.interface.open.filter(t => t.id).map((t) => {
     const by = C.repliedBy(t);
+    const c = C.consensus(t);
     return {
       id: t.id, title: t.title, ask: t.ask,
       replied_by: by,
-      // The two things an agent actually needs to know on waking up.
-      awaiting_me: !by.includes(me),
-      both_answered: by.filter(n => n !== '관리자').length >= 2,
+      latest_version: c.latest_version,
+      agreed_by: c.agreed_by,
+      missing_agreement: c.missing,
+      stale_agreements: c.stale,
+      // Flagged, not counted: a hand edit can claim any author.
+      unknown_authors: c.unknown_authors,
+      settleable: c.settleable,
+      // What this agent has to do next, which is the only thing it needs.
+      awaiting_me: c.latest_version
+        ? c.missing.includes(me)
+        : !by.includes(me),
       body: t.body.join('\n').trim(),
     };
   });
@@ -334,7 +360,7 @@ function hInterfaceThreads({ open_only = true }) {
     agent: AGENT, peer: PEER[AGENT] || null,
     open,
     mine_to_answer: open.filter(t => t.awaiting_me).map(t => t.id),
-    ready_to_settle: open.filter(t => t.both_answered).map(t => t.id),
+    ready_to_settle: open.filter(t => t.settleable).map(t => t.id),
     settled: open_only ? undefined : b.interface.settled.filter(c => c.id).map(c => `${c.id} ${c.text}`),
   };
 }
@@ -375,25 +401,95 @@ function hInterfaceReply({ id, body }) {
   };
 }
 
+function hInterfacePropose({ id, text, version }) {
+  const b = C.load(ROOT);
+  const miss = requireInterface(b); if (miss) return miss;
+  const t = b.interface.open.find(x => x.id === id);
+  if (!t) return { error: `no such thread: ${id}` };
+  const me = C.AGENTS[AGENT] || '관리자';
+  const c = C.consensus(t);
+  const v = version != null ? parseInt(version, 10) : c.latest_version + 1;
+  if (!Number.isFinite(v) || v < 1) return { error: 'version must be a positive integer' };
+  if (c.proposals.some(pr => pr.v === v)) {
+    return { error: `v${v} 는 이미 있다 — 고쳤으면 v${c.latest_version + 1} 로 올린다` };
+  }
+
+  while (t.body.length && t.body[t.body.length - 1].trim() === '') t.body.pop();
+  // The author is stamped by the server from its own identity; it is never an
+  // argument. A hand edit can still claim anyone, which `unknown_authors` and
+  // the name whitelist surface rather than silently count.
+  t.body.push('', `제안 v${v} (${me}) ${C.todayISO()}`, ...String(text).split('\n'), '');
+  const after = C.consensus(t);
+  return {
+    id, version: v, by: me,
+    // Saying this plainly: a new proposal invalidates consent to the old one.
+    invalidated: c.agreed_by.length ? `v${c.latest_version} 동의 무효: ${c.agreed_by.join(', ')}` : null,
+    needs_agreement_from: after.missing,
+    written: C.save(b, ['interface']),
+  };
+}
+
+function hInterfaceAgree({ id, version, note }) {
+  const b = C.load(ROOT);
+  const miss = requireInterface(b); if (miss) return miss;
+  const t = b.interface.open.find(x => x.id === id);
+  if (!t) return { error: `no such thread: ${id}` };
+  const me = C.AGENTS[AGENT] || '관리자';
+  const c = C.consensus(t);
+  const v = parseInt(version, 10);
+
+  if (!c.latest_version) return { error: '올라온 최종안이 없다 — interface_propose 가 먼저다' };
+  if (!c.proposals.some(pr => pr.v === v)) return { error: `v${v} 라는 최종안이 없다 (최신 v${c.latest_version})` };
+  // Agreeing to a superseded revision is the failure this whole mechanism
+  // exists to prevent: one side amends the plan, the other agrees to what it
+  // read earlier, and both believe they settled the same thing.
+  if (v !== c.latest_version) {
+    return { error: `v${v} 는 최신이 아니다 — v${c.latest_version} 가 올라와 있다. 읽고 그 번호로 동의하라`, latest: c.latest_version };
+  }
+  if (c.agrees.some(a => a.v === v && a.by === me)) return { id, version: v, by: me, unchanged: true };
+
+  while (t.body.length && t.body[t.body.length - 1].trim() === '') t.body.pop();
+  t.body.push('', `동의 v${v} (${me}) ${C.todayISO()}`, ...(note ? [String(note)] : []), '');
+  const after = C.consensus(t);
+  return {
+    id, version: v, by: me,
+    agreed_by: after.agreed_by, missing: after.missing,
+    settleable: after.settleable,
+    written: C.save(b, ['interface']),
+  };
+}
+
 function hInterfaceSettle({ id, resolution, commit }) {
   const b = C.load(ROOT);
   const miss = requireInterface(b); if (miss) return miss;
   const i = b.interface.open.findIndex(x => x.id === id);
   if (i < 0) return { error: `no such thread: ${id}` };
   const t = b.interface.open[i];
-  const by = C.repliedBy(t).filter(n => n !== '관리자');
+  const c = C.consensus(t);
 
-  // One side writing a conclusion is not an agreement. The manager may close a
-  // thread unilaterally — that is an intervention, and it is theirs to make.
-  if (by.length < 2 && !IS_MANAGER) {
+  // "Both replied" is not agreement — two agents can write at length and mean
+  // different things. What counts is explicit consent, from both, to the SAME
+  // and LATEST proposal. The manager may close a thread unilaterally; that is
+  // an intervention and it is theirs to make.
+  if (!c.settleable && !IS_MANAGER) {
     return {
-      error: `한쪽만 답한 스레드는 합의가 아니다 — 답한 쪽: ${by.join(', ') || '없음'}`,
-      replied_by: by, need: '상대의 interface_reply',
+      error: c.latest_version
+        ? `v${c.latest_version} 에 명시 동의하지 않은 쪽이 있다: ${c.missing.join(', ')}`
+        : '올라온 최종안이 없다 — interface_propose → 양측 interface_agree 순서다',
+      latest_version: c.latest_version,
+      agreed_by: c.agreed_by,
+      missing: c.missing,
+      stale_agreements: c.stale,
+      need: c.latest_version ? '상대의 interface_agree' : 'interface_propose',
     };
   }
+  const by = c.agreed_by;
 
   b.interface.open.splice(i, 1);
-  const line = `- ${id} ${esc(t.title)} → ${esc(resolution)}${commit ? ` (${esc(commit)})` : ''}`;
+  // The version is part of the record: "we agreed" without saying to what is
+  // how a settled thread gets re-argued.
+  const stamp = c.latest_version ? `v${c.latest_version}` : 'manager';
+  const line = `- ${id} ${esc(t.title)} → ${esc(resolution)} [${stamp}${by.length ? ` · ${by.join(' + ')}` : ''}${commit ? ` · ${esc(commit)}` : ''}]`;
   b.interface.settled = b.interface.settled.filter(c => c.id || !/^\(없음\)$/.test((c.raw || '').trim()));
   let at = b.interface.settled.length;
   while (at > 0 && (b.interface.settled[at - 1].raw || '').trim() === '') at--;
@@ -458,7 +554,8 @@ const HANDLERS = {
   control_board: hBoard, control_task: hTask, control_claim: hClaim,
   control_report: hReport, control_ask: hAsk, control_answers: hAnswers,
   interface_threads: hInterfaceThreads, interface_ask: hInterfaceAsk,
-  interface_reply: hInterfaceReply, interface_settle: hInterfaceSettle,
+  interface_reply: hInterfaceReply, interface_propose: hInterfacePropose,
+  interface_agree: hInterfaceAgree, interface_settle: hInterfaceSettle,
   control_set_status: hSetStatus, control_assign: hAssign, control_answer: hAnswer,
 };
 

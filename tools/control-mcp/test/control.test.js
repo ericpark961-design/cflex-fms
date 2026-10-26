@@ -57,6 +57,18 @@ function serverAs(agent, root) {
 }
 const read = (root, f) => fs.readFileSync(path.join(root, 'docs', 'control', f), 'utf8');
 
+
+/**
+ * A fresh thread to work in. The consensus tests used to grab
+ * `open[0]` from the copied board, so every proposal added to the real
+ * INTERFACE.md broke them — the same fixture-drift that bit the TASKS tests.
+ */
+function freshThread(srv, title = '시험용 스레드') {
+  const q = srv.call('interface_ask', { title, body: '본문' });
+  assert.ok(q.id, `interface_ask failed: ${JSON.stringify(q)}`);
+  return q.id;
+}
+
 // ── round-trip, the load-bearing assertion ──────────────────────────
 
 t('parse → serialize reproduces all three files byte for byte', (root) => {
@@ -381,38 +393,130 @@ t('INTERFACE.md round-trips, and a sentence in bold is not a reply', (root) => {
   delete require.cache[require.resolve('../control')];
 });
 
-t('a thread only one side answered cannot be settled', (root) => {
+t('both sides replying is NOT agreement — settle needs an explicit, versioned yes', (root) => {
+  // The manager was explicit: two agents can both write at length and still
+  // mean different things. The first version treated "both replied" as
+  // consensus, which is how a thread closes on a plan one side never read.
   const a = serverAs('claude-code', root);
-  const threads = a.call('interface_threads', {});
-  const mine = threads.open.find(x => x.replied_by.length === 1);
-  assert.ok(mine, 'expected a thread with exactly one reply');
-  const r = a.call('interface_settle', { id: mine.id, resolution: '내가 정했다' });
+  const id = freshThread(a);
+
+  let r = a.call('interface_settle', { id, resolution: '내가 정했다' });
+  assert.match(String(r.error), /올라온 최종안이 없다/);
+  assert.strictEqual(r.need, 'interface_propose');
+
+  const p1 = a.call('interface_propose', { id, text: '(A) 사이트별 노드 분리' });
+  assert.strictEqual(p1.version, 1);
+  const g1 = a.call('interface_agree', { id, version: 1 });
+  assert.deepStrictEqual(g1.missing, ['Codex']);
+  assert.strictEqual(g1.settleable, false);
+  r = a.call('interface_settle', { id, resolution: '혼자 합의' });
   a.restore();
-  assert.match(String(r.error), /한쪽만 답한 스레드/);
-  assert.ok(!read(root, 'INTERFACE.md').includes('내가 정했다'), 'a refused settle must not land');
+  assert.match(String(r.error), /명시 동의하지 않은 쪽이 있다: Codex/);
+  assert.ok(!read(root, 'INTERFACE.md').includes('혼자 합의'), 'a refused settle must not land');
+
+  const c = serverAs('codex', root);
+  const g2 = c.call('interface_agree', { id, version: 1 });
+  assert.deepStrictEqual(g2.agreed_by.slice().sort(), ['Claude Code', 'Codex']);
+  assert.strictEqual(g2.settleable, true);
+  const done = c.call('interface_settle', { id, resolution: '(A) 사이트별 노드 분리', commit: 'abc1234' });
+  c.restore();
+  assert.strictEqual(done.settled, true);
+  // The version is in the record: "we agreed" without saying to what is how a
+  // settled thread gets re-argued.
+  assert.ok(read(root, 'INTERFACE.md').includes('[v1 · Claude Code + Codex · abc1234]'),
+    'the settled line must record version and both parties');
 });
 
-t('the peer replies, then either side may settle', (root) => {
+t('agreeing to a superseded version is refused', (root) => {
   const a = serverAs('claude-code', root);
-  const id = a.call('interface_threads', {}).open[0].id;
+  const id = freshThread(a);
+  a.call('interface_propose', { id, text: '초안' });
   a.restore();
 
   const c = serverAs('codex', root);
-  const rep = c.call('interface_reply', { id, body: '(A) 로 갑니다. 노드 3개 등록 가능합니다.' });
-  assert.deepStrictEqual(rep.replied_by.sort(), ['Claude Code', 'Codex']);
-  assert.strictEqual(rep.both_answered, true);
-  const set = c.call('interface_settle', { id, resolution: '(A) 사이트별 노드 분리', commit: 'abc1234' });
+  const p2 = c.call('interface_propose', { id, text: '수정안' });
+  assert.strictEqual(p2.version, 2);
+  const stale = c.call('interface_agree', { id, version: 1 });
   c.restore();
+  assert.match(String(stale.error), /최신이 아니다/);
+  assert.strictEqual(stale.latest, 2);
+});
 
-  assert.strictEqual(set.settled, true);
+t('a new proposal invalidates consent already given', (root) => {
+  // Otherwise one side amends after the other agreed, and the thread settles
+  // on something nobody both-agreed to.
+  const a = serverAs('claude-code', root);
+  const id = freshThread(a);
+  a.call('interface_propose', { id, text: 'v1 안' });
+  a.call('interface_agree', { id, version: 1 });
+  a.restore();
+
+  const c = serverAs('codex', root);
+  c.call('interface_agree', { id, version: 1 });
+  assert.strictEqual(c.call('interface_threads', {}).open.find(x => x.id === id).settleable, true);
+  const p = c.call('interface_propose', { id, text: 'v2 안' });
+  assert.match(String(p.invalidated), /v1 동의 무효/);
+  const t2 = c.call('interface_threads', {}).open.find(x => x.id === id);
+  c.restore();
+  assert.strictEqual(t2.settleable, false);
+  assert.deepStrictEqual(t2.stale_agreements.slice().sort(), ['Claude Code v1', 'Codex v1']);
+  assert.deepStrictEqual(t2.missing_agreement.slice().sort(), ['Claude Code', 'Codex']);
+});
+
+t('the author is stamped by the server and cannot be passed in', (root) => {
+  const c = serverAs('codex', root);
+  const id = freshThread(c);
+  c.call('interface_propose', { id, text: '안', by: 'Claude Code', author: 'Claude Code' });
   const txt = read(root, 'INTERFACE.md');
-  assert.match(txt, new RegExp(`- ${id} .* → \\(A\\) 사이트별 노드 분리 \\(abc1234\\)`));
-  assert.ok(txt.indexOf(`- ${id}`) < txt.indexOf('## 열린 스레드'), '합의가 열린 스레드 밖에 놓였다');
-  assert.ok(!txt.includes(`### ${id} —`), 'settled thread left open');
+  const mine = txt.slice(txt.indexOf(`### ${id}`));
+  c.restore();
+  assert.ok(/제안 v\d+ \(Codex\)/.test(mine), 'the entry was not attributed to the writer');
+  assert.ok(!/제안 v\d+ \(Claude Code\)/.test(mine), 'author was spoofable via an argument');
+});
 
+t('an entry claiming an unknown author is flagged, not counted', (root) => {
+  // A file two parties can hand-edit cannot be cryptographically attributed.
+  // What it can do is refuse to count a name it does not know, and say so.
+  const a0 = serverAs('claude-code', root);
+  const fresh = freshThread(a0, '위장 시험');
+  a0.restore();
   const C = require('../control');
   const b = C.load(root);
-  assert.strictEqual(C.serializeInterface(b.interface), b.raw.interface, 'settle broke the round trip');
+  const th = b.interface.open.find(x => x.id === fresh);
+  th.body.push('', '제안 v1 (누군가) 2026-10-25', '위장', '', '동의 v1 (누군가) 2026-10-25', '');
+  C.save(b, ['interface']);
+  delete require.cache[require.resolve('../control')];
+
+  const a = serverAs('claude-code', root);
+  const t2 = a.call('interface_threads', {}).open.find(x => x.id === th.id);
+  const r = a.call('interface_settle', { id: th.id, resolution: '위장으로 합의' });
+  a.restore();
+  assert.strictEqual(t2.latest_version, 0, "an unknown author's proposal was counted");
+  assert.strictEqual(t2.unknown_authors.length, 2);
+  assert.match(String(r.error), /올라온 최종안이 없다/);
+});
+
+t('a concurrent write is refused instead of silently clobbering', (root) => {
+  // The lock serializes writes but says nothing about what changed between a
+  // board being LOADED and written. Two agents share INTERFACE.md, so a second
+  // writer built on stale content would drop the first one's entry.
+  const C = require('../control');
+  const b1 = C.load(root);
+  const b2 = C.load(root);
+
+  b1.interface.open.push({ id: 'I-2099-01-01-01', title: '첫째', ask: null, body: ['', 'x', ''] });
+  assert.deepStrictEqual(C.save(b1, ['interface']), ['interface']);
+
+  b2.interface.open.push({ id: 'I-2099-01-01-02', title: '둘째', ask: null, body: ['', 'y', ''] });
+  assert.throws(() => C.save(b2, ['interface']), (e) => e.code === 'conflict');
+
+  assert.match(read(root, 'INTERFACE.md'), /I-2099-01-01-01/);
+  assert.ok(!read(root, 'INTERFACE.md').includes('I-2099-01-01-02'), 'the stale write landed');
+
+  // Re-reading and re-applying is the documented recovery.
+  const b3 = C.load(root);
+  b3.interface.open.push({ id: 'I-2099-01-01-02', title: '둘째', ask: null, body: ['', 'y', ''] });
+  assert.deepStrictEqual(C.save(b3, ['interface']), ['interface']);
   delete require.cache[require.resolve('../control')];
 });
 

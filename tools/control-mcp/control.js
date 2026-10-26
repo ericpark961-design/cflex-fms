@@ -272,6 +272,63 @@ function repliedBy(thread) {
   return [...names];
 }
 
+/**
+ * Proposals and agreements in a thread.
+ *
+ * "Both replied" is NOT agreement. Two agents can both write at length and
+ * still mean different things, or agree to different revisions of a moving
+ * proposal. So a thread carries NUMBERED proposals and each side records
+ * consent to a specific number:
+ *
+ *   제안 v2 (Claude Code) 2026-10-25
+ *   동의 v2 (Codex) 2026-10-25
+ *
+ * Settleable only when every party has an `동의` for the SAME and LATEST
+ * version. A later proposal invalidates earlier consent, which is the point —
+ * otherwise one side amends the plan after the other agreed to it.
+ */
+const PROPOSAL = /^제안 +v(\d+) +\(([^)]+)\) +(\d{4}-\d{2}-\d{2})\s*$/;
+const AGREE = /^동의 +v(\d+) +\(([^)]+)\) +(\d{4}-\d{2}-\d{2})\s*$/;
+
+function consensus(thread) {
+  const proposals = [];
+  const agrees = [];
+  const unknown = [];
+  for (const l of thread.body || []) {
+    const t = l.trim();
+    let m = PROPOSAL.exec(t);
+    if (m) {
+      const who = m[2].trim();
+      if (REPLY_NAMES.has(who)) proposals.push({ v: Number(m[1]), by: who, at: m[3] });
+      else unknown.push(t);
+      continue;
+    }
+    m = AGREE.exec(t);
+    if (m) {
+      const who = m[2].trim();
+      if (REPLY_NAMES.has(who)) agrees.push({ v: Number(m[1]), by: who, at: m[3] });
+      else unknown.push(t);
+    }
+  }
+  const latest = proposals.length ? Math.max(...proposals.map(p => p.v)) : 0;
+  const forLatest = [...new Set(agrees.filter(a => a.v === latest).map(a => a.by))];
+  // Both implementations, not the manager: the manager settling is an
+  // intervention, handled separately.
+  const parties = Object.values(AGENTS);
+  const missing = parties.filter(n => !forLatest.includes(n));
+  return {
+    proposals, agrees,
+    // An entry claiming an author we do not know is flagged, not counted.
+    unknown_authors: unknown,
+    latest_version: latest,
+    agreed_by: forLatest,
+    missing,
+    stale: agrees.filter(a => a.v < latest).map(a => `${a.by} v${a.v}`),
+    settleable: latest > 0 && missing.length === 0,
+  };
+}
+
+
 function nextInterfaceId(board, day = todayISO()) {
   const seen = [
     ...board.interface.open.filter(t => t.id).map(t => t.id),
@@ -342,6 +399,21 @@ function load(root) {
 function save(board, which) {
   const ser = { tasks: serializeTasks, status: serializeStatus, decisions: serializeDecisions, interface: serializeInterface };
   return withLock(board.dir, () => {
+    // Optimistic concurrency. The lock serializes writes but says nothing
+    // about what happened between this board being LOADED and now: the other
+    // agent may have written in between, and serializing a model built from
+    // stale content drops their entry without a word. INTERFACE.md is the one
+    // file two agents both write, so this is not theoretical.
+    for (const k of which) {
+      if (!fs.existsSync(board.files[k])) continue;
+      if (read(board.files[k]) !== board.raw[k]) {
+        throw Object.assign(
+          new Error(`${path.basename(board.files[k])} changed since it was read`
+            + ' — 다른 에이전트가 먼저 썼다. 다시 읽고 적용하라'),
+          { code: 'conflict', file: k },
+        );
+      }
+    }
     const written = [];
     for (const k of which) {
       const text = ser[k](board[k]);
@@ -352,7 +424,7 @@ function save(board, which) {
       if (ser[k](reparsed) !== text) {
         throw new Error(`refusing to write ${k}: output does not re-parse (serialiser bug)`);
       }
-      if (text !== board.raw[k]) { writeAtomic(board.files[k], text); written.push(k); }
+      if (text !== board.raw[k]) { writeAtomic(board.files[k], text); board.raw[k] = text; written.push(k); }
     }
     return written;
   });
@@ -384,7 +456,7 @@ function nextQuestionId(board, day = todayISO()) {
 module.exports = {
   STATUSES, AGENTS,
   load, save, findTask, answerOf, nextQuestionId, todayISO, controlDir,
-  repliedBy, nextInterfaceId,
+  repliedBy, consensus, nextInterfaceId,
   parseTasks, serializeTasks, parseStatus, serializeStatus, parseDecisions, serializeDecisions,
   parseInterface, serializeInterface,
   withLock,

@@ -10,6 +10,13 @@
 1. `docs/control/TASKS.md`를 읽고 **자기(Claude Code)에게 배정된 `상태: 진행` 또는 `대기` 작업지시(WO-INT-xxx)만** 수행한다. 우선순위 번호 순서대로.
 2. 배정되지 않은 일, 범위 밖 기능 추가, 포털 쪽 코드는 하지 않는다. 필요하다고 판단되면 `docs/control/DECISIONS.md`에 `Q-날짜-번호`로 질문을 남기고 다음 WO로 넘어간다.
 3. 모호한 요구는 추측하지 말고 DECISIONS.md에 질문을 남긴다.
+4. `docs/control/INTERFACE.md`(또는 MCP `interface_threads`)에서 **미답변 스레드를
+   확인한다.** `mine_to_answer`가 비어 있어야 작업을 시작한다. 상대 구현(Codex)에게
+   직접 물을 일은 여기로 한다 — 관리자를 기다리지 않는다. 다만 계약서
+   `docs/spec/00`의 버전·스키마 변경은 `DECISIONS.md`.
+5. **막힌 스레드 때문에 무관한 개발을 멈추지 않는다.** 막힌 항목은 스레드에 남기고
+   다음 WO로 간다. 통합(PR·머지) **직전에도** `interface_threads`를 다시 확인한다 —
+   그 사이 상대가 답했을 수 있고, 미합의 사항을 안고 머지하면 안 된다.
 
 ## Git 운영 (관리자는 git으로 진행을 본다)
 - WO마다 브랜치: `wo/INT-003-short-name` (base: `main`). `main`에 직접 커밋하지 않는다.
@@ -19,6 +26,10 @@
 - 관리자 지시(TASKS/DECISIONS 변경)는 `main`에 `[CTRL] …` 커밋으로 들어온다. 세션 시작 시 `git fetch && git log origin/main -5 -- docs/control`로 새 지시를 확인한다.
 
 ## 작업 중
+- **완료는 네 가지로 나눠 기록한다** — 섞으면 "됐다"가 무슨 뜻인지 아무도 모른다:
+  `개발 코드` / `격리 시험` / `실제 배포` / `실제 Probe 연결`.
+  STATUS 보고와 완료 기준 모두 이 축으로 적는다. 코드가 됐고 격리 시험을 통과한 것은
+  배포된 것도, 실 Probe 가 붙은 것도 아니다.
 - 각 WO의 **완료 기준(Acceptance)** 을 전부 만족해야 `완료`로 보고한다. 테스트가 명시돼 있으면 실행 결과를 STATUS에 붙인다.
 - 운영 서버·고객 VM·DNS·비밀정보 변경 금지. 비밀값(토큰·키·community·webhook URL)을 파일·로그·STATUS에 쓰지 않는다.
 - 다른 에이전트(Codex) 소유 경로를 수정하지 않는다: `cflex-fms-codex/**`, `docs/control/STATUS.md`의 Codex 블록.
