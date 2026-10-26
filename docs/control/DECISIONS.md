@@ -247,3 +247,9 @@ SMS·이메일·Teams 발송과 에스컬레이션, 24x7 센터의 즉각 조치
 따라서 Q-2026-10-25-10의 답 (A)는 다음으로 축소한다: 내부 발송은 SOW 검수 항목인 **ServiceNow eBonding(테스트 티켓 1건) 최소 구현만** app에 두고, 내부 SMTP/Teams 발송은 기본 비활성 선택 기능으로 남기되 더 이상 개발하지 않는다. Collector에는 발송 채널을 두지 않는다(v3 준수). 중복 억제용 `local_notified`는 유지.
 우선순위: 내부 Probe는 004c(축소 범위)·006(trap)·007(스모크)·008(PostgreSQL)로 마무리. **병목은 포털(WO-PTL-001 /api/v1 수신·mTLS, WO-PTL-002 알림 발송 엔진·에스컬레이션, 24x7 센터 화면)** — Codex 지시를 이 순서로 구체화한다.
 
+### D-12a — 보강 (Eric 지시, 2026-10-26): Probe는 "수집하고 보여주는 것"만 한다
+알람 처리(발송·에스컬레이션·티켓·당직 대응)는 전부 매니지드 서비스 포털의 일이다. Probe/Local Console은 **현재 개발된 범위를 넘는 어떤 것도 만들지 않는다.**
+- D-12의 "ServiceNow eBonding 최소 1건"도 Probe 범위에서 **제외**한다. SOW의 ITSM 티켓 항목은 포털→HAEA ServiceNow(SaaS) 경로로 충족한다(WO-PTL-002에 포함).
+- 이미 만들어진 로컬 알림 코드(WO-INT-003 local-notify)는 삭제하지 않되 **기본 비활성**으로 두고 더 손대지 않는다. Collector→app 이전 작업도 하지 않는다(Q-10 종결: 변경 없음, 비활성).
+- 남는 내부 작업은 "수집·표시"를 동작시키는 데 필요한 것만: 004c(내부 프로파일 화면 정리 + probe-agent↔콘솔 실연동 + Redis replica), 006(trap 수신 = 수집), 007(실기동 스모크), 008(PostgreSQL 마이그레이션). 이 넷이 끝나면 내부 Probe는 **기능 완료(feature-complete)** 로 선언하고 이후는 SAT·버그 수정만.
+
