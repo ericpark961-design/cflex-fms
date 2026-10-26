@@ -453,3 +453,24 @@ D-13 "컬렉터는 외부 경로를 갖지 않는다"와 완료 기준 "컬렉�
 2. 노드 생존: `role:"collector"` heartbeat를 `collector_id`별로 본다(`node_id`는 app01/app02 — 보내는 쪽이 바뀌면 바뀐다).
 3. **장치 인증서는 app01·app02에 1장씩**(CN `HAEA.app01`·`HAEA.app02`). cap01용 인증서는 필요 없다(D-13). CSR은 app 노드에서 만든다.
 - 권고: 관리자가 Codex TASKS(WO-PTL-001 수신·mTLS, WO-PTL-003 PROBE_OFFLINE)에 위 3줄을 반영한다.
+
+### 답 Q-2026-10-26-17 → **(A)** (관리자, 2026-10-26)
+송신기는 app 프로세스 안(`apps/console/src/portal.js`), 비우기·인벤토리·대리 heartbeat는 PostgreSQL advisory lock(`LOCKS.portal=4`)을 쥔 노드 1대만, heartbeat(`role:"app"`)는 각 노드가 자기 것. 새 서비스·포트·방화벽 행 0 — 공학 판단으로 채택. app01/02 사이 잠금 인계 실동작은 SAT 항목.
+
+### 답 Q-2026-10-26-18 → **(A)** (관리자, 2026-10-26)
+`0002_portal_outbox.sql` 추가형 마이그레이션(Q-12 원칙) 승인. 업그레이드 전 컬렉터 SQLite `events` 잔여분은 보내지 않음(콘솔 경로로 FMS에 동일 데이터) — 승인, 기동 경고 1줄로 충분.
+
+### 답 Q-2026-10-26-19 → **(A)** (관리자, 2026-10-26)
+`collector_id`는 FMS가 인증된 컬렉터 키의 node id로 부여(본문 값 무시) — 위조 방지 측면에서 맞다. 대리 heartbeat(`role:"collector"`, `collector_id`)로 포털이 컬렉터 생존을 `collector_id` 기준 판정 — Q-15 답과 일치.
+
+### 답 Q-2026-10-26-20 → **(A)** (관리자, 2026-10-26)
+다른 컬렉터의 같은 `device_id`·`code` open 알람은 먼저 연 alarm_id가 정본, 마지막 컬렉터 해제 시에만 clear 송신. 단일 컬렉터(HAEA 1차) 동작 불변 확인(기존 통합 테스트 통과). (B)의 깜빡임은 수용 불가.
+
+### 답 Q-2026-10-26-21 → **(A)** (관리자, 2026-10-26)
+구 클라우드 경로·컬렉터 자체 통보·`CFLEX_URL/TOKEN` 제거 승인 — D-12a/D-13 범위 정리이며 기능 추가 아님. `CLOCK_DRIFT`·`replaced_by` 장부는 FMS로 이동. `alarms/local-notify.js`·`cflex-test-ticket.js`는 콘솔·수동 CLI용으로 유지(기본 비활성, D-12a).
+
+### 답 Q-2026-10-26-22 → **(A)** (관리자, 2026-10-26)
+컬렉터 1대면 `CFLEX_COLLECTOR_SITES` 비움(전체 폴링), 2대 이상이면 `site.yaml hosts.collectors[].sites` 렌더. HAEA 1차(cap01 1대) 동작 불변.
+
+### 답 Q-2026-10-26-23 → 반영 (관리자, 2026-10-26)
+Codex TASKS.md WO-PTL-001(헤더 1.2 수락·`collector_id` 저장, E2E 대상 `distributed.e2e`/`mock-portal`)·WO-PTL-002(장치 인증서는 app01·app02 1장씩, CN `HAEA.app01`/`HAEA.app02`, cap01 불필요)·WO-PTL-003(PROBE_OFFLINE/COLLECTOR_DOWN은 `collector_id` 기준)에 반영 커밋. Codex 실행은 법인장. `wo/INT-portal-integration`(WO-INT-011)의 CSR·포털 점검 도구를 app 노드 기준으로 바꾸는 것은 그 브랜치 재개 시 선결 조건으로 STATUS에 이미 기록됨.
