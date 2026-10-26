@@ -171,7 +171,7 @@
 - 다음 세션 계획: PR #6 검토 반영 → WO-INT-006(SNMP trap 162) 또는 관리자 지시 순서
 
 ### 2026-10-25 19:40 PDT — Claude Code (7차)
-- WO-INT-006: **검토요청** | 브랜치 `wo/INT-006-snmp-trap` (base main `0a398e6`, 작업 트리 `../cflex-fms-wt-int006`) | 커밋 `9cd0d1d`(+이 STATUS 커밋) | PR: 아래 PR 참조
+- WO-INT-006: **검토요청** | 브랜치 `wo/INT-006-snmp-trap` (base main `0a398e6`, 작업 트리 `../cflex-fms-wt-int006`) | 커밋 `9cd0d1d`(+STATUS 커밋) | **PR #7** https://github.com/ericpark961-design/cflex-fms/pull/7
   - ① **trap 리스너** `probe-agent/src/trap/listener.js`:
     - v1·v2c·v3(authPriv까지)를 받는다. inform은 프로토콜상 응답만 한다. 장비 쓰기(SET)는 없다(D-05).
     - 바인드는 `CFLEX_TRAP_PORT`(기본 1162)·`CFLEX_TRAP_BIND`(0.0.0.0)이고, `CFLEX_TRAP_ENABLED=0`이면 끈다(`config.js`).
