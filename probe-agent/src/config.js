@@ -78,6 +78,16 @@ const cfg = {
     flapQuietMs: process.env.ALARM_FLAP_QUIET_MS,
   }).filter(([, v]) => v != null && v !== '').map(([k, v]) => [k, parseInt(v, 10)])),
 
+  // SNMP trap listener (WO-INT-006, trap/listener.js). 1162 in the container
+  // (the host forwards 162 → 1162, docs/install/CONTAINER_PROFILE.md §2); 162
+  // on bare, where the unit grants CAP_NET_BIND_SERVICE. Credentials are the
+  // console's per-device SNMP credentials — none are configured here.
+  trap: {
+    enabled: process.env.CFLEX_TRAP_ENABLED !== '0',
+    port: parseInt(process.env.CFLEX_TRAP_PORT || '1162', 10),
+    bind: process.env.CFLEX_TRAP_BIND || '0.0.0.0',
+  },
+
   bufferDbPath: process.env.BUFFER_DB_PATH || './data/buffer.db',
   bufferRetentionDays: parseInt(process.env.BUFFER_RETENTION_DAYS || '7', 10),
 

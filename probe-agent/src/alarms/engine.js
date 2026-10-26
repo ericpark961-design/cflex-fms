@@ -132,8 +132,12 @@ function createAlarmEngine({ ctx, now = Date.now, opts = {}, maintenance = [], p
 
   const out = (al, ev) => ({ event: ev, suppressed: al.maintenance ? 'maintenance' : null, alarm: { ...al } });
 
-  /** The condition `code` holds on `device` at `ts`. */
-  function observe(device, code, { ts = now(), title, detail = {}, source = 'rule' } = {}) {
+  /**
+   * The condition `code` holds on `device` at `ts`. `latched`: no poll can see
+   * this condition (a trap-only one, trap/handler.js), so a poll cycle that
+   * does not observe it is no evidence it is over — it waits for its clear.
+   */
+  function observe(device, code, { ts = now(), title, detail = {}, source = 'rule', latched = false } = {}) {
     const severity = severityOf(code);
     if (!severity) return [];
     const did = adapt.deviceIdFor(device, ctx);
@@ -147,6 +151,7 @@ function createAlarmEngine({ ctx, now = Date.now, opts = {}, maintenance = [], p
     if (al) {
       al.seen = cycle.get(did) || 0;
       al.quietSince = null;
+      if (latched) al.latched = true;
       al.last = { title, detail };
       if (al.maintenance && !maint) {
         // Raised inside a window that has now ended, and still there. Nobody
@@ -170,6 +175,7 @@ function createAlarmEngine({ ctx, now = Date.now, opts = {}, maintenance = [], p
       alarm_id: crypto.randomUUID(), key, code, severity, device_id: did, site_id: site, ledger_id: device?.id ?? null,
       label: device?.name || null, raisedAt: ts, emittedAt: ts, seen: cycle.get(did) || 0, quietSince: null,
       flapping: recent.length >= o.flapRaises, maintenance: maint, title: title || code, last: { title, detail },
+      ...(latched ? { latched: true } : {}),
     };
     open.set(key, created);
     save();
@@ -202,7 +208,7 @@ function createAlarmEngine({ ctx, now = Date.now, opts = {}, maintenance = [], p
     cycle.set(did, n);
     const res = [];
     for (const [key, al] of [...open]) {
-      if (al.device_id !== did || al.code === 'UPS_COMM_LOST') continue;
+      if (al.device_id !== did || al.code === 'UPS_COMM_LOST' || al.latched) continue;
       if (al.seen < n - 1) res.push(...inactive(key, ts));
     }
     return res;
@@ -227,6 +233,14 @@ function createAlarmEngine({ ctx, now = Date.now, opts = {}, maintenance = [], p
     });
   }
 
+  /** The condition `code` on `device` is over (a clear trap). Same rules as any clear. */
+  function clear(device, code, { ts = now(), source = 'rule' } = {}) {
+    return inactive(keyOf(adapt.deviceIdFor(device, ctx), code), ts, source);
+  }
+
+  /** Whether `code` is open on `device`. */
+  const isOpen = (device, code) => open.has(keyOf(adapt.deviceIdFor(device, ctx), code));
+
   /** A poller threshold alert → observe(). Returns {items, code}; code null = unmapped. */
   function fromAlert(device, a) {
     const code = classify(a);
@@ -239,7 +253,7 @@ function createAlarmEngine({ ctx, now = Date.now, opts = {}, maintenance = [], p
   }
 
   return {
-    observe, inactive, beginCycle, commStatus, fromAlert, setMaintenance,
+    observe, inactive, clear, isOpen, beginCycle, commStatus, fromAlert, setMaintenance,
     inMaintenance: (device, ts = now()) => inMaintenance(device, adapt.deviceIdFor(device, ctx), adapt.siteOf(device, ctx), ts),
     openAlarms: () => [...open.values()].map(a => ({ ...a })),
     maintenanceWindows: () => windows.map(w => ({ ...w })),

@@ -240,3 +240,28 @@ Q-09(B) 숨김 목록 밖의 항목(알람 워크벤치·티켓 버튼)은 그�
 
 ### 답 Q-2026-10-26-03 → **(A)** (관리자, 2026-10-26)
 베어 프로파일은 폴백 경로. Redis 설정 렌더링·promote는 문서 절차(`docs/install/REDIS_FAILOVER.md` §5)로 두고, 베어를 실제 채택할 때 별도 WO로 등록한다. 명세 밖 기능 추가 없음.
+
+### Q-2026-10-26-04 — `SNMP_TRAP_UNKNOWN`은 부록 B에 없다 (Claude Code, WO-INT-006)
+
+WO-INT-006은 모르는 trap(모르는 발신 IP·모르는 OID)을 `SNMP_TRAP_UNKNOWN`(P4)로 기록하라고 하지만 이 코드는 **부록 B에 없고**,
+`events.schema.json`의 code enum도 부록 B와 같아서 이벤트로 보내면 스키마 검증에서 막힌다. 지시대로 "부록 B 밖이면 기록만"으로 구현했다:
+Probe에서 카운트(`unknown_source`/`unknown_oid`) + 로그 1줄 + 최근 200건 목록(`handler.recent()`). 포털·콘솔로는 보내지 않는다.
+
+- **(A)** 지금대로 — 기록만. 현장에서 모르는 trap이 실제로 얼마나 오는지 SAT에서 본 뒤 필요하면 (B) — 권고.
+- **(B)** 계약 v1.2 부록 B에 `SNMP_TRAP_UNKNOWN`(P4) 추가 — 양 팀 반영(스키마 enum·포털 라우팅 "통보 없음"), 관리자가 00 갱신. Probe 쪽은 매핑 1줄.
+
+### Q-2026-10-26-05 — 환경(온도·습도)·NetBotz(도어·누수·연기)·Rack PDU trap에 해당하는 부록 B 코드가 없다 (Claude Code, WO-INT-006)
+
+부록 B v1.1은 UPS·노드 코드뿐이다. `UPS_HIGH_TEMP`는 UPS 자체(배터리) 온도라 랙 환경 센서 온도에 쓰면 뜻이 달라진다.
+그래서 환경·NetBotz·PDU trap은 **매핑하지 않았고** `SNMP_TRAP_UNKNOWN` 경로(기록만)로 간다. 새 코드는 만들지 않았다.
+
+- **(A)** 지금대로 — UPS만 알람, 나머지 trap은 기록만. 환경/PDU 알람은 계약 v1.2(코드 추가) 후 별도 WO — 권고.
+- **(B)** 계약 v1.2에 환경·도어·누수·연기·PDU 분기 과전류 코드를 추가(관리자가 목록·심각도 결정) → Probe는 `apc-mib.js` 표에 행 추가(반 세션).
+
+### Q-2026-10-26-06 — APC PowerNet-MIB trap 번호의 현장 MIB 대조 (Claude Code, WO-INT-006)
+
+`src/trap/apc-mib.js`의 trap 번호(specific 1·2·3·5·7·8·9·10·11·12·17·20–23·30·33·36)는 PowerNet-MIB 정의를 기준으로 적었지만,
+이 세션에서는 MIB 파일 원본(레포에 없음, 웹 조회 권한 없음)과 대조하지 못했다. 시뮬레이터·테스트는 같은 표를 쓰므로 번호가 틀려도 테스트는 통과한다.
+
+- **(A)** SAT 체크리스트에 "HAEA NMC 펌웨어의 PowerNet-MIB와 `apc-mib.js` 대조 + 실제 NMC에서 test trap 1건 수신 확인"을 한 줄 추가. 틀리면 표 1줄 수정 — 권고.
+- **(B)** 관리자가 MIB 파일(`powernet*.mib`)을 레포 `docs/vendor/`에 넣어 주면 다음 세션에서 테스트가 MIB 파일을 직접 파싱해 표를 검증하게 한다.
