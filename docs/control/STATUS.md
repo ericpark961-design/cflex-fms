@@ -411,6 +411,41 @@
 - 블로커: 없음
 - 다음 세션 계획: PR 검토 반영 → 관리자 지시 순서(Q-16 버그 수정 WO 승인 시 그것, 또는 SAT 준비)
 
+### 2026-10-27 11:46 PDT — Claude Code (12차)
+- WO-INT-014: **검토요청** | 브랜치 `wo/INT-014-nmc-onboard` (base main `37b049c`, 작업 트리 `../cflex-fms-wt-int014`) | WO 커밋 `cf42989`(WIP 6개 포함) + STATUS 커밋 | **PR #12** https://github.com/ericpark961-design/cflex-fms/pull/12
+  - 만든 것: 운영자가 실행하는 독립 CLI `probe-agent/bin/cflex-onboard.js`(`read`/`plan`/`apply`/`verify`/`scan`)와 `src/onboard/` 12개 파일. 명세의 10개 모듈에 `commands.js`(명령 게이트)와 `yaml-lite.js`(설치기 site.yaml 부분집합 로더를 JS로 옮긴 것)를 더했다. 프로브 런타임(수집기·forwarder·콘솔)과 섞지 않았다. 콘솔은 기존 `POST/DELETE /v1/console/maintenance`·`GET /v1/console/devices`만 호출한다.
+    - 옵션 1(기본): 대상 목록 txt, 인벤토리 CSV(콘솔·Q3 시드·Exhibit 1 열 별칭), 콘솔 장비 목록을 IP로 합친다. **인벤토리 게이트**는 SSH·HTTPS·SNMP가 소켓을 열기 전에 확인한다. 목록 밖 주소는 연결 0이다(테스트).
+    - 옵션 2: `--scan <cidr>` + 확인 프롬프트가 있어야 돈다. /22~/32, 초당 ≤20 호스트, 재시도 1회. TCP 22·443 + (커뮤니티가 있으면) sysObjectID GET 1회만 보낸다. 로그인·설정은 하지 않고 `scan-<ts>.json` 후보만 남긴다.
+    - 쓰기 화이트리스트(`commands.js`): 고정 형식 6개다(v3 on, v3 사용자, v3 접근 제어, trap 수신자, `snmp -S`는 `--disable-legacy`일 때만, `ntp`는 `--set-ntp`일 때만). 읽기는 인수 없는 정확한 줄만 허용한다. UPS·재부팅·계정·네트워크·펌웨어·파일 전송은 `DENY` 목록에 있고, 화이트리스트 밖 줄은 전부 거부한다. 줄 주입(`\r`·`\n`·`;`)도 거부한다. **SNMP SET 코드 경로 0**(정적 검사 테스트).
+    - apply 순서(카드당, 동시성 1): 확인 → 백업(config.ini SCP, 0600) → 적용 → 검증(설정 재조회 + 실제 SNMPv3 GET sysDescr/upsBasicIdentModel + `--trap-test` 시 trap) → 검증 성공 뒤에만 legacy off → 재검증. 실패하면 되돌리는 줄을 역순으로 보낸다. 백업이 안 되면 쓰지 않는다. 이미 원하는 상태면 건너뛴다. 키는 읽을 수 없으므로, 같은 사용자가 이미 있으면 먼저 v3 GET을 해 보고 되면 그 단계를 생략한다.
+    - 자격증명: 0600 파일(아니면 거부) 또는 `--ask`. 기본 세트 + 장비별 오버라이드, `ref:ENV`. 세트당 3회 연속 실패하면 그 세트를 멈추고 묻는다. 공장 계정은 감지해서 권고만 하고 바꾸지 않는다. 로드할 때 모든 비밀 필드 값을 리댁터에 등록한다(로그·리포트·감사·오류 메시지). 커뮤니티 값은 저장하지 않는다(설정 여부·길이·공장값 여부만).
+    - 전송: SSH CLI(호스트 키를 최초 사용 시 `known_hosts.json`에 고정, 구형 알고리즘은 플래그로), HTTPS 읽기 폴백(로그인·config.ini·로그아웃 3개 요청만 허용), SCP는 `scp -f config.ini` 하나만.
+    - 시뮬레이터 `probe-agent/test/sim/nmc-cli-sim.js`: 127.0.0.1에서 SSH(호스트 키는 시작 시 메모리에서 생성, 파일 0), NMC2(AP9631)·NMC3(AP9641)의 라벨 차이, 변형 v1only/v3set/factory/authfail/slow/oldfw, 장애(E102, SNMP 검증 실패), SCP config.ini, SNMPv3 에이전트, HTTPS 웹 UI.
+    - 문서: `docs/onboard/README.md`(사용법, 옵션 1/2, 자격증명 파일, **노트북 실행이 기본 안내**, 방화벽 v3 Form A에 collector→NMC 22가 없다는 주의), `docs/onboard/NMC_CLI_COMMANDS.md`(읽기 12·쓰기 6·거부 범주표, **모든 행 "현장 확인: 미확인"**), `probe-agent/onboard-credentials.example.yaml`(구조만, `ref:`만).
+    - 의존성: `ssh2` **1.17.0 고정** 1개(순수 JS, `cpu-features`는 선택 모듈). `package.json`에 `onboard` 스크립트를 추가했다.
+  - 테스트 (이 세션 실행, 숫자 그대로):
+    ```
+    probe-agent   npm test (Node 22.22.2)                104/104 pass, skip 0  (기존 77 + onboard.test.js 27)
+    probe-agent   npx node@20.20.2 --test onboard.test   27/27
+    apps/console  npm test                               53 pass / 2 skip / 0 fail  (기존과 같음 — twin 빌드 없음)
+    install       python3 -m unittest discover -s install/test   79/79
+    install       node --test install/test/static.test.js        14/14
+    bash -n       변경한 셸 스크립트 없음
+    ```
+    - onboard 27개: 화이트리스트(읽기/쓰기, 금지 명령 30종·주입 거부, 금지 줄 시뮬레이터 수신 0), SNMP SET 정적 검사, 인벤토리 게이트(패킷 0), 대상 병합·CSV 별칭·`nmc-targets.example.txt` 41줄 형식, yaml-lite(설치기 예제·자격증명 예제), 자격증명(0600·ref·오버라이드·`--ask`), read 파싱(NMC2·NMC3·구형 펌웨어), plan diff·undo·NTP·슬롯, apply 성공 순서·멱등·verify(실 SNMPv3 GET), 검증 실패 롤백(v1 유지), 단계 실패 롤백, 거절 시 백업·쓰기 0 + 동시성 1, 콘솔 유지보수 창 설정·해제(mock), 인증 3회 정지·재개·성공 시 리셋·공장 계정, 느린 카드 타임아웃, **마스킹 전수 검사**, 인벤토리 대조, 리포트 md/csv·audit 추가 전용, HTTPS 폴백·apply가 HTTPS 카드는 건너뜀, trap 수신 테스트(loopback v3), 스캔 속도(가상 시계로 1초 창마다 ≤20)·거절·CLI 실 TCP.
+    - 마스킹 테스트가 실제 누락 1건을 찾았다. 자격증명 파일에 리터럴로 적힌 SNMPv3 키가, 지연 해석 전에 난 오류의 메시지에 나올 수 있었다. 로드할 때 등록하도록 고쳤다.
+    - 처음에는 console 의존성이 설치되지 않아 E2E 10건이 skip이었다. `apps/console`에 `npm install --include=dev --no-package-lock`을 한 뒤 104/104로 통과했다.
+  - **미수행 (통과로 치지 않음)**: ① 실장비 NMC 접속·스캔·설정 0. CLI 구문·출력 라벨·오류 코드·SCP·HTTPS 경로·SSH 알고리즘을 실카드에서 확인하지 않았다(SAT 전 현장 검증, `NMC_CLI_COMMANDS.md` "현장 확인" 열). ② 실 Local Console 대상 유지보수 창(mock만). ③ 컬렉터 VM에서 실행(방화벽 v4 미반영). ④ 카드가 테스트 trap을 보내게 하는 방법(Q-2026-10-27-02). ⑤ SAT 2번 증빙 실측.
+  - 금지 사항 확인:
+    - 실장비 패킷 0(테스트는 127.0.0.1뿐, 픽스처는 192.0.2.x·198.51.100.x). 새 실 IP·호스트명 0.
+    - 비밀값 0: `git diff main...HEAD | grep -Ei "(password|secret|token|api[_-]?key)\s*[:=]"` **29줄** — 모두 코드 식별자, `ref:` 자리표시자, 테스트 더미, APC 공장 기본값 `apc`(감지용).
+    - SNMP SET 0, Docker 0, 포털 코드 0, 계약 00·방화벽 v3 변경 0, "2211 Michelson" 0, 수량 41/44/48 새 표기 0(테스트가 기존 대상 목록 41줄 형식만 검사).
+    - 프로브 런타임 변경 0(`src/onboard`·`bin` 밖의 probe-agent 소스 변경 0). 커밋하지 않은 것: `package-lock.json`·`node_modules`·`.runtime/`.
+  - **⚠ 이 트리에 이 세션이 아닌 작성자의 흔적이 있다(Q-2026-10-27-05)**: 11:20~11:27 PDT 사이, `src/onboard/`에 `commands.js`·`credentials.js`·`targets.js`·`transport-ssh.js`·`yaml.js`가 이 세션보다 먼저 있었다. 앞의 넷은 이 세션이 전부 덮어썼다. `yaml.js`(사용처 0)는 추적을 끊고 디스크에 남겨 두었다. 다른 작성자의 커밋은 0건이다. PM 확인 요청.
+- 질문: `Q-2026-10-27-01`(롤백 = undo 줄, config.ini 업로드 없음) `-02`(테스트 trap = 수동 수신기) `-03`(타임아웃 = 단계별 30초) `-04`(site.yaml `onboard:` 블록, trap 수신자 기본값 = 컬렉터) `-05`(작업 트리 이상 흔적, 확인 요청) `-06`(config.ini 백업 0600) — 모두 권고안 (A)로 진행했다. 명세 §8의 4건은 명세 기본값대로 했다.
+- 블로커: 없음
+- 다음 세션 계획: PR #12 검토 반영 → (법인장 승인·유지보수 창이 있을 때) 카드 1대로 `read` 현장 확인을 하고 `NMC_CLI_COMMANDS.md` 확인 열 채우기 → apply 실적용 WO
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.

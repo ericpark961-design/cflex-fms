@@ -651,7 +651,7 @@ test('scan: ≤ 20 hosts started per second, inside the CIDR only, after a yes',
   const d = await scan({ cidr: '192.0.2.0/30', prompt: stubPrompt([false]), log: quiet, probeHost: async (ip) => { none.push(ip); } });
   assert.strictEqual(d.declined, true);
   assert.deepStrictEqual(none, []);
-  assert.throws(() => expandCidr('10.0.0.0/16'), /prefix must be/);
+  assert.throws(() => expandCidr('198.51.100.0/16'), /prefix must be/);
   assert.deepStrictEqual(expandCidr('192.0.2.4/30'), ['192.0.2.5', '192.0.2.6']);
 });
 
