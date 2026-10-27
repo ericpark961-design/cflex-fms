@@ -99,8 +99,10 @@ function resultOf(out) {
 const q = (name) => (/\s/.test(name) ? `"${name}"` : name);
 const build = {
   v3Enable: (on = true) => `snmpv3 -S ${on ? 'enable' : 'disable'}`,
-  v3User: (n, { name, authKey, privKey, auth = 'sha', priv = 'aes' }) =>
-    `snmpv3 -u${n} ${q(name)}${authKey != null ? ` -a${n} ${authKey} -c${n} ${privKey}` : ''} -ap${n} ${auth} -pp${n} ${priv}`,
+  v3User: (n, { name, authKey, privKey, auth = 'sha', priv = 'aes' }) => {
+    if (!name) throw new CommandRefused('snmpv3 user without a name');
+    return `snmpv3 -u${n} ${q(name)}${authKey != null ? ` -a${n} ${authKey} -c${n} ${privKey}` : ''} -ap${n} ${auth} -pp${n} ${priv}`;
+  },
   v3Access: (n, { on = true, name, nms }) => `snmpv3 -ac${n} ${on ? 'enable' : 'disable'} -au${n} ${q(name)} -n${n} ${nms}`,
   trapReceiver: (n, { ip, type = 'snmpV3', on = true, auth = true, profile }) =>
     `snmptrap -r${n} ${ip} -t${n} ${type} -g${n} ${on ? 'enable' : 'disable'} -a${n} ${auth ? 'enable' : 'disable'}${profile ? ` -u${n} profile${profile}` : ''}`,
