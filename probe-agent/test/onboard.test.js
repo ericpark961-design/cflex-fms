@@ -212,6 +212,10 @@ test('yaml-lite loads the installer example site.yaml and the spec credentials s
   assert.deepStrictEqual(c.overrides['192.0.2.25'], { transport: 'https' });
   assert.strictEqual(c.defaults.password, 'ref:ONBOARD_DEFAULT_PW');
   assert.throws(() => loads('a: b\n\tc: d\n'), /tab in indentation/);
+  // The shipped example parses, and holds references only.
+  const ex = loads(fs.readFileSync(path.join(__dirname, '../onboard-credentials.example.yaml'), 'utf8'));
+  assert.strictEqual(ex.defaults.password, 'ref:ONBOARD_DEFAULT_PW');
+  assert.deepStrictEqual(ex.snmpv3, { auth_key: 'ref:ONBOARD_V3_AUTH', priv_key: 'ref:ONBOARD_V3_PRIV' });
 });
 
 test('credentials: 0600 enforced, ref: from env, overrides, errors without values', async () => {

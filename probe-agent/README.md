@@ -121,6 +121,11 @@ node bin/cflex-test-ticket.js --config /opt/app/cflex/config/notify.json [--keep
 # OK  ServiceNow test ticket INC0010001 created, updated and resolved     (exit 0; 1 failed; 2 usage)
 ```
 
+**NMC onboarding** (WO-INT-014, spec 04): `bin/cflex-onboard.js` reads card
+settings and puts in the SNMPv3 user, access control and trap receiver (fixed
+write scope, backup → apply → verify → rollback). An operator-run CLI, not part
+of the collector process (D-12a) — `docs/onboard/README.md`.
+
 Devices without a serial (Q-2026-10-25-05) are inventoried by the FMS with
 `provisional: true, id_basis: "ledger"`; once the serial is known the old ID is
 sent once more with `replaced_by` the new one.
