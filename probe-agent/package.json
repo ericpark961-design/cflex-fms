@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "description": "Customer-site probe agent for RingOn C-Flex FMS",
   "main": "src/index.js",
-  "scripts": { "start": "node src/index.js", "test": "node --test test/*.test.js", "smoke": "node --test test/smoke.test.js" },
+  "scripts": { "start": "node src/index.js", "test": "node --test test/*.test.js", "smoke": "node --test test/smoke.test.js", "onboard": "node bin/cflex-onboard.js" },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
     "dotenv": "^16.4.0",
     "express": "^4.21.0",
-    "net-snmp": "^3.11.0"
+    "net-snmp": "^3.11.0",
+    "ssh2": "1.17.0"
   },
   "license": "UNLICENSED",
   "engines": { "node": ">=20" }
