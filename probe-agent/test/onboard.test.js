@@ -600,6 +600,11 @@ test('HTTPS: config.ini read fallback, read whitelist only', { skip: !hasOpenssl
     assert.strictEqual(r.sims[0].connections, 0); // no SSH
     assert.deepStrictEqual(r.sims[0].http, ['POST /Forms/login1', 'GET /config.ini', 'GET /logout.htm']);
     const web = createHttpsTransport({ gate: targetsLib.createGate([{ ip: r.sims[0].ip }]), log: quiet, endpoint: () => ({ host: '127.0.0.1', httpsPort: r.sims[0].httpsPort }) });
+    // apply never writes over HTTPS, and does not fall back to SSH for such a card.
+    const ap = await r.run('apply', ['--yes-all']);
+    assert.strictEqual(ap.results[0].status, 'skipped');
+    assert.match(ap.results[0].reason, /https is read-only/);
+    assert.strictEqual(r.sims[0].connections, 0);
     await assert.rejects(web.request(r.sims[0].ip, 'POST', '/Forms/snmp1', { body: 'x=1' }), (e) => e.code === 'command_refused');
     await assert.rejects(web.request('192.0.2.250', 'GET', '/config.ini'), (e) => e.code === 'not_in_inventory');
   } finally { await r.stop(); certs.cleanup(); }

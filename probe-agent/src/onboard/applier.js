@@ -77,6 +77,8 @@ async function applyOne(ctx, target, siteConf, flags, ts) {
     desired = desiredFor(target, { siteConf, keys: await creds.v3Keys(target.site), flags });
   } catch (e) { return { ...base, status: 'skipped', reason: e.code === 'plan_error' || e.code === 'credential_error' ? e.message : 'plan_error' }; }
   const policy = { legacy: desired.legacy, ntp: !!desired.ntp?.write };
+  // HTTPS is the read fallback only (spec 04 §3): such a card is never written.
+  try { if (creds.forTarget(target.ip).transport === 'https') return { ...base, status: 'skipped', reason: 'transport https is read-only — apply needs SSH' }; } catch { /* openCard reports it */ }
 
   const o = await openCard(ctx, target, { write: true, policy });
   if (o.result) return { ...base, ...o.result };
