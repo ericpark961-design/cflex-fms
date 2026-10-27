@@ -109,6 +109,21 @@ async function loadCredentials({ path = null, askMode = false, prompt = null, en
     throw new CredentialError('no credentials: give --credentials <onboard-credentials.yaml> or --ask');
   }
 
+  // Register every secret field's value now — literal, or the env value a ref
+  // points at — so an error raised before a lazy value is resolved (the
+  // SNMPv3 keys, a site's keys) still cannot print it.
+  const SECRET_FIELDS = new Set(['password', 'auth_key', 'priv_key', 'community']);
+  (function walk(node) {
+    if (!node || typeof node !== 'object') return;
+    for (const [k, v] of Object.entries(node)) {
+      if (v && typeof v === 'object') walk(v);
+      else if (SECRET_FIELDS.has(k) && v != null) {
+        const m = /^ref:([A-Za-z_][A-Za-z0-9_]*)$/.exec(String(v));
+        redactor.add(m ? env[m[1]] : v);
+      }
+    }
+  })(doc);
+
   async function resolve(v, what) {
     if (v == null || v === '') {
       if (!askMode || !prompt) return null;

@@ -34,7 +34,7 @@ function createHttpsTransport({ gate, log = console, timeoutMs = 30000, endpoint
 
   function request(ip, method, path, { body = null, cookie = null } = {}) {
     if (!allowed.has(`${method} ${path}`)) return Promise.reject(new TransportError('command_refused', `HTTPS ${method} ${path} is not on the read whitelist`));
-    gate.assert(ip);
+    try { gate.assert(ip); } catch (e) { return Promise.reject(e); }
     const { host, httpsPort } = ep(ip);
     return new Promise((resolve, reject) => {
       const r = https.request({
