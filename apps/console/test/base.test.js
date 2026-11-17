@@ -98,3 +98,49 @@ test('이상한 값은 루트로 떨어진다 — 쿠키 경로를 주입당하�
     assert.strictEqual(cookiePathFor(bad, true), '/', JSON.stringify(bad));
   }
 });
+
+// ── DB 경로 해석 ─────────────────────────────────────────────────────────
+//
+// 2026-11-13 VM 재부팅 뒤 콘솔이 CWD=/home/ringon 으로 떠서 빈 DB 를 새로
+// 만들었다. 수집기 인증이 전부 401 이 되고 프로브가 4일간 보고하지 못했는데
+// 오류는 한 줄도 없었다. 원인 둘:
+//   1) .env 가 CONSOLE_DB_PATH 를 쓰는데 코드는 CONSOLE_DB 만 읽었다 (이름 불일치)
+//   2) 기본값이 path.resolve('data/console.db') 로 CWD 에 매달려 있었다
+const path = require('node:path');
+
+function loadConfigWith(envPatch) {
+  const saved = {};
+  for (const k of ['CONSOLE_DB', 'CONSOLE_DB_PATH']) { saved[k] = process.env[k]; delete process.env[k]; }
+  Object.assign(process.env, envPatch);
+  delete require.cache[require.resolve('../src/config')];
+  try { return require('../src/config').load(); }
+  finally {
+    for (const k of ['CONSOLE_DB', 'CONSOLE_DB_PATH']) {
+      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+    }
+    delete require.cache[require.resolve('../src/config')];
+  }
+}
+
+test('기본 DB 경로는 CWD 가 아니라 앱 디렉터리 기준이다', () => {
+  const cwd = process.cwd();
+  try {
+    process.chdir(require('node:os').tmpdir());          // pm2 가 엉뚱한 CWD 로 띄운 상황
+    const c = loadConfigWith({});
+    assert.strictEqual(c.dbPath, path.resolve(__dirname, '..', 'data', 'console.db'),
+      'CWD 가 바뀌면 빈 DB 를 새로 만든다 — 2026-11-13 에 실제로 그랬다');
+  } finally { process.chdir(cwd); }
+});
+
+test('CONSOLE_DB 가 정본이다', () => {
+  assert.strictEqual(loadConfigWith({ CONSOLE_DB: '/x/a.db' }).dbPath, '/x/a.db');
+});
+
+test('CONSOLE_DB_PATH 도 받는다 — 배포 .env 가 그 이름을 쓴다', () => {
+  assert.strictEqual(loadConfigWith({ CONSOLE_DB_PATH: '/x/b.db' }).dbPath, '/x/b.db',
+    '이름 하나 때문에 설정이 조용히 무시되면 안 된다');
+});
+
+test('둘 다 있으면 정본이 이긴다', () => {
+  assert.strictEqual(loadConfigWith({ CONSOLE_DB: '/x/a.db', CONSOLE_DB_PATH: '/x/b.db' }).dbPath, '/x/a.db');
+});

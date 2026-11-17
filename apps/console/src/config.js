@@ -26,7 +26,17 @@ function load() {
     bind: env('CONSOLE_BIND', '0.0.0.0'),
     port: int('CONSOLE_PORT', 8080),
     nodeId: env('CONSOLE_NODE_ID', require('os').hostname()),
-    dbPath: env('CONSOLE_DB', path.resolve('data/console.db')),
+    // DB 경로. 기본값을 **앱 디렉터리 기준**으로 고정한다 — 전에는
+    // path.resolve('data/console.db') 로 CWD 에 매달려 있었고, 2026-11-13 의
+    // VM 재부팅 뒤 pm2 가 CWD=/home/ringon 으로 띄우자 콘솔이 조용히 빈 DB 를
+    // 새로 만들었다. 수집기 인증이 전부 401 이 되고 프로브가 4일간 보고하지
+    // 못했는데, 아무 오류도 나지 않았다 — 경로가 다른 것은 설정 실수이고
+    // 빈 DB 를 만들어 정상인 척하는 게 가장 나쁜 실패 방식이다.
+    //
+    // CONSOLE_DB_PATH 도 받는다. .env.example 과 코드의 정본은 CONSOLE_DB 인데
+    // 배치안 문서에 CONSOLE_DB_PATH 로 잘못 적었고 배포 .env 가 그걸 따랐다.
+    // 이름 하나 때문에 설정이 조용히 무시되게 두지 않는다.
+    dbPath: env('CONSOLE_DB', env('CONSOLE_DB_PATH', path.resolve(__dirname, '..', 'data', 'console.db'))),
     redisUrl: env('REDIS_URL', 'redis://127.0.0.1:6379/0'),
     redisPassword: secretFile('REDIS_PASSWORD_FILE'),
     // AES-256-GCM key for stored SNMP / channel secrets (32 bytes, base64 or hex, in a 0600 file).
