@@ -425,6 +425,18 @@
 - 블로커: 없음. nmcsim 의 Node 가 v12(우분투 기본) — 시뮬레이터용 Node 20 설치 필요(다음 단계).
 - 다음 세션 계획: ② 번들 빌드(UBI8 이미지 5개, 빌드 장소 결정) → ③ db01→app01→app02→cap01 `cflex-install preflight/install/verify/netcheck` → ④ SAT 8항목 리허설 → ⑤ HAEA 전달물.
 
+### 2026-11-20 17:30 PST — Claude Code (대화형, 같은 세션 이어서)
+- WO-INT-015 ② 번들 빌드 — 진행 중 | 빌드 호스트 = vm-cflex-probe-01(법인장: 운영 서버 아님, Podman 4.9.3)
+  - **랩이 찾은 버그 1**: `podman build` collector·app 실패 — better-sqlite3 ^11 은 `-std=c++20`, UBI8 gcc 8.5 미지원. 빌드 단계에 gcc-toolset-13(UBI8 AppStream) → 성공. 런타임 이미지엔 toolset 없음, `/lib64/libstdc++.so.6` 만으로 로드·ABI 115 확인. 커밋 236ccd3.
+  - **버그 2**: `.containerignore` 가 frontend 전체 제외 → D-16 이후 app 이미지 빌드 실패. 수정 9f4a532.
+  - `개발 코드`·`격리 시험`: collector/app/web 이미지 빌드 OK. redis·postgres 는 registry.redhat.io 로그인 필요 → **블로커: 법인장 Red Hat 계정 로그인**(본인이 probe-01 에서 `podman login`).
+- WO-INT-016(가칭) — D-16 내부 화면 = 기존 /fms: `개발 코드`·`격리 시험` 완료 | 커밋 654a73b
+  - frontend/ 단독 빌드 + internal 프로파일(지도·티켓·리포트·라우팅·제어·CSV 일괄등록 컴파일 제외, 폰트 번들, 외부 참조 0), 콘솔 /fms/ 서빙.
+  - 테스트: console 55 pass / 2 skip(twin 빌드 없음), static 14/14, 설치기 Python 79/79. app 이미지(probe-01) 빌드 OK.
+  - `실제 배포`·화면 육안 확인: 랩 설치 후.
+- 결정: D-16 (DECISIONS.md) — Q-2026-10-25-09 (B) 대체.
+- 다음: Red Hat 로그인 → 전체 번들 → 랩 4노드 설치 → SSH 터널로 /fms 화면 확인.
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
