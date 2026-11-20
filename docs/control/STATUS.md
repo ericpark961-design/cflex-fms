@@ -411,6 +411,20 @@
 - 블로커: 없음
 - 다음 세션 계획: PR 검토 반영 → 관리자 지시 순서(Q-16 버그 수정 WO 승인 시 그것, 또는 SAT 준비)
 
+### 2026-11-20 15:30 PST — Claude Code (대화형, 법인장 직접 지시)
+- WO-INT-015(가칭, 사후 번호 부여 요청): **HAEA 미러 랩(Azure)** — 진행 1단계(인프라) 완료 | 브랜치 `wo/INT-015-azure-haea-lab` | 코드 `deploy/azure-haea-lab/`
+  - 지시: "애저에 HAEA 환경을 같이 구성하고 배포해 보면서 HAEA 에 전달할 설치 파일을 구성" — 2개월, 시험 안 할 때는 꺼둔다.
+  - `개발 코드`: create/up/down/status/destroy 스크립트 + README. `실제 배포`: RG-CFLEX-HAEA-LAB(westus2) 6 VM 생성. `격리 시험`·`실제 Probe 연결`: 아직 없음(번들 미설치).
+  - 확인됨: 4 VM 호스트명 haeipfms{cap01,app01,app02,db01}v·IP 10.138.14.66~69 = spec 01 §1 그대로, RHEL 8.10, SELinux Enforcing, firewalld active, `/opt/app` 64G(app01/02)·`/opt/data` 128G(db01) 별도 마운트, 인터넷 직접 차단(000), 프록시 경유 google 403·RHUI 200(Satellite 대용), NMC 대역 UDR → nmcsim 도달(10.112.0.76 ICMP 수신), 6 VM 자동 종료 03:00 UTC.
+  - 랩 사양은 HAEA 보다 작음(4/16 → 2/8) — 기능 시험용. eastus vCPU 한도(10) 소진으로 westus2.
+  - 고친 것(생성 중 발견): macOS bash 3.2 빈 배열 `set -u`, custom-data 비ASCII(az CLI latin-1), NMC 대역 NSG 양방향 명시(VirtualNetwork 태그 밖).
+  - 대신 못 하는 것(SAT 몫): EDR, HAEA 내부 CA, 실 NMC, 실 포털(WO-PTL-001/002 미착수 → 목).
+  - 비용(정가): 24h ~$446/월, 작업시간만 ~$167/월, 꺼둠 ~$47/월.
+- 금지 사항: 기존 VM·운영 서버 변경 0(새 RG 만), 비밀값 0(SSH 키는 ~/.ssh, repo 밖), 포털 코드 0.
+- 부수(랩과 별개, 법인장 지시): vm-cflex-probe-01 NSG SSH 22 → 운영자 Mac 공인 IP /32 로 축소(로그인 실패 8,135건/일). 18GB/일 송신 원인 = Mac Codex 앱 원격 SSH 재접속 루프(약 10초마다) — 앱에서 연결 해제 필요. 그 결과 `deploy-twin.yml` GitHub Actions SSH 배포는 막힘.
+- 블로커: 없음. nmcsim 의 Node 가 v12(우분투 기본) — 시뮬레이터용 Node 20 설치 필요(다음 단계).
+- 다음 세션 계획: ② 번들 빌드(UBI8 이미지 5개, 빌드 장소 결정) → ③ db01→app01→app02→cap01 `cflex-install preflight/install/verify/netcheck` → ④ SAT 8항목 리허설 → ⑤ HAEA 전달물.
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
