@@ -55,6 +55,10 @@ Podman 4의 기본(rootlesskit)은 모든 패킷이 10.0.2.2에서 온 것처럼
   (2026-10-25 실측). 그래서 Containerfile의 deps 단계가 `npm_config_build_from_source=true`로 node-gyp 빌드를 강제한다.
   `ubi8/nodejs-20` 베이스에는 `make gcc gcc-c++`가 있고, `python3`는 platform-python(3.6)에 링크되어 있다(이미지 history 확인).
   빌드 직후 `require('better-sqlite3')(':memory:')`를 열어 보고, 실패하면 이미지 빌드가 멈춘다.
+- **컴파일러는 gcc-toolset-13.** better-sqlite3 11.x는 `-std=c++20`으로 빌드되는데 UBI8 기본 gcc 8.5는 이를 모른다
+  (Azure HAEA 랩 첫 `podman build`에서 실패 — 2026-11-20, WO-INT-015). 빌드 단계에만 UBI8 AppStream의 `gcc-toolset-13-gcc-c++`를
+  설치하고 `. /opt/rh/gcc-toolset-13/enable`로 쓴다(구독 불필요). 런타임 이미지에는 toolset이 없고, 바이너리는 기본
+  `/lib64/libstdc++.so.6`만으로 로드된다(랩에서 `ldd`·런타임 로드 확인).
 - `install/build-bundle`은 `podman save` 전에 두 이미지마다 `podman run --network=none --entrypoint node`를 돌린다. 각 트리에서
   better-sqlite3가 로드되는지, `process.versions.modules`가 **115**인지 확인한다. 아니면 번들을 만들지 않는다.
   결과는 `MANIFEST.json`에 남는다: `node: {major: 20, abi: "115"}`, 이미지마다 `node: {version, abi}`.

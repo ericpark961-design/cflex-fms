@@ -127,8 +127,11 @@ test('Containerfiles: UBI8 base by build arg, UID 1001, HEALTHCHECK, no latest, 
 test('better-sqlite3: built from source in the image, loaded before packaging, one driver (WO-INT-007)', () => {
   // No linux-x64 prebuild loads on RHEL 8's glibc 2.28, so the node images compile it and prove it loads.
   for (const f of ['images/collector/Containerfile', 'images/app/Containerfile']) {
-    const run = read(f).match(/^RUN cd (?:probe-agent|apps\/console) \\\n(?: .*\\\n)* .*$/m)[0];
+    const run = read(f).match(/^RUN (?:\. \/opt\/rh\/gcc-toolset-13\/enable && )?cd (?:probe-agent|apps\/console) \\\n(?: .*\\\n)* .*$/m)[0];
     assert.match(run, /npm_config_build_from_source=true npm install --omit=dev/, f);
+    // better-sqlite3 11.x needs -std=c++20; UBI8's gcc 8.5 lacks it (found in the Azure HAEA lab, WO-INT-015).
+    assert.match(run, /^RUN \. \/opt\/rh\/gcc-toolset-13\/enable && /, f);
+    assert.match(read(f), /^RUN dnf -y install gcc-toolset-13-gcc-c\+\+ && dnf clean all$/m, f);
     assert.match(run, /node -e "require\('better-sqlite3'\)\(':memory:'\)\.close\(\)[;"]/, f);
   }
   // The bundle is Node 20's ABI and the bare profile accepts nothing but Node 20.
