@@ -39,7 +39,7 @@ function configFor(nodeId, redisUrl, extra = {}) {
   const base = require('../src/config').load();
   return {
     ...base, nodeId, redisUrl, db: pg.conn(), secretKey: KEY, cookieSecure: false,
-    twinDir: path.join(tmp, 'twin'), tenant: 'HAEA', tenantName: 'HAEA', ...extra,
+    uiDir: path.join(tmp, 'fms'), twinDir: path.join(tmp, 'twin'), tenant: 'HAEA', tenantName: 'HAEA', ...extra,
   };
 }
 
@@ -96,6 +96,9 @@ test.before(async () => {
   fs.mkdirSync(path.join(tmp, 'twin', 'assets'), { recursive: true });
   fs.writeFileSync(path.join(tmp, 'twin', 'index.html'), '<!doctype html><title>twin</title><script type="module" src="/twin/assets/index.js"></script>');
   fs.writeFileSync(path.join(tmp, 'twin', 'assets', 'index.js'), 'console.log(1)');
+  fs.mkdirSync(path.join(tmp, 'fms', 'assets'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'fms', 'index.html'), '<!doctype html><title>fms</title><script type="module" src="/fms/assets/index.js"></script>');
+  fs.writeFileSync(path.join(tmp, 'fms', 'assets', 'index.js'), 'console.log(1)');
   redisSrv = await startMiniRedis();
   // Both at once: the migrations run under an advisory lock, once.
   const [a, b] = await Promise.all([start('app01', redisSrv.url), start('app02', redisSrv.url)]);
@@ -462,12 +465,19 @@ T('CSRF: state-changing requests must be JSON (cross-site forms cannot send it)'
   assert.strictEqual(t.status, 415);
 });
 
-T('static: twin under /twin/, /login and /settings pages, CSP same-origin only on every response', async () => {
+T('static: the UI under /fms/ (D-16), / lands there, /login and /settings pages, CSP same-origin only on every response', async () => {
+  const root = await fetch(urlA + '/', { redirect: 'manual' });
+  assert.strictEqual(root.status, 302);
+  assert.strictEqual(root.headers.get('location'), '/fms/');
+  const fms = await client(urlA).req('GET', '/fms/');
+  assert.strictEqual(fms.status, 200);
+  assert.match(fms.text, /<title>fms<\/title>/);
+  assert.strictEqual((await client(urlA).req('GET', '/fms/alarms')).status, 200, 'SPA fallback');
   const ui = await client(urlA).req('GET', '/twin/');
   assert.strictEqual(ui.status, 200);
   assert.match(ui.text, /<title>twin<\/title>/);
   assert.strictEqual((await client(urlA).req('GET', '/twin/device/42')).status, 200, 'SPA fallback');
-  for (const p of ['/login', '/settings', '/v1/fms/summary', '/twin/']) {
+  for (const p of ['/login', '/settings', '/v1/fms/summary', '/fms/', '/twin/']) {
     const r = await client(urlA).req('GET', p);
     const csp = r.headers.get('content-security-policy');
     assert.match(csp, /default-src 'self'/, p);
@@ -509,6 +519,24 @@ test('no external CDN: the scanner does catch what the portal build loads (Googl
 
 test('no external CDN: the console pages reference nothing off-origin', () => {
   assert.deepStrictEqual(externalRefs(path.join(ROOT, 'public')), []);
+});
+
+const FMS_BUILD = path.resolve(ROOT, '../../frontend/dist-console');
+const noFmsBuild = !fs.existsSync(FMS_BUILD) && 'FMS console build not present — run `npm run build:console` in frontend/';
+test('no external CDN: the Local Console UI (frontend/, npm run build:console, D-16) references nothing off-origin', { skip: noFmsBuild }, () => {
+  assert.deepStrictEqual(externalRefs(FMS_BUILD), []);
+});
+
+// D-16: the FMS screen's portal-scope features (alarm map, tickets/RCA, monthly reports, alarm routing,
+// device control) are compiled out of the internal build, not merely hidden behind a tab.
+test('D-16 internal build: no portal-scope API or map tiles in the shipped FMS screen', { skip: noFmsBuild }, () => {
+  const hits = [];
+  for (const e of fs.readdirSync(path.join(FMS_BUILD, 'assets'))) {
+    if (!/\.js$/.test(e)) continue;
+    const src = fs.readFileSync(path.join(FMS_BUILD, 'assets', e), 'utf8');
+    for (const m of src.matchAll(/\/v1\/fms\/(?:tickets|routes|control|sites-map|reports|mutes|assets\/bulk-import)\b|\/v1\/fms\/devices\/[^"'`]*\/action|cartocdn|maplibre/g)) hits.push(`${e}: ${m[0]}`);
+  }
+  assert.deepStrictEqual(hits, [], 'built without VITE_CONSOLE_PROFILE=internal? use `npm run build:console`');
 });
 
 const TWIN_BUILD = path.resolve(ROOT, '../twin/dist-console');

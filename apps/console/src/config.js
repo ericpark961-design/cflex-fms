@@ -55,6 +55,9 @@ function load() {
     tenant: env('CFLEX_TENANT', 'HAEA'),
     tenantName: env('CFLEX_TENANT_NAME', 'HAEA'),
     defaultSite: env('CFLEX_SITE_ID', 'HAEA-HQ'),
+    // The Local Console UI = the FMS 1.x screen, internal build (D-16): frontend/ npm run build:console.
+    uiDir: env('CONSOLE_UI_DIR', path.resolve(__dirname, '../../../frontend/dist-console')),
+    // apps/twin moved to the portal (D-16). Still served at /twin/ when a build is present (dev only).
     twinDir: env('CONSOLE_TWIN_DIR', path.resolve(__dirname, '../../twin/dist-console')),
     publicDir: path.resolve(__dirname, '../public'),
     // nginx terminates TLS, so the cookie is Secure; tests over plain HTTP turn it off.

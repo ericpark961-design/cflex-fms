@@ -13,7 +13,7 @@
     let j = null; try { j = await r.json(); } catch (e) { /* empty */ }
     return { status: r.status, json: j || {} };
   }
-  const next = () => { const n = new URLSearchParams(location.search).get('next'); return n && n.startsWith('/') && !n.startsWith('//') ? n : '/twin/'; };
+  const next = () => { const n = new URLSearchParams(location.search).get('next'); return n && n.startsWith('/') && !n.startsWith('//') ? n : '/fms/'; };
 
   $('#login').addEventListener('submit', async (e) => {
     e.preventDefault(); msg('');

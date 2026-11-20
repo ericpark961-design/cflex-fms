@@ -486,3 +486,15 @@ Codex TASKS.md WO-PTL-001(헤더 1.2 수락·`collector_id` 저장, E2E 대상 `
 - **WO-INT-014 기간 중 실장비 접속·스캔 금지.** 시뮬레이터로만 개발·테스트. 실장비 적용은 법인장 승인 + 유지보수 창에서 별도 WO.
 - 전송은 SSH CLI(22) 우선. 방화벽 v3 Form A에 collector→NMC 22가 없으므로 기본 실행 위치는 **엔지니어 노트북(사이트 LAN)**, 컬렉터 실행은 방화벽 v4에 "온보딩·PM 기간 한정 TCP 22"를 추가할 때.
 
+
+### D-16 — 내부 Local Console 화면은 기존 `/fms` 화면, twin 은 외부 포털 (Eric 지시, 2026-11-20)
+> Q-2026-10-25-09 (B)("Local Console = `apps/twin` 내부 프로파일")를 **대체**한다.
+법인장: "트윈 화면은 외부에 구성할 거야. 내부 프로브에서는 기존 fms 화면이 좋아 — 간결하고 보기 쉽게."
+- **내부(HAEA Local Console, `cflex/app` 이미지)** = 현재 fms.runless.co.uk/fms 의 화면(`frontend/src/pages/Fms.jsx`, 1.x).
+  Q-09 당시 "package.json 이 없어 빌드되지 않는다"던 문제는 빌드 설정을 새로 만들어 해결한다.
+- **외부(포털, Codex)** = `apps/twin` (3D·NOC·파워체인·지도·Copilot 포함). 내부 이미지에서 twin 빌드는 빠진다(코드는 지우지 않음).
+- 내부 빌드에서 숨기는 `/fms` 기능: 지도(외부 타일 cartocdn — HAEA 인터넷 없음), 티켓·RCA·월간 리포트·알람 라우팅(포털 범위, D-12a),
+  장치 제어(장비 쓰기 금지). 남는 것: 대시보드·플로어·장치·알람(ACK)·관리(장비 등록·임계값).
+- API 는 `apps/console` 의 기존 `/v1/me`·`/v1/fms/*` 를 그대로 쓴다(twin 과 같은 형태로 이미 구현됨). 숨긴 기능용 새 API 는 만들지 않는다.
+- 외부 CDN·폰트·타일 호출 0건(WO-INT-004 기준 유지).
+- 작업: WO-INT-016(가칭) — HAEA 미러 랩(WO-INT-015)에서 설치 후 화면을 직접 열어 확인한다.

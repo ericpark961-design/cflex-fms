@@ -1,18 +1,19 @@
-# cflex/app — Local Console API (apps/console) + the console build of apps/twin.
+# cflex/app — Local Console API (apps/console) + the UI: the FMS 1.x screen, internal build (frontend/, D-16).
 # Spec 01 §2.2, §3.1. Build context = repository root:
 #   podman build --format docker -f images/app/Containerfile \
 #     --build-arg BASE_IMAGE=registry.access.redhat.com/ubi8/nodejs-20@sha256:… -t cflex/app:<ver> .
 ARG BASE_IMAGE=registry.access.redhat.com/ubi8/nodejs-20:1
 
-# ── twin: the existing UI, console build (no Google Fonts, no map tiles — WO-INT-004) ──
-# Internal profile: no 3D twin / NOC wall / power chain / map / Copilot (DECISIONS Q-2026-10-25-09 (B)).
-FROM ${BASE_IMAGE} AS twin
+# ── ui: the FMS 1.x screen, internal build (D-16 — apps/twin moved to the portal) ──
+# No Google Fonts (IBM Plex bundled), no map library or tiles; alarm map, tickets, reports, routing
+# and device control are compiled out (VITE_CONSOLE_PROFILE=internal).
+FROM ${BASE_IMAGE} AS ui
 USER 1001
 WORKDIR /opt/app-root/src
-COPY --chown=1001:0 apps/twin/package.json apps/twin/package-lock.json apps/twin/
-RUN cd apps/twin && npm ci --no-audit --no-fund
-COPY --chown=1001:0 apps/twin apps/twin
-RUN cd apps/twin && CONSOLE_PROFILE=internal npm run build:console
+COPY --chown=1001:0 frontend/package.json frontend/package-lock.json frontend/
+RUN cd frontend && npm ci --no-audit --no-fund
+COPY --chown=1001:0 frontend frontend
+RUN cd frontend && npm run build:console
 
 # ── deps: console runtime — pg (PostgreSQL 16 on db01, pure JS) and better-sqlite3 (read once by
 # bin/cflex-migrate-sqlite.js, the pre-WO-INT-008 store; Node 20 has no node:sqlite) ──
@@ -55,13 +56,13 @@ COPY --chown=0:0 probe-agent/src probe-agent/src
 COPY --chown=0:0 packages/notify/package.json packages/notify/
 COPY --chown=0:0 packages/notify/src packages/notify/src
 COPY --chown=0:0 docs/spec/schemas docs/spec/schemas
-COPY --from=twin --chown=0:0 /opt/app-root/src/apps/twin/dist-console apps/twin/dist-console
+COPY --from=ui --chown=0:0 /opt/app-root/src/frontend/dist-console frontend/dist-console
 COPY --chown=0:0 images/app/healthcheck.js healthcheck.js
 
 ENV NODE_ENV=production \
     CONSOLE_BIND=127.0.0.1 \
     CONSOLE_PORT=8080 \
-    CONSOLE_TWIN_DIR=/opt/cflex/apps/twin/dist-console
+    CONSOLE_UI_DIR=/opt/cflex/frontend/dist-console
 
 VOLUME ["/opt/app/cflex/data"]
 EXPOSE 8080/tcp

@@ -1,12 +1,13 @@
 // server.js — the Local Console API (cflex-app), spec 01 §2.2.
 //
 //   /v1/auth/*, /v1/me          local accounts, sessions in Redis
-//   /v1/fms/*                   what apps/twin reads (same keys as before)
+//   /v1/fms/*                   what the UI reads (FMS 1.x screen; apps/twin uses the same keys)
 //   /v1/console/*               alarms detail/comment, maintenance, settings, users, status
 //   /collector/v1/*             the Collectors (cap01, cap02 …): telemetry/events/heartbeat in,
 //                               devices/config out; alarm events are notified from here (notify.js)
 //                               and everything goes on to the Portal from here (portal.js, D-13)
-//   /twin/*                     the existing UI (apps/twin, console build)
+//   /fms/*                      the UI — FMS 1.x screen, internal build (frontend/, D-16)
+//   /twin/*                     apps/twin console build, dev only (moved to the portal, D-16)
 //   /login, /settings           the two pages twin does not have
 //
 // Behind nginx on 443; listens on 0.0.0.0 (config.js). Stateless: app01 and
@@ -106,7 +107,7 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
       role: u.role, persona: u.role, must_change: !!u.must_change,
       tenantId: 1, tenantName: config.tenantName,
       tenant: { id: 1, name: config.tenant, display_name: config.tenantName, status: 'active', mode: 'prod', skus: ['fms'] },
-      sku: ['fms'], teamIds: [], landingRoute: '/twin/', console: { node: config.nodeId, saml: config.saml.enabled },
+      sku: ['fms'], teamIds: [], landingRoute: '/fms/', console: { node: config.nodeId, saml: config.saml.enabled },
     };
   });
 
@@ -424,9 +425,15 @@ function createApp({ config, db, redis, now = Date.now, notifyDeps = null, porta
 
   function serveStatic(req, res, pathname) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 404, { ok: false, error: 'not_found' });
-    if (pathname === '/' ) { res.writeHead(302, { Location: '/twin/' }); return res.end(); }
+    if (pathname === '/' ) { res.writeHead(302, { Location: '/fms/' }); return res.end(); }
     if (pathname === '/login' || pathname === '/settings') return serveFile(res, config.publicDir, `${pathname}.html`) || send(res, 404, { ok: false, error: 'not_found' });
     if (pathname.startsWith('/static/')) return serveFile(res, config.publicDir, pathname.slice('/static/'.length)) || send(res, 404, { ok: false, error: 'not_found' });
+    if (pathname === '/fms' ) { res.writeHead(301, { Location: '/fms/' }); return res.end(); }
+    if (pathname.startsWith('/fms/')) {
+      // The UI shell is public (it holds no data); every /v1 call it makes is authenticated.
+      return serveFile(res, config.uiDir, pathname.slice('/fms/'.length), { fallback: 'index.html' })
+        || send(res, 503, { ok: false, error: 'ui_not_built', message: 'build frontend with: npm run build:console' });
+    }
     if (pathname === '/twin' ) { res.writeHead(301, { Location: '/twin/' }); return res.end(); }
     if (pathname.startsWith('/twin/')) {
       // The UI shell is public (it holds no data); every /v1 call it makes is authenticated.

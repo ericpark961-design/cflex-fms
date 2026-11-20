@@ -32,7 +32,7 @@ OWN = [
     {"name": "collector", "containerfile": "images/collector/Containerfile", "roles": ["collector"],
      "base_var": "UBI8_NODEJS_20", "packages": ["probe-agent", "packages/notify"], "node_tree": "/opt/cflex/probe-agent"},
     {"name": "app", "containerfile": "images/app/Containerfile", "roles": ["app"],
-     "base_var": "UBI8_NODEJS_20", "packages": ["apps/console", "probe-agent", "packages/notify", "apps/twin"],
+     "base_var": "UBI8_NODEJS_20", "packages": ["apps/console", "probe-agent", "packages/notify", "frontend"],
      "node_tree": "/opt/cflex/apps/console", "requires": ["pg"]},
     {"name": "web", "containerfile": "images/web/Containerfile", "roles": ["app"],
      "base_var": "UBI8_NGINX_122", "packages": []},
