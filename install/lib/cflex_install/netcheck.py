@@ -127,6 +127,13 @@ def destinations(site, role, me, runner, resolve):
     add("nmc", targets or [], desc=("NMC %d대 (%s)" % (len(targets), siteconf.get(site, "nmc.targets_file"))) if targets is not None
         else "nmc.targets_file 없음")
 
+    # Modbus TCP devices (WO-INT-017, site row MB-1): only where site.yaml names a target list.
+    mtargets = _read_targets(siteconf.get(site, "modbus.targets_file"), runner)
+    add("modbus", mtargets or [], [502],
+        desc=("Modbus 장비 %d대 (%s)" % (len(mtargets), siteconf.get(site, "modbus.targets_file"))) if mtargets
+        else "modbus.targets_file 미설정 — 이 사이트 원장에 Modbus 장비 없음",
+        configured=bool(mtargets))
+
     portal_h, _ = _host_of(siteconf.get(site, "portal.url"))
     pin = siteconf.get(site, "portal.ip_pin")
     if siteconf.get(site, "portal.enabled", True):
@@ -205,7 +212,8 @@ def evaluate(matrix, site, role, me, listeners, established, runner,
     public_listeners = [l for l in listeners if not is_loopback(l["local"])]
     used_listen, used_out = set(), set()
     rows = []
-    for row in matrix["rows"]:
+    # v3 rows, then the site rows (not in v3; N/A where the site has no such devices).
+    for row in list(matrix["rows"]) + list(matrix.get("site_rows") or []):
         lines = []
         for chk in row["checks"]:
             label = chk.get("label") or ("%s %s/%s" % (chk["type"], chk["proto"], chk.get("port") or chk.get("ports")))
@@ -288,6 +296,8 @@ def _eval_listen(chk, label, listeners, used, forward_mode, forward_rules, insta
 
 def _eval_out(chk, label, dests, established, used):
     d = dests.get(chk["dest"])
+    if chk.get("site_only") and (not d or not d["configured"]):
+        return {"check": label, "verdict": "N/A", "observed": d["desc"] if d else "해당 없음"}
     if not d or not d["configured"]:
         v = "WARN" if (chk.get("optional") or chk.get("system")) else "FAIL"
         if chk["dest"] in ("smtp", "teams", "servicenow"):

@@ -50,5 +50,13 @@
         { "type": "out", "roles": ["app", "collector", "db"], "proto": "any", "ports": [443, 53, 123], "dest": "platform", "label": "→ Satellite/DNS/NTP", "system": true }
       ]
     }
+  ],
+  "$comment_site_rows": "Rows that are NOT in firewall request v3 (HAEA). They apply only to a site whose ledger has such devices, and are N/A otherwise, so HAEA's report is unchanged. A site that uses one puts it in its own firewall request. MB-1: WO-INT-017 (Modbus TCP collector, KMX), DECISIONS Q-2026-11-20 (WO-INT-017).",
+  "site_rows": [
+    {
+      "id": "MB-1", "direction": "collector → Modbus TCP 장비(원장 등록분: 항온항습기 컨트롤러·RTU→TCP 게이트웨이·접점 I/O 모듈)", "port": "TCP 502", "purpose": "Modbus TCP 읽기 전용 폴링(FC 1–4) — 방화벽 요청서 v3 밖, 해당 사이트만",
+      "checks": [ { "type": "out", "roles": ["collector"], "proto": "tcp", "ports": [502], "dest": "modbus", "site_only": true,
+        "na": { "app": "해당 없음 — Modbus 폴링은 collector만", "db": "해당 없음 — Modbus 폴링은 collector만" } } ]
+    }
   ]
 }

@@ -238,6 +238,76 @@
 - `raw_value`·`unit`·`oid`·`confidence`·`label`은 수집기 결과에만 있고 계약 텔레메트리로는 가지 않는다.
 - Local Console에는 같은 계약 포인트가 간다(`console/client.js` `addPoint`).
 
+### 1.11 Modbus TCP — 항온항습기 프로파일 경로·접점 입력 모듈 (WO-INT-017)
+
+읽기 전용이다. 요청 생성 단계(`services/modbus-read.js` `buildReadRequest`)가 function code 1·2·3·4만 만들고 5·6·15·16·22·23은 이름으로 거부한다. 쓰기 경로는 없다(D-12a). 접속 대상은 원장 장비의 IP뿐이고 프로파일에는 호스트를 적을 수 없다. 원장에 Modbus 장비가 없는 사이트(HAEA)에서는 연결을 하나도 열지 않는다.
+
+**폴링·세션**
+
+| item | value | source_file | note |
+|---|---|---|---|
+| modbus_timeout_retries | 3000 ms / 1회 (`MODBUS_TIMEOUT_MS`, `MODBUS_RETRIES`) | probe-agent/src/config.js | 재시도는 통신 실패·검증 실패 응답에만. 예외 응답에는 재시도하지 않는다 |
+| modbus_port | 502 (`attrs.modbus.port` 또는 `MODBUS_PORT`) | probe-agent/src/config.js | 502가 아닌 포트는 시뮬레이터 전용 |
+| modbus_function_codes | 1 coil, 2 discrete, 3 holding, 4 input | probe-agent/src/services/modbus-read.js | 5·6·15·16·22·23 거부 |
+| modbus_request_limit | 레지스터 125개, 비트 2000개 | probe-agent/src/services/modbus-read.js | 넘으면 나눠 보낸다(`splitRange`) |
+| modbus_read_plan | 같은 표에서 맞닿거나 겹치는 포인트만 한 구간으로 읽는다 | probe-agent/src/services/modbus-profiles.js | 프로파일에 없는 주소를 메우지 않는다(`planReads`) |
+| modbus_session | host:port당 연결 1개, 요청 순차, 같은 게이트웨이 뒤 unit ID들이 공유, 사이클 끝에 닫음 | probe-agent/src/index.js, services/modbus-read.js | `POLL_CONCURRENCY` 작업자가 여럿이어도 같은 호스트는 한 줄로 기다린다 |
+| modbus_response_check | transaction ID, protocol ID 0, unit ID, 길이, function code, byte count | probe-agent/src/services/modbus-read.js | 하나라도 다르면 값을 버리고 오류. 다음 요청은 새 연결 |
+| modbus_exception_02 | `register map mismatch` 로 보고 | probe-agent/src/pollers/crac-modbus.js | 장비 예외(`device exception`, 04 등)·통신 실패(`communication failure`)와 구분 |
+| modbus_source | 메트릭 `oid` 자리에 `modbus:<unit_id>:<table>:<pdu_address>` | probe-agent/src/services/modbus-profiles.js | 예 `modbus:1:input:0`. 계약 텔레메트리로는 가지 않는다(§1.10 전송 형태와 같음) |
+
+**값 변환** (`services/modbus-profiles.js` `decodeValue`)
+
+| data | words | conversion | required_fields | note |
+|---|---|---|---|---|
+| uint16 | 1 | 그대로 | scale, unit | - |
+| int16 | 1 | 2의 보수(0x8000 이상은 음수) | scale, unit | - |
+| uint32 | 2 | word_order대로 32비트 무부호 | word_order, scale, unit | ABCD = 상위 워드 먼저, CDAB = 하위 워드 먼저 |
+| int32 | 2 | word_order대로 32비트 부호 | word_order, scale, unit | - |
+| float32 | 2 | word_order대로 IEEE 754 | word_order, scale, unit | raw_value는 배율 전 float |
+| bit | 1 | holding·input은 레지스터의 `bit`번째 비트(0–15), coil·discrete는 비트 그대로 | scale, unit | - |
+
+value = round(raw × scale × 10^6) ÷ 10^6. `enum`이 있으면 str_value = enum[raw](없는 값은 `code<n>`). raw_value는 항상 함께 저장한다. `word_order`·`scale`·`unit`이 없거나 `address_base`가 0·1이 아니면 그 프로파일은 쓰지 않고 장비를 `unsupported`(사유 포함)로 보고한다. `address_base` 1이면 PDU 주소 = address − 1.
+
+**항온항습기 Modbus 경로** (`kind: crac`, `attrs.protocol: modbus|modbus-tcp`)
+
+메트릭 이름은 SNMP 경로(§1.6)와 같다: `supply_temp_c`, `return_temp_c`, `state_system`, `state_cooling`, `alarm_count`. `state_system`·`state_cooling`은 프로파일에 enum(on·standby·off)이 반드시 있어야 한다. 파생 D-11 `cooling_available`(standby는 0), D-12 `delta_t_c`가 SNMP 경로와 같은 함수로 계산된다. 프로파일의 그 밖의 포인트는 프로파일의 metric 이름대로 올린다(m_ext).
+
+| profile | vendor | source_doc | address_base | note |
+|---|---|---|---|---|
+| sim-crac | C-Flex simulator | probe-agent/sim/sim-modbus.js 기본 표 | 0 | 시뮬레이터 전용. 실장비에 붙이지 않는다 |
+| (Stulz) | Stulz | 없음 | - | 미구현. 제조사 포인트 리스트가 저장소에 없다(DECISIONS Q-2026-11-20-01) |
+
+`sim-crac` 포인트(시뮬레이터 전용):
+
+| device_class | source | metric | telemetry_key | data | scale | unit | value_map | m_ext |
+|---|---|---|---|---|---|---|---|---|
+| crac | modbus:<unit>:input:0 | supply_temp_c | supply_temp_c | int16 | 0.1 | °C | - | yes |
+| crac | modbus:<unit>:input:1 | return_temp_c | return_temp_c | int16 | 0.1 | °C | - | yes |
+| crac | modbus:<unit>:input:2 | humidity_pct | humidity_pct | uint16 | 0.1 | %RH | - | yes |
+| crac | modbus:<unit>:input:10 | setpoint_c | setpoint_c | float32 ABCD | 1 | °C | - | yes |
+| crac | modbus:<unit>:holding:0 | state_system | state_system | uint16 | 1 | state | 1=on 2=standby 3=off | yes |
+| crac | modbus:<unit>:holding:1 | state_cooling | state_cooling | uint16 | 1 | state | 1=on 2=standby 3=off | yes |
+| crac | modbus:<unit>:holding:2 | alarm_count | alarm_count | uint16 | 1 | count | - | yes |
+| crac | modbus:<unit>:holding:3 | fan_pct | fan_pct | uint16 | 1 | % | - | yes |
+| crac | modbus:<unit>:discrete:0 | alarm_filter | alarm_filter | bit | 1 | state | 0=normal 1=active | yes |
+
+**접점 입력 모듈** (`kind: dio`, `pollers/dio.js`)
+
+채널 결선은 프로파일이 아니라 장비 속성 `attrs.inputs`에 둔다. `attrs.modbus.type`은 coil 또는 discrete, `address_base`는 0 또는 1(필수), PDU 주소 = channel − address_base.
+
+| item | value | note |
+|---|---|---|
+| allowed_metrics | fire_alarm, fire_trouble, fire_supervisory, fire_predischarge, fire_discharge, smoke_zone_<n>, leak_alarm, contact_<n> | 목록 밖 이름이 하나라도 있으면 장비 `unsupported` |
+| value | 0 정상 / 1 동작 | unit `state`, str_value `normal`/`active`, raw_value = 읽은 비트 |
+| active_state closed | 비트 1(닫힘) = 동작 | NO 접점 |
+| active_state open | 비트 0(열림) = 동작 | NC 접점 |
+| active_state 없음 | value·str_value null, raw_value만 | notes에 `active_state 미지정` 으로 채널을 적는다. 텔레메트리 `m`에는 키가 실리지 않는다 |
+| 무응답 | ok:false, metrics 없음 | 0으로 채우지 않는다. 이벤트는 `telemetry` ok:false |
+| alarm_code | 없음 | 부록 B에 코드가 없다(WO-INT-017 §8-1). 값만 올린다 |
+
+Local Console 구성에서는 비UPS 객체 피드가 비어 있어서(§1.0 `non_ups_feed_with_console`) 이 수집기들도 피드가 생길 때까지 돌지 않는다(DECISIONS Q-2026-11-20-02).
+
 ---
 
 ## §2. 파생 메트릭 표
@@ -254,8 +324,8 @@
 | D-08 | status(내부) | ups | health_score ≥80 ok, ≥50 warn, 그 밖 critical | health_score | 성공한 UPS 폴마다 | 미전송 | probe-agent/src/services/ups-metrics.js | 계약 status(D-02)와 다른 값이다 |
 | D-09 | phase_imbalance_pct | pdu | round((max − min) ÷ avg × 1000) ÷ 10. avg가 0이면 0 | phase_current_a(상 2개 이상) | 성공한 PDU 폴에서 상 전류가 2개 이상일 때 | m_ext | probe-agent/src/pollers/pdu.js | label은 L1/L2/L3 형식이다(전송 안 됨) |
 | D-10 | outlets_on | pdu | outlet_state가 on인 콘센트 수 | outlet_state | switched PDU에서 콘센트 행이 1개 이상일 때 | m_ext | probe-agent/src/pollers/pdu.js | label on/total(전송 안 됨) |
-| D-11 | cooling_available | crac | state_cooling이 있으면 그 값이 on인지, 없으면 state_system이 on인지. 1 또는 0 | state_cooling, state_system | 둘 중 하나라도 읽혔을 때 | m_ext | probe-agent/src/pollers/crac.js | str_value cooling 또는 상태 문자열. alarm_count>0이면 label alarms <n> |
-| D-12 | delta_t_c | crac | round((return − supply) × 10) ÷ 10 | supply_temp_c, return_temp_c | 둘 다 읽혔을 때 | m_ext | probe-agent/src/pollers/crac.js | 센서가 여럿이면 각 metric의 첫 행 값을 쓴다 |
+| D-11 | cooling_available | crac | state_cooling이 있으면 그 값이 on인지, 없으면 state_system이 on인지. 1 또는 0 | state_cooling, state_system | 둘 중 하나라도 읽혔을 때 | m_ext | probe-agent/src/pollers/crac.js, crac-modbus.js | str_value cooling 또는 상태 문자열. alarm_count>0이면 label alarms <n> |
+| D-12 | delta_t_c | crac | round((return − supply) × 10) ÷ 10 | supply_temp_c, return_temp_c | 둘 다 읽혔을 때 | m_ext | probe-agent/src/pollers/crac.js, crac-modbus.js | 센서가 여럿이면 각 metric의 첫 행 값을 쓴다 |
 | D-13 | ports_admin_down | network | 물리 포트 중 ifAdminStatus=2 수 | ifType, ifAdminStatus | 물리 포트가 1개 이상일 때 | m_ext | probe-agent/src/pollers/network.js | - |
 | D-14 | ports_down_unexpected | network | max(0, ports_total − ports_up − ports_admin_down) | ports_total, ports_up, ports_admin_down | 물리 포트가 1개 이상일 때 | m_ext | probe-agent/src/pollers/network.js | 관리상 up인데 down인 포트 수 |
 | D-15 | ports_total, ports_up | network | 물리 포트 수, 그중 ifOperStatus=1 수 | ifType, ifOperStatus | 물리 포트가 1개 이상일 때 | m_ext | probe-agent/src/pollers/network.js | 코드에는 source=measured로 표시되어 있다 |
@@ -438,6 +508,7 @@ PowerNet-MIB trap은 SNMPv1 TRAP-TYPE이고 ENTERPRISE는 apc(1.3.6.1.4.1.318)�
 | §3.0 | probe-agent/src/alarms/persist.js | 9cd0d1d |
 | §4 | probe-agent/src/trap/apc-mib.js, handler.js, listener.js | 9cd0d1d |
 | §3.2 §5 §6 | probe-agent/src/forwarder.js, probe-agent/src/console/client.js, apps/console/src/portal.js, apps/console/src/ingest.js | WO-INT-012 |
+| §1.11 §2 | probe-agent/src/services/modbus-read.js, modbus-profiles.js, probe-agent/src/pollers/crac-modbus.js, dio.js, crac.js, probe-agent/profiles/modbus/sim-crac.json | WO-INT-017 |
 | §1.9 §5 | docs/spec/schemas/telemetry.schema.json, files.schema.json, commands.schema.json | e6c6947 |
 | §6.2 | probe-agent/sim/*.js | 9cd0d1d |
 
@@ -450,4 +521,5 @@ PowerNet-MIB trap은 SNMPv1 TRAP-TYPE이고 ENTERPRISE는 apc(1.3.6.1.4.1.318)�
 | probe-agent/sim/sim-netbotz.js | NetBotz 750 센서 표 | TEMPS·STATES 환경변수, 0.1 단위 값, label 순서를 일부러 섞음 | 시뮬레이터 전용 |
 | probe-agent/sim/sim-crac.js | Liebert iCOM | SUPPLY_C·RETURN_C·COOLING·ALARMS 환경변수 | 시뮬레이터 전용 |
 | probe-agent/sim/sim-switch.js | IF-MIB + ENTITY-SENSOR | VLAN·루프백·포트채널 행, down 포트 1개, 관리상 shut 포트 1개 | 시뮬레이터 전용 |
+| probe-agent/sim/sim-modbus.js | Modbus TCP 서버(게이트웨이 형태, unit ID 여러 개) | unit 1 = sim-crac 항온항습기(SUPPLY_C·RETURN_C·COOLING·ALARMS), unit 2 = 16채널 접점 모듈(DIO_INPUTS). 표는 MODBUS_TABLES(JSON)·MODBUS_TABLES_FILE로 교체. FRAGMENT·DELAY_MS·EXCEPTION·DISCONNECT | 시뮬레이터 전용. 쓰기 function code는 예외 01로 답하고 기록한다 |
 | probe-agent/sim/sim-trap.js | APC trap 송신 | 시나리오: apc-mib.js 이름 13종 + 매핑 없는 OID 2종(NetBotz형 1.3.6.1.4.1.5528.100.10.2.1, coldStart) | 시뮬레이터 전용. v3 키는 환경변수로만 받는다 |

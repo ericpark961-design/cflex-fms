@@ -486,3 +486,23 @@ Codex TASKS.md WO-PTL-001(헤더 1.2 수락·`collector_id` 저장, E2E 대상 `
 - **WO-INT-014 기간 중 실장비 접속·스캔 금지.** 시뮬레이터로만 개발·테스트. 실장비 적용은 법인장 승인 + 유지보수 창에서 별도 WO.
 - 전송은 SSH CLI(22) 우선. 방화벽 v3 Form A에 collector→NMC 22가 없으므로 기본 실행 위치는 **엔지니어 노트북(사이트 LAN)**, 컬렉터 실행은 방화벽 v4에 "온보딩·PM 기간 한정 TCP 22"를 추가할 때.
 
+### Q-2026-11-20-01 — Stulz Modbus 프로파일: 제조사 포인트 리스트가 저장소에 없다 (Claude Code, WO-INT-017)
+WO-INT-017 §3.2·§4-7에 따라 Stulz 레지스터 주소를 쓰지 않았다. 저장소(`reference/` 포함)에 Stulz 컨트롤러(예: C7000/C2020 계열)의 Modbus 포인트 리스트가 없고, KMX 실사 전이라 컨트롤러 모델도 확인되지 않았다. 수집기·로더·시뮬레이터는 시뮬레이터용 `probe-agent/profiles/modbus/sim-crac.json`으로 완료했다. 프로파일 형식은 `source_doc`(문서명·개정·쪽)과 `address_base`를 필수로 받으므로, 문서가 오면 JSON 1개 추가로 끝난다(코드 변경 없음).
+- **(A)** KMX 실사(~2027-01-08)에서 컨트롤러 모델·펌웨어와 통신 경로(Modbus TCP 직접 / RS-485+게이트웨이)를 확인하고, 그 모델의 제조사 Modbus 포인트 리스트(PDF)를 받아 `reference/`에 넣는다. 그 문서로 `profiles/modbus/stulz-<controller>.json`을 작성(전 포인트 `documented`)하고 랩에서 시뮬레이터로 재검증, 커미셔닝(1/11~22)에서 디스플레이 대조 후 `verified` — **권고**.
+- **(B)** Stulz WIB(SNMP 카드)가 있으면 Modbus 대신 SNMP로 읽는다. 별도 OID 프로파일 작업(이 WO 범위 밖)이 필요하다.
+- (C) 문서 없이 현장에서 주소를 탐색해 프로파일을 만든다 — §4-7 위반이므로 권고하지 않는다.
+
+### Q-2026-11-20-02 — Local Console에 비UPS 장비 피드가 없어 Modbus 수집기가 실제 구성에서는 돌지 않는다 (Claude Code, WO-INT-017)
+`forwarder.fetchObjectConfig()`는 `[]`를 반환한다(Q-2026-10-26-14 답 (A)에 기록된 사실). 콘솔 `devices` 표는 UPS 원장이고 `kind`·`attrs`(protocol, modbus.unit_id, profile, inputs) 열이 없으며 `/collector/v1/devices`는 UPS만 준다. 그래서 이 WO의 CRAC Modbus·`dio` 수집기는 코드·시험(시뮬레이터 → 실제 수집 주기 → 콘솔 collector API, E2E는 시험 전용 preload `test/support/object-feed.js`로 장비 2대를 넣음)까지는 완료됐지만, **콘솔에 장비를 등록하는 경로가 없어 KMX에서 그대로는 폴링되지 않는다.** 기존 SNMP 비UPS 수집기(PDU·NetBotz·iCOM CRAC·네트워크)도 같은 상태다. HAEA 동작은 이 WO 전후 동일하다.
+- **(A)** 별도 WO(콘솔+컬렉터, Claude Code)로 콘솔에 비UPS 장비 원장(`kind`, `attrs` JSON, 사이트 스코프)과 `GET /collector/v1/objects`를 추가하고 `fetchObjectConfig`가 이를 받게 한다. 화면은 Settings 장비 편집에 kind·속성 입력만. KMX 랩 재검증(2027-01-08) 전에 끝낸다 — **권고**.
+- **(B)** 컬렉터가 로컬 파일에서 장비 목록을 읽는다. §3.1("설정 값으로 임의 호스트에 연결되는 경로를 두지 않는다")과 충돌하므로 권고하지 않는다.
+
+### Q-2026-11-20-03 — TCP 502(collector → Modbus 장비)는 방화벽 요청서 v3에 없다: netcheck 사이트 행 MB-1 (Claude Code, WO-INT-017)
+`install/netmatrix.json`의 `rows`는 명세 01 §1(=HAEA 방화벽 요청서 v3)과 1:1로 시험되므로(`static.test.js`, `test_netcheck.py`) 거기에 행을 넣지 않았다. 대신 `site_rows`에 **MB-1** "collector → Modbus TCP 장비 / TCP 502 / 읽기 전용 폴링"을 추가했다. `site.yaml`에 `modbus.targets_file`이 없으면 N/A(HAEA 보고서 판정 불변), 있으면 대상 목록과 실제 502 연결을 대조하고 그 연결은 "v3에 없는 연결" FAIL로 잡히지 않는다. 명세 01 §1·HAEA v3 요청서는 바꾸지 않았다.
+- **(A)** 이대로 둔다. KMX 방화벽 요청서(사이트별)에 "collector → 항온항습기 컨트롤러/게이트웨이/I/O 모듈 TCP 502"를 넣고, KMX `site.yaml`에 `modbus.targets_file`을 둔다 — **권고**.
+- **(B)** 명세 01 §1에 행을 추가해 v4로 올린다(HAEA 요청서와 어긋나므로 HAEA 재제출이 필요해진다).
+
+### Q-2026-11-20-04 — Modbus 출처 문자열(`oid`)은 콘솔·포털까지 가지 않는다 (Claude Code, WO-INT-017)
+§3.5대로 수집기 결과의 `oid`에 `modbus:<unit_id>:<type>:<pdu_address>`(예 `modbus:1:input:0`)를 넣었다. 버퍼·콘솔 스키마가 이 문자열을 거부하는 일은 없었다 — `contract/adapt.js` `collectorPoint`가 SNMP 경로와 똑같이 `oid`·`raw_value`·`confidence`를 텔레메트리에서 빼고 `m`(평면 키→값)만 보내기 때문이다(데이터 사전 §1.10 전송 형태). 스키마는 바꾸지 않았다. 결과적으로 출처는 컬렉터 안(수집 결과·로그)에만 있고 콘솔·포털에서는 보이지 않는다.
+- **(A)** 이대로 둔다. 출처 추적은 프로파일 파일(`source_doc`)과 장비 속성(unit_id)으로 충분하고, 콘솔 표시가 필요해지면 Q-2026-11-20-02의 후속 WO에서 콘솔 장비 상세에 프로파일 포인트 표를 보여준다 — **권고**.
+- **(B)** 계약 텔레메트리에 포인트별 메타(`oid`, `raw_value`, `confidence`)를 싣는다 — 계약 00 개정(양 팀)이 필요하다.

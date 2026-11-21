@@ -17,10 +17,16 @@
 //   2. BACnet is not implemented. A device marked as speaking BACnet returns a
 //      clear "protocol not implemented" instead of a timeout that would look
 //      like a dead unit for the rest of the project.
+//
+// WO-INT-017: a unit marked modbus / modbus-tcp goes to crac-modbus.js
+// (register-map profile, same metric names, same derivations below). The SNMP
+// path here is unchanged.
 const read = require('../services/snmp-read');
 const cat = require('../services/oid-catalog');
+const { pollCracModbus } = require('./crac-modbus');
 
 const PROTO_SNMP = new Set(['', 'snmp', 'icom', 'icom-snmp', 'snmpv2c', 'snmpv3']);
+const PROTO_MODBUS = new Set(['modbus', 'modbus-tcp']);
 
 /**
  * A CRAC in standby is not cooling, however healthy it looks. The capacity
@@ -43,17 +49,34 @@ function coolingState(metrics) {
 }
 
 /**
+ * Supply minus return is the unit's delta-T, which is how you tell a CRAC
+ * that is running from one that is running and doing nothing — a blocked
+ * filter or a closed valve shows here before it shows anywhere else.
+ */
+function deltaT(metrics) {
+  const sup = metrics.find(m => m.metric === 'supply_temp_c')?.value;
+  const ret = metrics.find(m => m.metric === 'return_temp_c')?.value;
+  if (sup == null || ret == null) return null;
+  return {
+    metric: 'delta_t_c', value: Math.round((ret - sup) * 10) / 10,
+    raw_value: null, unit: '°C', oid: null,
+    confidence: 'documented', source: 'derived',
+  };
+}
+
+/**
  * @param device { id, name, ip, kind: 'crac', attrs: { protocol } }
  * @returns {{ok, metrics:[], error?, unsupported?}}
  */
 async function pollCrac(device, opts = {}) {
   const proto = String(device.attrs?.protocol || device.protocol || '').toLowerCase().trim();
+  if (PROTO_MODBUS.has(proto)) return pollCracModbus(device, opts);
   if (!PROTO_SNMP.has(proto)) {
     // Not a failure to collect — a protocol nobody has implemented yet. Saying
     // so is what keeps it off the "unreachable device" list for eight weeks.
     return {
       ok: false, unsupported: true, metrics: [],
-      error: `protocol "${proto}" not implemented — iCOM SNMP only. Confirm at the KMX survey; BACnet needs a gateway or a BACnet client.`,
+      error: `protocol "${proto}" not implemented — iCOM SNMP and Modbus TCP only. Confirm at the KMX survey; BACnet needs a gateway or a BACnet client.`,
     };
   }
 
@@ -94,18 +117,8 @@ async function pollCrac(device, opts = {}) {
   const derived = coolingState(metrics);
   if (derived) metrics.push(derived);
 
-  // Supply minus return is the unit's delta-T, which is how you tell a CRAC
-  // that is running from one that is running and doing nothing — a blocked
-  // filter or a closed valve shows here before it shows anywhere else.
-  const sup = metrics.find(m => m.metric === 'supply_temp_c')?.value;
-  const ret = metrics.find(m => m.metric === 'return_temp_c')?.value;
-  if (sup != null && ret != null) {
-    metrics.push({
-      metric: 'delta_t_c', value: Math.round((ret - sup) * 10) / 10,
-      raw_value: null, unit: '°C', oid: null,
-      confidence: 'documented', source: 'derived',
-    });
-  }
+  const dt = deltaT(metrics);
+  if (dt) metrics.push(dt);
 
   const notes = [];
   if (missing.length) notes.push(`absent: ${missing.join(',')}`);
@@ -123,4 +136,4 @@ async function pollCrac(device, opts = {}) {
   };
 }
 
-module.exports = { pollCrac, coolingState, PROTO_SNMP };
+module.exports = { pollCrac, coolingState, deltaT, PROTO_SNMP, PROTO_MODBUS };
