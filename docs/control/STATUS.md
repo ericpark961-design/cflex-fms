@@ -411,6 +411,24 @@
 - 블로커: 없음
 - 다음 세션 계획: PR 검토 반영 → 관리자 지시 순서(Q-16 버그 수정 WO 승인 시 그것, 또는 SAT 준비)
 
+### 2026-11-20 PST — Claude Code (WO-INT-017, 작업 트리 `cflex-fms-wt-int017`, 브랜치 `wo/INT-017-modbus-tcp`)
+- WO-INT-017 Probe Modbus TCP 수집기: **개발 코드·격리 시험 완료** | 커밋 a25bf3c | PR #13 (https://github.com/ericpark961-design/cflex-fms/pull/13) | 지시서 `docs/workorders/WO-INT-017_modbus-tcp-collector.md`(법인장 승인 2026-11-20, §8-4 D-12a 해석 확인)
+  - **개발 코드: 완료.** §2 포함 1–7: `probe-agent/src/services/modbus-read.js`(node:net, FC 1–4만, 5·6·15·16·22·23 요청 생성 단계 거부, 125/2000 분할, 응답 전체 검증, host:port당 연결 1개·순차·사이클 끝 닫음), `services/modbus-profiles.js` + `profiles/modbus/sim-crac.json`(시뮬레이터 전용), `pollers/crac-modbus.js` + `crac.js` 분기(bacnet 문구만 정정, iCOM SNMP 경로 동작 불변), `pollers/dio.js`(`dio` 등록), `config.js` `modbus` 블록(3000 ms/1회/502), `index.js` 사이클당 풀, `sim/sim-modbus.js`, 문서(README, 데이터 사전 §1.11, netcheck 사이트 행 MB-1 TCP 502).
+  - **격리 시험: 완료.** `test/modbus.test.js` 23건(§5 14개 항목 전부) + `test/modbus.e2e.test.js` 2건(sim-modbus CRAC unit 1 + DIO unit 2 → 실제 수집 주기 → 콘솔 collector API → PostgreSQL `telemetry`에 두 장비 metrics, standby CRAC `cooling_available` 0, 시뮬레이터 쓰기 수신 0).
+    ```
+    probe-agent  npm test                        102/102 skip 0   (이전 77/77; 신규 25)   Node 22
+    install      python3 -m unittest discover    80/80            (이전 79; MB-1 1건 신규)
+    install      node --test static.test.js      14/14
+    ```
+  - **실제 배포: 미실시** (KMX 설치 번들은 별도 WO).
+  - **실제 Probe 연결: 미실시** (KMX 현장 연결·`documented → verified`는 2027-01 커미셔닝, 별도 WO).
+  - 금지 사항 확인: 장비 쓰기 경로 0(`grep` — `WRITE_CODES`는 거부용 1곳), 새 npm 의존성 0(`git diff origin/main -- probe-agent/package.json` 비어 있음), 실장비·서버·고객 VM 접속 0(127.0.0.1·192.0.2.x만), 새 알람 코드 0, 비밀값 0, `cflex-fms-codex/**`·포털 코드 수정 0, 제조사 문서 없는 레지스터 주소 0(Stulz 프로파일 미작성), 기존 SNMP 수집기 동작 변경 0(기존 77건 전부 통과), 버퍼·콘솔 스키마 변경 0.
+  - 주의(중요): Local Console에 비UPS 장비 피드가 없어(`fetchObjectConfig()` = `[]`) 실제 구성에서는 Modbus 수집기가 장비를 받지 못한다. E2E는 시험 전용 preload(`test/support/object-feed.js`)로 장비 2대를 넣었다 → Q-2026-11-20-02.
+  - 로컬 전용(커밋 안 함): `node_modules`(probe-agent·console). `package-lock.json`은 지웠다.
+- 질문: `Q-2026-11-20-01`(Stulz 포인트 리스트 없음 — 프로파일 미작성) `-02`(콘솔 비UPS 장비 피드 부재 — KMX 전 별도 WO 권고) `-03`(TCP 502는 v3 밖 — netcheck 사이트 행 MB-1) `-04`(Modbus 출처 `oid`는 콘솔·포털로 가지 않음). 모두 권고안 (A).
+- 블로커: 없음 (KMX 운영에는 Q-02 후속 WO와 Q-01 제조사 문서가 필요)
+- 다음 세션 계획: PR 검토 반영 → 관리자 지시(Q-02 후속 WO 승인 시 그것)
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
