@@ -15,7 +15,7 @@ NoNewPrivileges=true
 DropCapability=ALL
 @@WEB_NETWORK@@
 Volume=/opt/app/cflex/config/nginx:/opt/cflex/nginx.d:ro,Z
-Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,Z
+Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,z
 LogDriver=journald
 @@CGROUP_ARGS@@
 HealthCmd=curl -fsk -o /dev/null https://127.0.0.1:8443/-/nginx

@@ -55,7 +55,7 @@ class Render(unittest.TestCase):
                         # Podman 4 sidecars only (SidecarSys): host sysfs, read-only, never relabeled.
                         self.assertIn("Network=container:cflex-web", text, path)
                         continue
-                    self.assertRegex(v, r":(ro,)?Z$", "%s: %s" % (path, v))
+                    self.assertRegex(v, r":(ro,)?[Zz]$", "%s: %s" % (path, v))
                 self.assertIn(":2.0.0", text)
 
     def test_podman4_has_no_pod_units_podman5_does(self):
@@ -145,7 +145,21 @@ class Render(unittest.TestCase):
                      "CFLEX_PORTAL_BUFFER_DAYS=7", "HTTPS_PROXY=\n"):
             self.assertIn(line, env)
         self.assertIn("CONSOLE_NODE_ID=app01", env)
-        self.assertIn("Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,Z", f[QD + "cflex-console.container"][0])
+        self.assertIn("Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,z", f[QD + "cflex-console.container"][0])
+
+    def test_shared_host_path_uses_the_shared_selinux_label(self):
+        # :Z gives each container a private MCS label; the last to start locks the others out of the
+        # path (lab: nginx could no longer read console.crt after cflex-console restarted). A path two
+        # containers on one node mount must be :z.
+        for role, hid, pv, ports, files in self.all_variants():
+            seen = {}
+            for path, text in units(files).items():
+                for v in re.findall(r"(?m)^Volume=(/[^:]+):[^:]+:(.+)$", text):
+                    seen.setdefault(v[0], []).append((path, v[1]))
+            for host, uses in seen.items():
+                if len(uses) > 1:
+                    for path, opts in uses:
+                        self.assertNotIn("Z", opts.split(","), "%s: %s shared but :Z" % (path, host))
 
     def test_bare_profile(self):
         f = render.render(self.site, "collector", me(self.site, "collector", "cap01"), "2.0.0", profile="bare")
