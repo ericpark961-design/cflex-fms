@@ -48,6 +48,7 @@ async function loadDevices() {
   if (traps) traps.setInventory([...devices.map(d => ({ kind: 'ups', ...d })), ...objects]);
   // The ledger for the contract device_id. The FMS sends the inventory to the Portal (D-13).
   await forwarder.syncInventory([...devices.map(d => ({ kind: 'ups', ...d })), ...objects]);
+  return Boolean(remote && fromConsole);
 }
 
 // The last cycle's outcome, sent with every heartbeat so the FMS (and through
@@ -144,8 +145,15 @@ async function bootstrap() {
 
   await loadDevices();
 
-  // Reload device config (and the console's thresholds and maintenance windows), every 5 minutes by default
-  setInterval(loadDevices, cfg.configReloadMs);
+  // Reload device config (and the console's thresholds and maintenance windows), every 5 minutes by
+  // default — but every 30 s while the console has not answered: after a site power cut the collector
+  // boots before the app nodes and would otherwise sit idle for 5 minutes (HAEA lab, SAT 7 reboot).
+  const reload = async () => {
+    let answered = false;
+    try { answered = await loadDevices(); } catch (e) { console.warn(`[probe] device reload: ${e.message}`); }
+    setTimeout(reload, answered ? cfg.configReloadMs : Math.min(cfg.configRetryMs, cfg.configReloadMs));
+  };
+  setTimeout(reload, devices.length && forwarder.consoleConfigured() ? cfg.configReloadMs : Math.min(cfg.configRetryMs, cfg.configReloadMs));
 
   // Poll cycle
   setInterval(pollAll, cfg.pollIntervalMs);

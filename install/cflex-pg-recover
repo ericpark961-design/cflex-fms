@@ -1,0 +1,107 @@
+#!/bin/bash
+# cflex-pg-recover — restore db01 from a base backup set, to its end or to a point in time
+# (docs/install/PG_BACKUP_RESTORE.md §3 / §4). Container profile. Run on db01 with sudo, apps stopped.
+#
+#   sudo install/cflex-pg-recover --set /opt/data/backup/base-20261121 --immediate            --yes   # §3
+#   sudo install/cflex-pg-recover --set /opt/data/backup/base-20261121 --time '2026-11-21 04:19:36+00' --yes   # §4
+#
+# Why a script: the rhel8/postgresql-16 start script runs ALTER USER … PASSWORD as soon as the server takes
+# connections. During recovery the server is read-only, the ALTER fails, the container exits, systemd
+# restarts it and recovery starts over — forever (HAEA lab, SAT 7). So the recovery runs here in a one-off
+# container with plain `postgres` (same image, same volumes, no network), until it has promoted; then the
+# normal cflex-postgres unit takes over. Both kinds end on a new timeline, so the WAL written afterwards
+# never collides with segments already in the archive.
+#
+# The current data directory is moved aside (/opt/data/pgsql.broken-<time>), never deleted.
+# Exit: 0 restored · 1 failed (the data directory then holds the partial restore; the old one is aside) · 2 usage.
+set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+AS="$HERE/cflex-as"
+DATA=/opt/data/pgsql
+WAL=/opt/data/backup/wal
+UNIT=/home/cflex/.config/containers/systemd/cflex-postgres.container
+TIMEOUT=${CFLEX_RECOVER_TIMEOUT:-1800}
+SET="" TARGET="" YES=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    --set) SET=${2:-}; shift 2 ;;
+    --time) TARGET="recovery_target_time = '${2:-}'"; shift 2 ;;
+    --immediate) TARGET="recovery_target = 'immediate'"; shift ;;
+    --yes) YES=1; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+say() { echo "$(date -u +%H:%M:%SZ) $*"; }
+die() { say "FAILED: $*"; exit 1; }
+[ "$(id -u)" = 0 ] || { echo "run with sudo" >&2; exit 2; }
+[ -n "$SET" ] && [ -n "$TARGET" ] || { sed -n '2,8p' "$0" >&2; exit 2; }
+[ -f "$SET/CFLEX_BACKUP_OK" ] && [ -s "$SET/base.tar.gz" ] || { echo "$SET is not a complete base set (CFLEX_BACKUP_OK, base.tar.gz)" >&2; exit 2; }
+[ -f "$UNIT" ] || { echo "$UNIT missing — not a container-profile db node" >&2; exit 2; }
+IMAGE=$(sed -n 's/^Image=//p' "$UNIT"); ARGS=$(sed -n 's/^PodmanArgs=//p' "$UNIT")
+CFG=$(sed -n 's#^Volume=\([^:]*\):/opt/app-root/src/postgresql-cfg.*#\1#p' "$UNIT")
+echo "restore $SET ($TARGET) with $IMAGE"
+echo "the app nodes must be stopped first:  sudo install/cflex-as systemctl --user stop cflex-console   (app01, app02)"
+[ $YES = 1 ] || { echo "nothing done — add --yes"; exit 2; }
+
+say "stop cflex-postgres"
+"$AS" systemctl --user stop cflex-postgres || die "could not stop cflex-postgres"
+aside="$DATA.broken-$(date -u +%Y%m%d%H%M%S)"
+mv "$DATA" "$aside" && install -d -o cflex -g cflex -m 700 "$DATA" || die "could not move $DATA aside"
+say "current data moved to $aside"
+D=$DATA/userdata
+runuser -u cflex -- install -d -m 700 $D $D/pg_wal
+runuser -u cflex -- tar -xzf "$SET/base.tar.gz" -C $D || die "base.tar.gz"
+[ -s "$SET/pg_wal.tar.gz" ] && { runuser -u cflex -- tar -xzf "$SET/pg_wal.tar.gz" -C $D/pg_wal || die "pg_wal.tar.gz"; }
+printf '%s\n' "restore_command = 'cp $WAL/%f %p'" "$TARGET" "recovery_target_action = 'promote'" \
+  | runuser -u cflex -- tee -a $D/postgresql.auto.conf >/dev/null
+runuser -u cflex -- touch $D/recovery.signal
+say "set unpacked; recovering in a one-off container (no network)"
+
+# postgresql.conf includes /var/lib/pgsql/openshift-custom-postgresql.conf, which the image's start script
+# writes into its tmpfs; here it is written by hand: our fragment (archiving), socket only.
+"$AS" podman rm -f cflex-pg-recover >/dev/null 2>&1
+# shellcheck disable=SC2086
+"$AS" podman run -d --name cflex-pg-recover $ARGS --network none --userns keep-id:uid=26,gid=26 \
+  --tmpfs /var/lib/pgsql:rw,mode=1777,size=16m \
+  -v $DATA:/var/lib/pgsql/data:Z -v /opt/data/backup:/opt/data/backup:Z ${CFG:+-v $CFG:/opt/app-root/src/postgresql-cfg:ro,Z} \
+  "$IMAGE" bash -c "printf '%s\n' \"listen_addresses = ''\" \"include_dir '/opt/app-root/src/postgresql-cfg'\" > /var/lib/pgsql/openshift-custom-postgresql.conf
+                    exec postgres -D /var/lib/pgsql/data/userdata" >/dev/null || die "podman run"
+t0=$(date +%s); state=""
+while :; do
+  if [ "$("$AS" podman inspect -f '{{.State.Running}}' cflex-pg-recover 2>/dev/null)" != true ]; then
+    "$AS" podman logs --tail 20 cflex-pg-recover 2>&1 | grep -v PASSWORD
+    tail -20 "$(ls -t $D/log/*.log 2>/dev/null | head -1)" 2>/dev/null | grep -v PASSWORD
+    "$AS" podman rm -f cflex-pg-recover >/dev/null 2>&1
+    die "the recovery server stopped — see above; $aside is untouched"
+  fi
+  state=$("$AS" podman exec cflex-pg-recover psql -Atc 'select pg_is_in_recovery()' 2>/dev/null)
+  [ "$state" = f ] && break
+  [ $(( $(date +%s) - t0 )) -gt "$TIMEOUT" ] && { "$AS" podman rm -f cflex-pg-recover >/dev/null 2>&1; die "still recovering after ${TIMEOUT}s"; }
+  sleep 2
+done
+tl=$("$AS" podman exec cflex-pg-recover psql -Atc "select timeline_id from pg_control_checkpoint()" 2>/dev/null)
+say "promoted after $(( $(date +%s) - t0 ))s (timeline $tl)"
+grep -hE "recovery stopping|archive recovery complete|selected new timeline" $D/log/*.log 2>/dev/null | tail -3
+"$AS" podman stop -t 120 cflex-pg-recover >/dev/null && "$AS" podman rm cflex-pg-recover >/dev/null
+# The recovery settings must go, or the next start would try to recover again.
+runuser -u cflex -- sed -i "/^restore_command\|^recovery_target/d" $D/postgresql.auto.conf
+rm -f $D/recovery.signal
+
+say "start cflex-postgres"
+"$AS" systemctl --user start cflex-postgres || die "cflex-postgres did not start"
+# The image's start script runs a temporary server first, then restarts it: wait for 3 answers in a row.
+n=0; for _ in $(seq 1 90); do
+  if "$AS" podman exec cflex-postgres pg_isready -q 2>/dev/null; then n=$((n + 1)); [ $n -ge 3 ] && break; else n=0; fi
+  sleep 2
+done
+[ $n -ge 3 ] || die "cflex-postgres is not ready"
+say "cflex-postgres ready — schema $("$AS" podman exec cflex-postgres psql -d cflex -Atc 'select max(version) from schema_migrations' 2>/dev/null)"
+cat <<EOF
+next:
+  1. start the apps:  sudo install/cflex-as systemctl --user start cflex-console   (app01, app02)
+  2. a base backup on the new timeline (today's set, if any, moved aside first — PG_BACKUP_RESTORE.md §4):
+       sudo mv /opt/data/backup/base-\$(date -u +%Y%m%d) /opt/data/backup/base-\$(date -u +%Y%m%d).pre-restore 2>/dev/null
+       sudo install/cflex-as systemctl --user start cflex-pg-backup
+  3. sudo install/cflex-install verify --role db ; then --role app on app01/app02
+  $aside can be deleted once the restore is accepted.
+EOF

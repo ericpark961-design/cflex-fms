@@ -10,6 +10,7 @@ Proxy credentials come from the URL and are never printed.
 import base64
 import calendar
 import json
+import os
 import re
 import socket
 import ssl
@@ -59,8 +60,10 @@ def tcp(host, port, timeout=TIMEOUT, banner=False):
         s.close()
 
 
-def tls(host, port=443, proxy=None, cafile=None, verify=True, timeout=TIMEOUT):
-    """TCP (or proxy CONNECT) + TLS handshake to host:port. → (ok, detail)."""
+def tls(host, port=443, proxy=None, cafile=None, verify=True, timeout=TIMEOUT, extra_ca=None, client=None):
+    """TCP (or proxy CONNECT) + TLS handshake to host:port. → (ok, detail).
+    cafile replaces the system store; extra_ca adds to it (the console's CFLEX_TLS_CA does the same);
+    client = (cert, key) presents a client certificate, as the Portal sender does (mTLS)."""
     try:
         if proxy:
             s = socket.create_connection((proxy["host"], proxy["port"]), timeout=timeout)
@@ -81,6 +84,10 @@ def tls(host, port=443, proxy=None, cafile=None, verify=True, timeout=TIMEOUT):
         else:
             s = socket.create_connection((host, port), timeout=timeout)
         ctx = ssl.create_default_context(cafile=cafile) if verify else ssl._create_unverified_context()
+        if verify and extra_ca:
+            ctx.load_verify_locations(extra_ca)
+        if client:
+            ctx.load_cert_chain(*client)
         if not verify:
             ctx.check_hostname = False
         t = ctx.wrap_socket(s, server_hostname=host)
@@ -175,6 +182,40 @@ def _selinux(add, runner):
             warn=True)
 
 
+SECRET_FILES = {
+    "db": ["/opt/app/cflex/secrets/db/pg.pass", "/opt/app/cflex/secrets/db/pg-admin.pass"],
+    "app": ["/opt/app/cflex/secrets/app/pg.pass", "/opt/app/cflex/secrets/app/redis.pass", "/opt/app/cflex/secrets/app/console.key"],
+    "collector": ["/opt/app/cflex/secrets/collector/collector.key"],
+}
+SECRET_LOGS = ["/opt/app/cflex/log", "/opt/data/backup/backup.log", "/opt/data/pgsql/userdata/log"]
+# The value is read by grep from the secret file itself (-f): it never appears on a command line, where
+# sudo / auditd would log it — the lab's first manual check did exactly that. Blank lines are dropped
+# first: an empty pattern matches every line.
+_SCAN = r'''p=$(mktemp) || exit 2; trap 'rm -f "$p"' EXIT; grep -v '^[[:space:]]*$' "$1" > "$p" || exit 3; shift
+j=$(journalctl -o cat --no-pager 2>/dev/null | grep -cFf "$p"); f=0
+for x in "$@"; do [ -e "$x" ] && f=$((f + $(grep -rcFf "$p" "$x" 2>/dev/null | awk -F: '{s+=$NF} END {print s+0}'))); done
+echo "$j $f"'''
+
+
+def _secret_scan(add, runner, role):
+    """SAT 8: no secret of this node in plain text in the journal or the C-Flex logs."""
+    found, scanned = [], 0
+    for path in SECRET_FILES.get(role, []):
+        if not runner.exists(path):
+            continue
+        r = runner.run(["sh", "-c", _SCAN, "cflex-scan", path] + SECRET_LOGS)
+        parts = (r[1] or "").split()
+        if not ok(r) or len(parts) != 2:
+            add("secrets in logs", False, "could not scan for %s" % os.path.basename(path), warn=True)
+            return
+        scanned += 1
+        j, f = int(parts[0]), int(parts[1])
+        if j or f:
+            found.append("%s: journal %d, logs %d" % (os.path.basename(path), j, f))
+    if scanned:
+        add("secrets in logs", not found, "; ".join(found) if found else "0 — %d secret(s) checked against the journal and C-Flex logs" % scanned)
+
+
 def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect=None, now=None):
     """→ [Result]. `connect` lets tests replace tcp/tls."""
     now = time.time() if now is None else now
@@ -195,6 +236,7 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
             add("service " + n, ok(r), r[1].strip() or r[2].strip())
 
     _selinux(add, runner)
+    _secret_scan(add, runner, role)
 
     proxy = _parse_proxy(siteconf.get(site, "portal.proxy"))
     apps = siteconf.get(site, "hosts.app") or []
@@ -212,8 +254,18 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
     # D-13: only the app nodes reach the Portal; a collector has no external path.
     if role == "app" and siteconf.get(site, "portal.enabled", True):
         h, p = _host(siteconf.get(site, "portal.url"))
-        good, d = tls_f(h, p or 443, proxy=proxy)
-        add("%s → portal %s" % (role, h), good, d + (" proxy %s" % redact(siteconf.get(site, "portal.proxy")) if proxy else ""))
+        # The same trust and identity the console's Portal sender uses (render.py: CFLEX_TLS_*).
+        cert = siteconf.get(site, "portal.mtls_cert") or "/opt/app/cflex/certs/device.pem"
+        key = re.sub(r"\.pem$", ".key", cert) if cert.endswith(".pem") else cert + ".key"
+        pca = os.path.join(os.path.dirname(cert), "portal-ca.pem")
+        kw = {}
+        if runner.exists(pca):
+            kw["extra_ca"] = pca
+        if runner.exists(cert) and runner.exists(key):
+            kw["client"] = (cert, key)
+        good, d = tls_f(h, p or 443, proxy=proxy, **kw)
+        add("%s → portal %s" % (role, h), good, d + (" proxy %s" % redact(siteconf.get(site, "portal.proxy")) if proxy else "")
+            + ("" if "client" in kw else " (no device certificate yet — the Portal will refuse this node)"))
     if role == "app":
         db = siteconf.get(site, "hosts.db") or {}
         good, d = tcp_f(db.get("ip"), db.get("port", 5432))

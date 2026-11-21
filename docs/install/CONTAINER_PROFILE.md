@@ -107,7 +107,8 @@ rootless 컨테이너는 1024 미만 포트를 직접 열 수 없다. 두 방법
   Redis는 이 파일을 `include`한다(argv·환경변수에 비밀번호 없음). 두 앱 노드 모두에 생긴다.
 - `collector/collector.key`: Local Console의 collector 키. 콘솔에서 `node src/cli.js collector-key cap01`로 발급(한 번만 출력)하고,
   cap01의 `/opt/app/cflex/secrets/collector/collector.key`(0600, cflex)로 옮긴다. 없으면 `verify --role collector`가 FAIL.
-  컨테이너: `podman exec -i cflex-console node /opt/cflex/apps/console/src/cli.js collector-key cap01` (app 노드, cflex 사용자).
+  컨테이너: `sudo install/cflex-as podman exec -i cflex-console node /opt/cflex/apps/console/src/cli.js collector-key cap01` (app 노드).
+  `install/cflex-as` = cflex 사용자 + 그 systemd user 세션으로 명령 하나 실행(cflex 는 nologin 이라 `sudo -iu cflex` 는 실패한다).
 - `db/pg.pass`, `db/pg-admin.pass`: db01에서 설치기가 생성, Podman secret(`type=env`)으로 컨테이너에 전달.
   **`db/pg.pass`는 app01·app02의 `app/pg.pass`로 같은 값을 복사한다**(콘솔이 db01에 접속하는 비밀번호, app.env `CFLEX_DB_PASSWORD_FILE`).
   없으면 app 설치가 멈춘다. 그래서 순서는 db01 → (복사) → app01 → app02이다(WO-INT-008).

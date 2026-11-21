@@ -37,7 +37,9 @@ class RenderDb(unittest.TestCase):
         self.assertIn("Volume=/opt/data/backup:/opt/data/backup:Z", unit)
         conf = f[CONF][0]
         for line in ("wal_level = replica", "archive_mode = on",
-                     "archive_command = 'test ! -f /opt/data/backup/wal/%f && cp %p /opt/data/backup/wal/%f'"):
+                     "archive_command = 'test ! -f /opt/data/backup/wal/%f && cp %p /opt/data/backup/wal/%f'",
+                     # the image's ALTER USER … PASSWORD must never reach the log, even when it fails (SAT 8)
+                     "log_min_error_statement = panic"):
             self.assertIn("\n" + line + "\n", conf)
         self.assertNotIn("repmgr", "\n".join(l for l in conf.splitlines() if not l.startswith("#")))
         script, mode = f[render.BACKUP_SCRIPT]
