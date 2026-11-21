@@ -93,6 +93,22 @@ class NetCheck(unittest.TestCase):
         self.assertFalse(any(e["addr"].endswith(":22") for e in rep["extras"]))
         self.assertFalse(rep["ok"])
 
+    def test_net_helper_udp_client_sockets_are_not_listeners(self):
+        # Lab cap01 (rootless Podman, slirp4netns): one unconnected UDP socket per NMC polled, which
+        # `ss -l` lists on 0.0.0.0:<ephemeral>. Counted, not reported as C-Flex listeners outside v3.
+        lis = SS_LISTEN_COLLECTOR + (
+            'udp   UNCONN 0      0              0.0.0.0:42035      0.0.0.0:*    users:(("slirp4netns",pid=2201,fd=30))\n'
+            'udp   UNCONN 0      0              0.0.0.0:54313      0.0.0.0:*    users:(("slirp4netns",pid=2201,fd=31))\n'
+            'udp   UNCONN 0      0              0.0.0.0:8125       0.0.0.0:*    users:(("slirp4netns",pid=2201,fd=32))\n')
+        rep = netcheck.evaluate(self.matrix, self.site, "collector", me(self.site, "collector", "cap01"),
+                                netcheck.parse_ss(lis), netcheck.parse_ss(SS_EST_COLLECTOR, "tcp"),
+                                FakeRunner(files=FILES), forward_mode=True, forward_rules=frozenset([("udp", 162, 1162)]))
+        self.assertEqual(rep["udp_client_sockets"], 2)
+        addrs = {e["addr"] for e in rep["extras"]}
+        self.assertNotIn("0.0.0.0:42035", addrs)
+        self.assertIn("0.0.0.0:8125", addrs, "a fixed low port is still a listener outside v3")
+        self.assertIn("UDP 클라이언트 소켓 2개", netcheck.format_text(rep))
+
     def test_app_portal_row_fw4(self):
         # D-13: app01/app02 → Portal 443 is the required FW-4 path.
         est = netcheck.parse_ss("0      0      10.138.14.67:51514   40.114.79.164:443   users:((\"conmon\",pid=2201,fd=20))\n", "tcp")
