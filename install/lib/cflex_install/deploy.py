@@ -190,6 +190,16 @@ def _secret_file(c, path, generate, peer_hint):
     return True
 
 
+def _own_secret(c, path):
+    """A secret an operator copied in (pg.pass, the standby's redis.pass/console.key): owner cflex, 0600.
+    `sudo cp` leaves it root's, and the rootless container cannot read it (Azure HAEA lab, WO-INT-015)."""
+    if c.runner.dry_run or not c.runner.exists(path):
+        return False
+    # Same bytes back, only mode and owner change; write() is a no-op when both are already right.
+    uid = c.uid()
+    return c.runner.write(path, c.runner.read(path) or "", mode=0o600, uid=uid, gid=uid)
+
+
 def _secrets(c):
     made = []
     apps = siteconf.get(c.site, "hosts.app") or []
@@ -211,6 +221,9 @@ def _secrets(c):
             if not c.runner.dry_run:
                 raise DeployError(hint)
             made.append("pg.pass MISSING (dry run: %s)" % hint)
+        for fn in ("pg.pass", "redis.pass", "console.key"):
+            if _own_secret(c, BASE + "/secrets/app/" + fn):
+                made.append("%s owner cflex 0600" % fn)
         pw = (c.runner.read(BASE + "/secrets/app/redis.pass") or "").strip()
         if c.runner.dry_run and not pw:
             pw = "dry-run"

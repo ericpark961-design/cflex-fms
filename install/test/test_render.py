@@ -51,6 +51,10 @@ class Render(unittest.TestCase):
                 self.assertRegex(text, r"(?m)^HealthCmd=", path)
                 self.assertNotRegex(text, r"(?im)privileged|^Network=host|AddCapability", path)
                 for v in re.findall(r"(?m)^Volume=(.+)$", text):
+                    if v == "/sys:/sys:ro,bind":
+                        # Podman 4 sidecars only (SidecarSys): host sysfs, read-only, never relabeled.
+                        self.assertIn("Network=container:cflex-web", text, path)
+                        continue
                     self.assertRegex(v, r":(ro,)?Z$", "%s: %s" % (path, v))
                 self.assertIn(":2.0.0", text)
 
@@ -186,3 +190,13 @@ class CgroupArgs(unittest.TestCase):
         pg = [c for p, c in self.all_units("v1").items() if p.endswith("cflex-postgres.container")][0]
         self.assertIn("\nReadOnly=true\n", pg)
         self.assertIn("\nTmpfs=/var/lib/pgsql:rw,mode=1777,size=16m\n", pg)
+
+
+class SidecarSys(unittest.TestCase):
+    def test_podman4_sidecars_bind_sys_without_recursion(self):
+        # RHEL 8 kernel 4.18 has no mount_setattr; crun's recursive read-only /sys bind fails there.
+        site = example_site()
+        f = units(render.render(site, "app", me(site, "app", "app01"), "2.0.0", podman_version="4.9.4"))
+        for name in ("cflex-console.container", "cflex-redis.container"):
+            self.assertIn("\nNetwork=container:cflex-web\nVolume=/sys:/sys:ro,bind\n", f[QD + name], name)
+        self.assertNotIn("/sys:/sys", f[QD + "cflex-web.container"], "web has its own netns and sysfs")

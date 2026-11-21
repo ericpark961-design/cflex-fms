@@ -37,6 +37,7 @@ class FakeRunner(object):
         self.dry_run = dry_run
         self.calls = []
         self.writes = {}
+        self.owners = {}
 
     def run(self, argv, input_text=None, env=None, mutating=False, timeout=600):
         self.calls.append(list(argv))
@@ -59,6 +60,7 @@ class FakeRunner(object):
     def write(self, path, content, mode=0o644, uid=None, gid=None):
         changed = self.files.get(path) != content
         self.writes[path] = (content, mode)
+        self.owners[path] = (uid, gid)
         self.files[path] = content
         return changed
 

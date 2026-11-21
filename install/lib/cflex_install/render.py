@@ -325,7 +325,10 @@ def _render_app_container(site, me, v, podman_version, qd):
         vv.update({
             "WEB_NETWORK": "Network=%s\n%s" % (v["NETWORK"], "\n".join(pubs)),
             "WEB_UNIT_DEPS": "Wants=%s" % " ".join(s + ".service" for s in sidecars),
-            "SIDECAR_NETWORK": "Network=container:cflex-web",
+            # Joining another container's netns, Podman bind-mounts the host /sys recursively read-only;
+            # crun does that with mount_setattr(2), which RHEL 8's 4.18 kernel lacks ("mount_setattr `/sys`:
+            # Function not implemented" — Azure HAEA lab, WO-INT-015). A plain read-only bind avoids it.
+            "SIDECAR_NETWORK": "Network=container:cflex-web\nVolume=/sys:/sys:ro,bind",
             "SIDECAR_UNIT_DEPS": "BindsTo=cflex-web.service\nAfter=cflex-web.service",
         })
     member = _in_pod if pod else (lambda u: u)

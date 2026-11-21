@@ -437,6 +437,24 @@
 - 결정: D-16 (DECISIONS.md) — Q-2026-10-25-09 (B) 대체.
 - 다음: Red Hat 로그인 → 전체 번들 → 랩 4노드 설치 → SSH 터널로 /fms 화면 확인.
 
+### 2026-11-20 17:15 PST — Claude Code (대화형, 같은 세션 이어서)
+- WO-INT-015 ③ 설치 — db01 완료, app01 완료, app02·cap01 남음 | 번들 2.0.0-lab.1(2.6 GB, probe-01 빌드, Mac 경유 svc 반입, 4노드 SHA256SUMS OK)
+  - `실제 배포`(랩): db01 verify **PASS 0/0**(postgres healthy, pg_basebackup 실행·base-20261121, WAL archive). app01: web·console·redis **healthy**, DB 접속·스키마 v2·월 파티션·WAL·포털 TLS(프록시 경유) PASS.
+    app01 verify FAIL 4 = 예상분(app02 미설치, SMTP·ServiceNow·Teams 더미 미구성).
+  - **랩이 찾은 설치기 버그(HAEA 에서 그대로 재현됐을 것)** — 커밋 7dd604e + 이번 커밋:
+    1. runuser 가 관리자 cwd 상속 → podman "cannot chdir" (env --chdir)
+    2. RHEL 8 cgroup v1 → Quadlet --cgroups=split 실패 → preflight 감지, `--cgroups=disabled --runtime=crun`
+    3. postgresql-16 ReadOnly 루트에서 $HOME/passwd → /var/lib/pgsql tmpfs
+    4. state 에 cgroups 미저장 → verify/promote 가 v2 로 판단
+    5. crun 1.14.3 + 커널 4.18: netns 공유 컨테이너의 재귀 ro /sys 가 mount_setattr 필요 → 사이드카에 `Volume=/sys:/sys:ro,bind`
+    6. `sudo cp` 한 pg.pass 가 root 소유 → console EACCES → 설치기가 복사된 비밀 파일을 cflex 0600 으로
+    (랩 인프라: Azure RHEL 이미지 /home 1G → rootvg 확장. HAEA VM 의 /home 크기는 preflight 가 안 본다 — 질문으로 남김)
+  - 테스트: 설치기 Python 88/88(+8), static 14/14.
+  - 랩 노드는 수정 파일을 핫패치해 진행(.state/hotpatch.log). **최종 번들은 재빌드 후 4노드 재설치로 다시 검증한다.**
+- WO-INT-016 화면: 랩 app01 에서 SSH 터널로 `/`→`/fms/` 302, `/fms/` 200(C-Flex FMS), `/login` 200, 무세션 API 401,
+  첫 로그인 비밀번호 변경 후 `/v1/fms/{summary,assets,alerts,fleet-live,floor,channels/health}` 전부 200(장비 0대라 빈 값). 관리자 계정 생성(값은 repo 밖).
+- 다음: app02 → cap01 + nmcsim(UPS 41대 시뮬) → 인벤토리 → 화면에 데이터 → SAT 리허설 → 번들 재빌드·재설치.
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.

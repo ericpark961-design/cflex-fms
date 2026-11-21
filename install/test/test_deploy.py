@@ -228,3 +228,17 @@ class AsCflex(unittest.TestCase):
         self.assertEqual(argv[4], "env")
         self.assertEqual(argv[5], "--chdir=%s" % c.home())
         self.assertEqual(argv[-3:], ["podman", "secret", "ls"])
+
+
+class CopiedSecrets(unittest.TestCase):
+    def test_root_owned_copy_is_handed_to_cflex(self):
+        # `sudo cp pg.pass` leaves it root's 0644; the rootless console then fails EACCES (Azure HAEA lab).
+        site = example_site()
+        r = FakeRunner(files={deploy.BASE + "/secrets/app/pg.pass": "abc123",
+                              deploy.BASE + "/secrets/app/redis.pass": "r", deploy.BASE + "/secrets/app/console.key": "k"})
+        c = ctx(site, "app", "app02", r)
+        c.uid = lambda: 1001
+        deploy._own_secret(c, deploy.BASE + "/secrets/app/pg.pass")
+        p = deploy.BASE + "/secrets/app/pg.pass"
+        self.assertEqual(r.writes[p], ("abc123", 0o600), "same value, 0600")
+        self.assertEqual(r.owners[p], (1001, 1001), "owner cflex")
