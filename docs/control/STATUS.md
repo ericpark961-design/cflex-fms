@@ -477,6 +477,24 @@
   - 남은 SAT: 5(포털 차단 후 무손실), 7(백업 복구·업그레이드/롤백), 8(SELinux denial 0·비밀 평문 0). 포털은 목/실 미가동(WO-PTL-001/002).
 - WO-INT-017(Modbus, KMX용): PR #13 — probe-agent 102/102, Q-2026-11-20-01~04. D-18(정정): 프로브 기본 현장 = HAEA 얼바인(APC UPS 만), Modbus = KMX.
 
+### 2026-11-20 21:20 PST — Claude Code (대화형, 같은 세션 이어서)
+- WO-INT-015 ⑤ **SAT 리허설 완료 + HAEA 전달 후보 2.0.0-rc.2** (sha256 56bc92ad…, probe-01 빌드) | 커밋 666db98…c3d8c3f
+  - 4축: 개발 코드 ✅ / 격리 시험 ✅(install 98/98, console 57+2skip, portal 15/15, probe-agent 파일별 77/77) / 실제 배포 ✅ HAEA 미러 랩(RHEL 8.10×4) / 실제 Probe 연결 ❌(HAEA 설치 전, 포털 API 미가동)
+  - SAT 5 PASS: 프록시 차단 10분 + 송신 노드 재기동 → 64초 만에 outbox 0, 369/369 포인트, 중복 0 (포털 목: nmcsim:443, 계약 스키마·mTLS·멱등키 검증)
+  - SAT 7 PASS: 업그레이드 lab.2→lab.4→rc.1→rc.2(Active 는 --standby-done 없으면 거부), 롤백 rc.1→lab.4(노드당 ≈5초), 데이터 유지;
+    4노드 동시 재부팅 → 자동 기동, 수집 재개 1분47초; 백업/복구 B1~B11 전부 PASS (PITR 표식 복구, 기준 복구 수치 일치, 아카이브 실패 0)
+  - SAT 8 PASS: SELinux Enforcing·거부 0, 비밀값 로그 0 — verify 에 두 점검 추가(4노드 자동)
+  - 랩이 찾아 고친 결함: ① 포털 송신이 프록시를 우회(agent:false) — HAEA 에서 전송 전부 실패했을 것 ② certs 공유 마운트 :Z → nginx 인증서 못 읽음
+    ③ rhel8/postgresql 기동 스크립트 때문에 복구가 끝나지 않음 → install/cflex-pg-recover ④ 그 실패한 ALTER USER 로 pg.pass 가 서버 로그·journal 에 평문
+    → log_min_error_statement=panic ⑤ 문서의 sudo -iu cflex 전부 실패(nologin) → install/cflex-as ⑥ netcheck 가 slirp4netns UDP 폴링 소켓 82개를 리스너로 FAIL
+    ⑦ verify 포털 점검이 portal-ca/device 인증서 미사용 ⑧ ausearch 비터미널 0건 오보 ⑨ 동시 재부팅 후 collector 5분 공백 → 30초 재시도 ⑩ 같은 날 복구 후 백업 건너뜀(문서)
+  - 랩 사고(본인): 수동 점검에서 pg.pass 를 grep 명령줄에 넣어 db01 sudo 로그(journal·audit)에 남김 → 해당 로그·이전 데이터 디렉터리 삭제, 백업 세트·WAL 0 확인. verify 스캔은 grep -f(파일)만 사용.
+  - 전달물(번들 안): docs/HAEA_INSTALL_GUIDE.md(영문 — 준비물 H1~H10, site.yaml 4곳, 노드별 MOP, SAT 표 랩 결과 열), config/haea-inventory.example.csv(41대, 비밀값 없음),
+    install/cflex-pg-recover·cflex-as, PG_BACKUP_RESTORE §3/§4 개정·§6 결과. 랩 스크립트: sat5-portal-outage.sh, sat7-backup.sh, upgrade-lab.sh, sim/setup-portal-mock.sh
+  - 미검증: SAT 3(trap, 랩 미실행), SNMPv3(랩은 v2c 시뮬), EDR(HAEA), 설치 중 네트워크 호출 0 증빙, podman image trust·GPG 서명, 운영 규모 RTO
+- 질문: Q-2026-11-21-01(최종 2.0.0 재빌드·GPG 키), Q-2026-11-21-02(SBOM·취약점 스캔), Q-2026-11-21-03(방화벽 v4 Teams/ServiceNow 행 삭제)
+- 비고: probe-agent 전체를 한 프로세스(node --test test/*.test.js)로 돌리면 77번째 이후 멈춤 — 파일별로는 전부 통과. 별도 확인 필요.
+- 다음: PR(WO-INT-015/016 묶음) 관리자 검토 → Q-01 답 받으면 2.0.0 서명 빌드 → HAEA 전달. 랩은 down.sh 로 정지(0300 UTC 자동 종료도 있음).
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.

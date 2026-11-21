@@ -507,3 +507,18 @@ Codex TASKS.md WO-PTL-001(헤더 1.2 수락·`collector_id` 저장, E2E 대상 `
   SOW D1 "ServiceNow 테스트 티켓"(SAT 4) 은 이 결정으로 **보류** — 계약상 처리는 법인장이 HAEA 와 정리.
 - 방화벽 요청서 v3 의 app → Teams/ServiceNow 아웃바운드 행은 **필요 없어짐** — 요청서 v4 에서 빼도록 PM 이 반영(Q 로 남김).
 - 외부 포털(Codex)의 Teams/SMS 라우팅(WO-PTL-003)은 이 결정과 무관.
+
+### Q-2026-11-21-01 — HAEA 전달 번들 버전·서명 (WO-INT-015, 답 대기: 법인장/PM)
+랩에서 SAT 1·4·5·6·7·8 을 통과한 후보는 **2.0.0-rc.2**(sha256 `56bc92ad…`, 빌드 probe-01). 남은 것:
+(A) 권고: 같은 커밋으로 `--version 2.0.0` + `--gpg-key <RingOn 릴리스 키>` 재빌드 → 랩에서 rc.2→2.0.0 업그레이드 1회 확인 → 전달.
+    필요: GPG 키(누가 보관·어디서 서명) — 비밀값이라 법인장이 정한다.
+(B) rc.2 를 그대로 HAEA 사전 검토용(Security)으로 먼저 보내고, 설치 창 전에 (A).
+
+### Q-2026-11-21-02 — SBOM·취약점 스캔 도구 (WO-INT-015)
+번들 `sbom/*.cdx.json` 은 스텁, `sbom/VULN-SCAN.txt` 는 "미수행". HAEA Security 사전 제출물(spec 01 §4)이다.
+(A) 권고: 빌드 호스트에서 syft(SBOM) + grype(취약점)로 생성해 번들에 넣는 단계를 build-bundle 에 추가 — 오프라인 DB 갱신은 빌드 호스트(인터넷 있음)에서.
+(B) Red Hat 이미지 기본 제공 정보(rpm -qa + RHSA)만 첨부.
+
+### Q-2026-11-21-03 — 방화벽 요청서 v4 (D-17 연계)
+랩 확인: app → Teams/ServiceNow 행(FW-8 일부)은 쓰이지 않는다. app → SMTP 릴레이, app → 프록시 → cflex.fms.support 443(FW-4)만 필요.
+(A) 권고: v4 에서 Teams·ServiceNow 행 삭제, 그 외 v3 유지. 제출은 PM.
