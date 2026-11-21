@@ -81,7 +81,7 @@ runcmd:
   - grep -q '^proxy=' /etc/dnf/dnf.conf || echo 'proxy=$PROXY' >> /etc/dnf/dnf.conf
   - getenforce > /var/log/lab-selinux.txt
   # Azure RHEL image leaves ~40G of rootvg unallocated (/ 2G, /home 1G). Rootless podman keeps
-  # cflex's images under /home/cflex and the bundle stages under /opt — grow both like a normal VM.
+  # cflex's images under /home/cflex and the bundle stages under /opt - grow both like a normal VM.
   - lvextend -r -L +15G rootvg/rootlv || true
   - lvextend -r -L +10G rootvg/homelv || true
 EOF
@@ -131,6 +131,9 @@ packages: [nodejs, snmp]
 EOF
 
 # ── 3. VM ────────────────────────────────────────────────────────────
+# Guard: custom-data must be ASCII (az CLI latin-1). Fail here, not halfway through VM creation.
+for f in "$STATE"/init-svc.yaml "$STATE"/init-nmcsim.yaml; do LC_ALL=C grep -q '[^ -~]' "$f" && { echo "non-ASCII in $f" >&2; exit 1; }; done
+rhel_init x 0 - | LC_ALL=C grep -q '[^ -~]' && { echo "non-ASCII in rhel cloud-init" >&2; exit 1; }
 exists() { az vm show -g "$RG" -n "$1" --query name -o tsv >/dev/null 2>&1; }
 echo "$NODES" | while read -r name size ip role gb mnt host; do
   [ -z "$name" ] && continue

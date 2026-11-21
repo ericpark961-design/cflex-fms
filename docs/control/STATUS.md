@@ -468,6 +468,15 @@
 - 테스트: 설치기 Python 92/92, static 14/14.
 - 다음: SAT 리허설(P1 On Battery·포털 차단 복구·app01 중지·백업복구·SELinux) → 번들 2.0.0-lab.2 재빌드 → 4노드 재설치 검증 → HAEA 전달물.
 
+### 2026-11-20 19:00 PST — Claude Code (대화형, 같은 세션 이어서)
+- WO-INT-015 ④ **클린 설치 검증 완료** — 번들 **2.0.0-lab.2**(sha256 4e5505fb…, 설치기 수정 9건 포함, probe-01 빌드 130s)
+  - RHEL 4노드를 삭제·재생성 후 `install-lab.sh 2.0.0-lab.2` 한 번으로 설치: **db01·app01·app02·cap01 verify 전부 PASS 0/0, 수작업 0**.
+  - `bootstrap-console.sh`(계정·사이트 3·장비 41) 후 collector 가 5분 주기 재조회로 41대 수신 → `41 ok, 0 fail`, summary 41 online.
+  - SAT 4(P1): 시뮬 On Battery → 콘솔 P1 "Output source: onBattery", summary critical 1. SAT 6: app01 정지 → collector 가 app02 로 전환, 폴링·telemetry 계속(화면 세션은 Redis promote 필요 — 설계대로).
+  - 랩 스크립트: install-lab.sh(현장 MOP 순서, # LAB 단계 표시), bootstrap-console.sh, create.sh cloud-init ASCII 가드·LV 확장.
+  - 남은 SAT: 5(포털 차단 후 무손실), 7(백업 복구·업그레이드/롤백), 8(SELinux denial 0·비밀 평문 0). 포털은 목/실 미가동(WO-PTL-001/002).
+- WO-INT-017(Modbus, KMX용): PR #13 — probe-agent 102/102, Q-2026-11-20-01~04. D-18(정정): 프로브 기본 현장 = HAEA 얼바인(APC UPS 만), Modbus = KMX.
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.
