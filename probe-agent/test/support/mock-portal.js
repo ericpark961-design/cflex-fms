@@ -19,7 +19,7 @@ const ROUTES = {
   'POST /api/v1/events': { schema: 'events', reply: (b) => ({ accepted: b.events.length, routing: [] }) },
 };
 
-function startMockPortal({ server: tlsMaterial, tenant = 'TEST', dateOffsetMs = 0 } = {}) {
+function startMockPortal({ server: tlsMaterial, tenant = 'TEST', dateOffsetMs = 0, port = 0, host = '127.0.0.1' } = {}) {
   const state = {
     received: [],           // accepted, de-duplicated: { route, body, headers }
     requests: [],           // every request, including retries and rejects
@@ -74,10 +74,10 @@ function startMockPortal({ server: tlsMaterial, tenant = 'TEST', dateOffsetMs = 
   });
 
   return new Promise((resolve) => {
-    srv.listen(0, '127.0.0.1', () => {
-      const { port } = srv.address();
+    srv.listen(port, host, () => {
+      const bound = srv.address().port;
       resolve({
-        url: `https://localhost:${port}`, port, state,
+        url: `https://localhost:${bound}`, port: bound, state,
         of: (route) => state.received.filter(x => x.route === route).map(x => x.body),
         close: () => new Promise(r => { srv.closeAllConnections?.(); srv.close(r); }),
       });

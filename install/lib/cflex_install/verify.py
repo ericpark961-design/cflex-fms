@@ -10,6 +10,8 @@ Proxy credentials come from the URL and are never printed.
 import base64
 import calendar
 import json
+import os
+import re
 import socket
 import ssl
 import time
@@ -58,8 +60,10 @@ def tcp(host, port, timeout=TIMEOUT, banner=False):
         s.close()
 
 
-def tls(host, port=443, proxy=None, cafile=None, verify=True, timeout=TIMEOUT):
-    """TCP (or proxy CONNECT) + TLS handshake to host:port. → (ok, detail)."""
+def tls(host, port=443, proxy=None, cafile=None, verify=True, timeout=TIMEOUT, extra_ca=None, client=None):
+    """TCP (or proxy CONNECT) + TLS handshake to host:port. → (ok, detail).
+    cafile replaces the system store; extra_ca adds to it (the console's CFLEX_TLS_CA does the same);
+    client = (cert, key) presents a client certificate, as the Portal sender does (mTLS)."""
     try:
         if proxy:
             s = socket.create_connection((proxy["host"], proxy["port"]), timeout=timeout)
@@ -80,6 +84,10 @@ def tls(host, port=443, proxy=None, cafile=None, verify=True, timeout=TIMEOUT):
         else:
             s = socket.create_connection((host, port), timeout=timeout)
         ctx = ssl.create_default_context(cafile=cafile) if verify else ssl._create_unverified_context()
+        if verify and extra_ca:
+            ctx.load_verify_locations(extra_ca)
+        if client:
+            ctx.load_cert_chain(*client)
         if not verify:
             ctx.check_hostname = False
         t = ctx.wrap_socket(s, server_hostname=host)
@@ -144,6 +152,70 @@ def last_backup(runner, now):
     return best, int((now - day) // 86400)
 
 
+CFLEX_COMMS = ("node", "nginx", "redis-server", "postgres", "pg_basebackup", "conmon", "podman", "crun")
+
+
+def _selinux(add, runner):
+    """SAT 8: Enforcing, and no denial since boot for C-Flex. A denial for another process is HAEA's — WARN, for the record."""
+    r = runner.run(["getenforce"])
+    mode = (r[1] or "").strip()
+    if not ok(r) or not mode:
+        add("selinux", False, "getenforce: %s" % (r[2] or "no answer").strip()[:100], warn=True)
+        return
+    add("selinux", mode == "Enforcing", mode + ("" if mode == "Enforcing" else " — HAEA requires Enforcing"))
+    # --input-logs: without it ausearch reads stdin whenever stdin is not a terminal (ssh, cron, this
+    # installer) and finds nothing — the lab's first count was 0 with 9 denials in audit.log.
+    r = runner.run(["ausearch", "--input-logs", "-m", "AVC,USER_AVC", "-ts", "boot"])
+    denials = [l for l in (r[1] or "").splitlines() if re.match(r"type=(USER_)?AVC ", l) and " denied " in l]
+    ours = [l for l in denials if "container_t" in l or any('comm="%s"' % c in l for c in CFLEX_COMMS)]
+    def top(lines):
+        names = {}
+        for l in lines:
+            m = re.search(r'comm="([^"]*)".*?name="([^"]*)"', l)
+            k = "%s→%s" % m.groups() if m else "?"
+            names[k] = names.get(k, 0) + 1
+        return ", ".join("%s ×%d" % kv for kv in sorted(names.items(), key=lambda kv: -kv[1])[:3])
+    if ours:
+        add("selinux denials (since boot)", False, "%d C-Flex: %s" % (len(ours), top(ours)))
+    else:
+        add("selinux denials (since boot)", not denials, "0" if not denials else "0 C-Flex; %d other: %s" % (len(denials), top(denials)),
+            warn=True)
+
+
+SECRET_FILES = {
+    "db": ["/opt/app/cflex/secrets/db/pg.pass", "/opt/app/cflex/secrets/db/pg-admin.pass"],
+    "app": ["/opt/app/cflex/secrets/app/pg.pass", "/opt/app/cflex/secrets/app/redis.pass", "/opt/app/cflex/secrets/app/console.key"],
+    "collector": ["/opt/app/cflex/secrets/collector/collector.key"],
+}
+SECRET_LOGS = ["/opt/app/cflex/log", "/opt/data/backup/backup.log", "/opt/data/pgsql/userdata/log"]
+# The value is read by grep from the secret file itself (-f): it never appears on a command line, where
+# sudo / auditd would log it — the lab's first manual check did exactly that. Blank lines are dropped
+# first: an empty pattern matches every line.
+_SCAN = r'''p=$(mktemp) || exit 2; trap 'rm -f "$p"' EXIT; grep -v '^[[:space:]]*$' "$1" > "$p" || exit 3; shift
+j=$(journalctl -o cat --no-pager 2>/dev/null | grep -cFf "$p"); f=0
+for x in "$@"; do [ -e "$x" ] && f=$((f + $(grep -rcFf "$p" "$x" 2>/dev/null | awk -F: '{s+=$NF} END {print s+0}'))); done
+echo "$j $f"'''
+
+
+def _secret_scan(add, runner, role):
+    """SAT 8: no secret of this node in plain text in the journal or the C-Flex logs."""
+    found, scanned = [], 0
+    for path in SECRET_FILES.get(role, []):
+        if not runner.exists(path):
+            continue
+        r = runner.run(["sh", "-c", _SCAN, "cflex-scan", path] + SECRET_LOGS)
+        parts = (r[1] or "").split()
+        if not ok(r) or len(parts) != 2:
+            add("secrets in logs", False, "could not scan for %s" % os.path.basename(path), warn=True)
+            return
+        scanned += 1
+        j, f = int(parts[0]), int(parts[1])
+        if j or f:
+            found.append("%s: journal %d, logs %d" % (os.path.basename(path), j, f))
+    if scanned:
+        add("secrets in logs", not found, "; ".join(found) if found else "0 — %d secret(s) checked against the journal and C-Flex logs" % scanned)
+
+
 def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect=None, now=None):
     """→ [Result]. `connect` lets tests replace tcp/tls."""
     now = time.time() if now is None else now
@@ -163,6 +235,9 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
             r = runner.run(["systemctl", "is-active", n + ".service"])
             add("service " + n, ok(r), r[1].strip() or r[2].strip())
 
+    _selinux(add, runner)
+    _secret_scan(add, runner, role)
+
     proxy = _parse_proxy(siteconf.get(site, "portal.proxy"))
     apps = siteconf.get(site, "hosts.app") or []
     console_ca = "/opt/app/cflex/certs/console-ca.pem"
@@ -179,8 +254,18 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
     # D-13: only the app nodes reach the Portal; a collector has no external path.
     if role == "app" and siteconf.get(site, "portal.enabled", True):
         h, p = _host(siteconf.get(site, "portal.url"))
-        good, d = tls_f(h, p or 443, proxy=proxy)
-        add("%s → portal %s" % (role, h), good, d + (" proxy %s" % redact(siteconf.get(site, "portal.proxy")) if proxy else ""))
+        # The same trust and identity the console's Portal sender uses (render.py: CFLEX_TLS_*).
+        cert = siteconf.get(site, "portal.mtls_cert") or "/opt/app/cflex/certs/device.pem"
+        key = re.sub(r"\.pem$", ".key", cert) if cert.endswith(".pem") else cert + ".key"
+        pca = os.path.join(os.path.dirname(cert), "portal-ca.pem")
+        kw = {}
+        if runner.exists(pca):
+            kw["extra_ca"] = pca
+        if runner.exists(cert) and runner.exists(key):
+            kw["client"] = (cert, key)
+        good, d = tls_f(h, p or 443, proxy=proxy, **kw)
+        add("%s → portal %s" % (role, h), good, d + (" proxy %s" % redact(siteconf.get(site, "portal.proxy")) if proxy else "")
+            + ("" if "client" in kw else " (no device certificate yet — the Portal will refuse this node)"))
     if role == "app":
         db = siteconf.get(site, "hosts.db") or {}
         good, d = tcp_f(db.get("ip"), db.get("port", 5432))
@@ -246,13 +331,13 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
             good, d = tls_f(sn_h, sn_p or 443, proxy=proxy)
             add("%s → ServiceNow" % role, good, d)
         else:
-            add("%s → ServiceNow" % role, False, "notify.itsm.url not set", warn=True)
+            add("%s → ServiceNow" % role, True, "해당 없음 — 프로브는 ServiceNow 연동을 하지 않는다 (D-17)")
         th, tp = _host(siteconf.get(site, "notify.teams.webhook"))
         if th and "<" not in th:
             good, d = tls_f(th, tp or 443, proxy=proxy if siteconf.get(site, "notify.teams.via_proxy", True) else None)
             add("%s → Teams" % role, good, d)
         else:
-            add("%s → Teams" % role, False, "notify.teams.webhook not set", warn=True)
+            add("%s → Teams" % role, True, "해당 없음 — 프로브는 Teams 로 보내지 않는다 (D-17)")
 
     if send_test:
         if role != "app":

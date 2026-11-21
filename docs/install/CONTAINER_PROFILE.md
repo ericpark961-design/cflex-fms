@@ -55,6 +55,10 @@ Podman 4의 기본(rootlesskit)은 모든 패킷이 10.0.2.2에서 온 것처럼
   (2026-10-25 실측). 그래서 Containerfile의 deps 단계가 `npm_config_build_from_source=true`로 node-gyp 빌드를 강제한다.
   `ubi8/nodejs-20` 베이스에는 `make gcc gcc-c++`가 있고, `python3`는 platform-python(3.6)에 링크되어 있다(이미지 history 확인).
   빌드 직후 `require('better-sqlite3')(':memory:')`를 열어 보고, 실패하면 이미지 빌드가 멈춘다.
+- **컴파일러는 gcc-toolset-13.** better-sqlite3 11.x는 `-std=c++20`으로 빌드되는데 UBI8 기본 gcc 8.5는 이를 모른다
+  (Azure HAEA 랩 첫 `podman build`에서 실패 — 2026-11-20, WO-INT-015). 빌드 단계에만 UBI8 AppStream의 `gcc-toolset-13-gcc-c++`를
+  설치하고 `. /opt/rh/gcc-toolset-13/enable`로 쓴다(구독 불필요). 런타임 이미지에는 toolset이 없고, 바이너리는 기본
+  `/lib64/libstdc++.so.6`만으로 로드된다(랩에서 `ldd`·런타임 로드 확인).
 - `install/build-bundle`은 `podman save` 전에 두 이미지마다 `podman run --network=none --entrypoint node`를 돌린다. 각 트리에서
   better-sqlite3가 로드되는지, `process.versions.modules`가 **115**인지 확인한다. 아니면 번들을 만들지 않는다.
   결과는 `MANIFEST.json`에 남는다: `node: {major: 20, abi: "115"}`, 이미지마다 `node: {version, abi}`.
@@ -103,7 +107,8 @@ rootless 컨테이너는 1024 미만 포트를 직접 열 수 없다. 두 방법
   Redis는 이 파일을 `include`한다(argv·환경변수에 비밀번호 없음). 두 앱 노드 모두에 생긴다.
 - `collector/collector.key`: Local Console의 collector 키. 콘솔에서 `node src/cli.js collector-key cap01`로 발급(한 번만 출력)하고,
   cap01의 `/opt/app/cflex/secrets/collector/collector.key`(0600, cflex)로 옮긴다. 없으면 `verify --role collector`가 FAIL.
-  컨테이너: `podman exec -i cflex-console node /opt/cflex/apps/console/src/cli.js collector-key cap01` (app 노드, cflex 사용자).
+  컨테이너: `sudo install/cflex-as podman exec -i cflex-console node /opt/cflex/apps/console/src/cli.js collector-key cap01` (app 노드).
+  `install/cflex-as` = cflex 사용자 + 그 systemd user 세션으로 명령 하나 실행(cflex 는 nologin 이라 `sudo -iu cflex` 는 실패한다).
 - `db/pg.pass`, `db/pg-admin.pass`: db01에서 설치기가 생성, Podman secret(`type=env`)으로 컨테이너에 전달.
   **`db/pg.pass`는 app01·app02의 `app/pg.pass`로 같은 값을 복사한다**(콘솔이 db01에 접속하는 비밀번호, app.env `CFLEX_DB_PASSWORD_FILE`).
   없으면 app 설치가 멈춘다. 그래서 순서는 db01 → (복사) → app01 → app02이다(WO-INT-008).

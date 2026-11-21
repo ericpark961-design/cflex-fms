@@ -71,6 +71,21 @@ def is_loopback(ip):
     return ip.startswith("127.") or ip in ("::1", "localhost")
 
 
+# Rootless Podman's user-mode network helper opens one unconnected UDP socket per peer a container
+# talks to over UDP (SNMP polls to each NMC, FW-1/FW-3). `ss -l` lists them like listeners, on
+# 0.0.0.0:<ephemeral>; nothing can reach a container through them. The lab's cap01 showed 82 (41 NMC).
+NET_HELPERS = ("slirp4netns", "pasta")
+EPHEMERAL_LOW = 32768   # net.ipv4.ip_local_port_range default (RHEL 8)
+
+
+def is_udp_client(l):
+    try:
+        port = int(l["lport"])
+    except (TypeError, ValueError):
+        return False
+    return l["proto"] == "udp" and port >= EPHEMERAL_LOW and bool(l["procs"]) and all(p in NET_HELPERS for p in l["procs"])
+
+
 def cflex_owned(procs):
     return any(p in CFLEX_PROCS for p in procs)
 
@@ -223,8 +238,12 @@ def evaluate(matrix, site, role, me, listeners, established, runner,
                      "purpose": row["purpose"], "verdict": verdict, "checks": lines})
 
     extras = []
+    udp_clients = 0
     for i, l in enumerate(public_listeners):
         if i in used_listen:
+            continue
+        if is_udp_client(l):
+            udp_clients += 1
             continue
         own = cflex_owned(l["procs"])
         extras.append({"kind": "listen", "proto": l["proto"], "addr": "%s:%s" % (l["local"], l["lport"]),
@@ -244,7 +263,7 @@ def evaluate(matrix, site, role, me, listeners, established, runner,
     summary = dict((v, allv.count(v)) for v in ("PASS", "FAIL", "WARN", "N/A"))
     return {"role": role, "host_id": me[1], "host_ip": me[2], "matrix_source": matrix.get("source"),
             "privileged_ports": "forward" if forward_mode else "direct/sysctl",
-            "rows": rows, "extras": extras, "summary": summary, "ok": summary["FAIL"] == 0}
+            "rows": rows, "extras": extras, "udp_client_sockets": udp_clients, "summary": summary, "ok": summary["FAIL"] == 0}
 
 
 _ORDER = {"FAIL": 3, "WARN": 2, "PASS": 1, "N/A": 0}
@@ -366,6 +385,8 @@ def format_text(rep):
         for c in r["checks"]:
             out.append("%-5s %-4s %-30s %s" % (r["id"], c["verdict"], c["check"], c["observed"]))
     out.append("")
+    if rep.get("udp_client_sockets"):
+        out.append("(UDP 클라이언트 소켓 %d개 — slirp4netns/pasta 의 아웃바운드 폴링용, 리스너 아님: FW-1/FW-3)" % rep["udp_client_sockets"])
     if rep["extras"]:
         out.append("## v3에 없는 리스너/연결")
         for e in rep["extras"]:

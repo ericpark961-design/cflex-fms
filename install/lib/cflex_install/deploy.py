@@ -48,10 +48,11 @@ class Ctx(object):
     """Everything a step needs: site, this host, bundle, runner, mode."""
 
     def __init__(self, site, role, me, profile, runner, bundle=None, podman_version="4.9",
-                 ports_mode="forward", log=print, self_signed=False):
+                 ports_mode="forward", log=print, self_signed=False, cgroups="v2"):
         self.site, self.role, self.me, self.profile = site, role, me, profile
         self.runner, self.bundle, self.podman_version = runner, bundle, podman_version
         self.ports_mode, self.log, self.self_signed = ports_mode, log, self_signed
+        self.cgroups = cgroups
         self.zone = siteconf.get(site, "install.firewall_zone", "public")
 
     # rootless helpers
@@ -69,7 +70,10 @@ class Ctx(object):
 
     def as_cflex(self, argv, mutating=True, timeout=600):
         uid = self.uid()
-        env = ["env", "XDG_RUNTIME_DIR=/run/user/%s" % uid, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%s/bus" % uid]
+        # --chdir: the installer usually runs from the bundle in an admin's home, which cflex cannot
+        # enter; podman then fails with "cannot chdir" (found on the Azure HAEA lab, WO-INT-015).
+        env = ["env", "--chdir=%s" % self.home(),
+               "XDG_RUNTIME_DIR=/run/user/%s" % uid, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%s/bus" % uid]
         return self.runner.run(["runuser", "-u", "cflex", "--"] + env + argv, mutating=mutating, timeout=timeout)
 
     def must(self, res, what):
@@ -186,6 +190,16 @@ def _secret_file(c, path, generate, peer_hint):
     return True
 
 
+def _own_secret(c, path):
+    """A secret an operator copied in (pg.pass, the standby's redis.pass/console.key): owner cflex, 0600.
+    `sudo cp` leaves it root's, and the rootless container cannot read it (Azure HAEA lab, WO-INT-015)."""
+    if c.runner.dry_run or not c.runner.exists(path):
+        return False
+    # Same bytes back, only mode and owner change; write() is a no-op when both are already right.
+    uid = c.uid()
+    return c.runner.write(path, c.runner.read(path) or "", mode=0o600, uid=uid, gid=uid)
+
+
 def _secrets(c):
     made = []
     apps = siteconf.get(c.site, "hosts.app") or []
@@ -207,11 +221,18 @@ def _secrets(c):
             if not c.runner.dry_run:
                 raise DeployError(hint)
             made.append("pg.pass MISSING (dry run: %s)" % hint)
+        for fn in ("pg.pass", "redis.pass", "console.key"):
+            if _own_secret(c, BASE + "/secrets/app/" + fn):
+                made.append("%s owner cflex 0600" % fn)
         pw = (c.runner.read(BASE + "/secrets/app/redis.pass") or "").strip()
         if c.runner.dry_run and not pw:
             pw = "dry-run"
         if c.runner.write(BASE + "/secrets/redis/auth.conf", "requirepass %s\nmasterauth %s\n" % (pw, pw), mode=0o600, uid=uid, gid=uid):
             made.append("redis auth.conf")
+    if c.role == "collector":
+        # Issued by the console (`cli.js collector-key`) and copied in by the operator — usually as root.
+        if _own_secret(c, BASE + "/secrets/collector/collector.key"):
+            made.append("collector.key owner cflex 0600")
     if c.role == "db":
         for fn, name in (("pg.pass", "cflex-pg-password"), ("pg-admin.pass", "cflex-pg-admin-password")):
             path = BASE + "/secrets/db/" + fn
@@ -257,13 +278,19 @@ def _certs(c):
         return "self-signed (90 days) — replace with the HAEA CA certificate; " + _device_cert(c)
     if c.role == "collector":
         # D-13: the collector talks to the console only (console-ca.pem); no Portal certificate here.
+        # The operator copies console-ca.pem in (as root); the rootless collector must read it.
+        ca = BASE + "/certs/console-ca.pem"
+        if not c.runner.dry_run and c.runner.exists(ca):
+            uid = c.uid()
+            if c.runner.write(ca, c.runner.read(ca) or "", mode=0o644, uid=uid, gid=uid):
+                return "console-ca.pem owner cflex (no Portal link, D-13)"
         return "n/a (collector: no Portal link, D-13)"
     return "n/a"
 
 
 def _render_files(c, version):
     files = render.render(c.site, c.role, c.me, version, profile=c.profile,
-                          podman_version=c.podman_version, ports_mode=c.ports_mode, home=c.home())
+                          podman_version=c.podman_version, ports_mode=c.ports_mode, home=c.home(), cgroups=c.cgroups)
     uid = c.uid()
     changed = []
     for path in sorted(files):
@@ -299,9 +326,12 @@ def firewall_rules(c):
     if c.role == "app":
         apps = siteconf.get(c.site, "hosts.app") or []
         peers = ["%s/32" % a.get("ip") for a in apps if a.get("id") != c.me[1]]
+        # Collectors push telemetry/events to the console on 443 (FW-7 cap01 → app). With user_sources
+        # set they were left out and every collector got "No route to host" (Azure HAEA lab, WO-INT-015).
+        collectors = ["%s/32" % x.get("ip") for x in (siteconf.get(c.site, "hosts.collectors") or [])]
         srcs = list(siteconf.get(c.site, "install.user_sources") or [])
         if srcs:
-            for s in srcs + peers:  # the peer node's fallback hop arrives on 443 too (FW-7)
+            for s in srcs + peers + collectors:  # the peer node's fallback hop arrives on 443 too (FW-7)
                 if fwd:
                     out.append(("rich-rule", (rich % s) + 'forward-port port="443" protocol="tcp" to-port="8443"'))
                 else:
@@ -734,7 +764,7 @@ def promote(c, force=False, probe=None):
     site2 = json.loads(json.dumps(c.site))
     site2.setdefault("install", {})["redis_host"] = c.me[1]
     files = render.render(site2, "app", c.me, st.get("version") or "0.0.0-dev", profile=c.profile,
-                          podman_version=c.podman_version, ports_mode=c.ports_mode, home=c.home())
+                          podman_version=c.podman_version, ports_mode=c.ports_mode, home=c.home(), cgroups=c.cgroups)
     uid = c.uid()
     for path in (render.CONFIG + "/redis/redis.conf", render.CONFIG + "/app/app.env"):
         content, mode = files[path]

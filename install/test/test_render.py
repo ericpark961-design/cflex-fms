@@ -51,7 +51,11 @@ class Render(unittest.TestCase):
                 self.assertRegex(text, r"(?m)^HealthCmd=", path)
                 self.assertNotRegex(text, r"(?im)privileged|^Network=host|AddCapability", path)
                 for v in re.findall(r"(?m)^Volume=(.+)$", text):
-                    self.assertRegex(v, r":(ro,)?Z$", "%s: %s" % (path, v))
+                    if v == "/sys:/sys:ro,bind":
+                        # Podman 4 sidecars only (SidecarSys): host sysfs, read-only, never relabeled.
+                        self.assertIn("Network=container:cflex-web", text, path)
+                        continue
+                    self.assertRegex(v, r":(ro,)?[Zz]$", "%s: %s" % (path, v))
                 self.assertIn(":2.0.0", text)
 
     def test_podman4_has_no_pod_units_podman5_does(self):
@@ -141,7 +145,21 @@ class Render(unittest.TestCase):
                      "CFLEX_PORTAL_BUFFER_DAYS=7", "HTTPS_PROXY=\n"):
             self.assertIn(line, env)
         self.assertIn("CONSOLE_NODE_ID=app01", env)
-        self.assertIn("Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,Z", f[QD + "cflex-console.container"][0])
+        self.assertIn("Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,z", f[QD + "cflex-console.container"][0])
+
+    def test_shared_host_path_uses_the_shared_selinux_label(self):
+        # :Z gives each container a private MCS label; the last to start locks the others out of the
+        # path (lab: nginx could no longer read console.crt after cflex-console restarted). A path two
+        # containers on one node mount must be :z.
+        for role, hid, pv, ports, files in self.all_variants():
+            seen = {}
+            for path, text in units(files).items():
+                for v in re.findall(r"(?m)^Volume=(/[^:]+):[^:]+:(.+)$", text):
+                    seen.setdefault(v[0], []).append((path, v[1]))
+            for host, uses in seen.items():
+                if len(uses) > 1:
+                    for path, opts in uses:
+                        self.assertNotIn("Z", opts.split(","), "%s: %s shared but :Z" % (path, host))
 
     def test_bare_profile(self):
         f = render.render(self.site, "collector", me(self.site, "collector", "cap01"), "2.0.0", profile="bare")
@@ -159,3 +177,50 @@ class Render(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CgroupArgs(unittest.TestCase):
+    def setUp(self):
+        self.site = example_site()
+
+    def all_units(self, cgroups):
+        out = {}
+        for role, hid in (("collector", "cap01"), ("app", "app01"), ("db", "db01")):
+            out.update(units(render.render(self.site, role, me(self.site, role, hid), "2.0.0",
+                                           podman_version="4.9.4", cgroups=cgroups)))
+        return {p: c for p, c in out.items() if p.endswith(".container")}
+
+    def test_v1_every_container_runs_without_cgroups_on_crun(self):
+        cs = self.all_units("v1")
+        self.assertEqual(len(cs), 5)
+        for p, c in cs.items():
+            self.assertIn("\nPodmanArgs=--cgroups=disabled --runtime=crun\n", c, p)
+
+    def test_v2_keeps_the_quadlet_default(self):
+        for p, c in self.all_units("v2").items():
+            self.assertNotIn("PodmanArgs=", c, p)
+
+    def test_postgres_has_a_writable_home_under_a_read_only_root(self):
+        pg = [c for p, c in self.all_units("v1").items() if p.endswith("cflex-postgres.container")][0]
+        self.assertIn("\nReadOnly=true\n", pg)
+        self.assertIn("\nTmpfs=/var/lib/pgsql:rw,mode=1777,size=16m\n", pg)
+
+
+class SidecarSys(unittest.TestCase):
+    def test_podman4_sidecars_bind_sys_without_recursion(self):
+        # RHEL 8 kernel 4.18 has no mount_setattr; crun's recursive read-only /sys bind fails there.
+        site = example_site()
+        f = units(render.render(site, "app", me(site, "app", "app01"), "2.0.0", podman_version="4.9.4"))
+        for name in ("cflex-console.container", "cflex-redis.container"):
+            self.assertIn("\nNetwork=container:cflex-web\nVolume=/sys:/sys:ro,bind\n", f[QD + name], name)
+        self.assertNotIn("/sys:/sys", f[QD + "cflex-web.container"], "web has its own netns and sysfs")
+
+
+class NginxNoTempFiles(unittest.TestCase):
+    def test_bodies_and_responses_stay_in_memory(self):
+        # Collector telemetry batches overflowed the 16k default into /tmp and failed (500) on the lab.
+        site = example_site()
+        f = render.render(site, "app", me(site, "app", "app01"), "2.0.0")
+        conf = [c for p, (c, _) in f.items() if p.endswith("cflex-console.conf")][0]
+        self.assertIn("client_body_buffer_size 6m;", conf)
+        self.assertIn("proxy_max_temp_file_size 0;", conf)

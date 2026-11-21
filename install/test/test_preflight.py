@@ -88,3 +88,32 @@ class Preflight(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Cgroups(unittest.TestCase):
+    """RHEL 8 boots cgroup v1; rootless Quadlet then needs --cgroups=disabled, which needs crun (WO-INT-015)."""
+
+    def setUp(self):
+        self.site = example_site()
+
+    def run_pf(self, fstype, crun=True):
+        extra = {"stat -fc %T /sys/fs/cgroup": (0, fstype + "\n", "")}
+        if not crun:
+            extra["rpm -q crun"] = (1, "package crun is not installed\n", "")
+        checks, _, facts = preflight.run(self.site, "app", "container", host(extra))
+        return {c.name: c for c in checks}, facts
+
+    def test_v1_with_crun_passes_and_is_recorded(self):
+        checks, facts = self.run_pf("tmpfs")
+        self.assertEqual(facts["cgroups"], "v1")
+        self.assertEqual(checks["cgroups"].verdict, "PASS")
+        self.assertIn("--cgroups=disabled --runtime=crun", checks["cgroups"].detail)
+
+    def test_v1_without_crun_fails(self):
+        checks, _ = self.run_pf("tmpfs", crun=False)
+        self.assertEqual(checks["cgroups"].verdict, "FAIL")
+
+    def test_v2(self):
+        checks, facts = self.run_pf("cgroup2fs")
+        self.assertEqual(facts["cgroups"], "v2")
+        self.assertEqual(checks["cgroups"].verdict, "PASS")

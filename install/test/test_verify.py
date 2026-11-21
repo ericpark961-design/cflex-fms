@@ -82,6 +82,58 @@ class Verify(unittest.TestCase):
                          as_cflex=lambda argv, mutating=True: (0, "", ""), send_test=True, connect=fake)
         self.assertEqual([r.verdict for r in col if r.name == "send-test"], ["WARN"], "the collector has no test ticket to send")
 
+    def test_portal_check_uses_the_senders_trust_and_identity(self):
+        site = example_site()
+        seen = []
+        fake = {"tcp": lambda h, p, **k: (True, "ok"), "tls": lambda h, p=443, **k: (seen.append((h, k)) or (True, "ok"))}
+        C = "/opt/app/cflex/certs/"
+        files = {C + "device.pem": "", C + "device.key": "", C + "portal-ca.pem": ""}
+        verify.run(site, "app", me(site, "app", "app01"), "container", FakeRunner(files=files),
+                   as_cflex=lambda argv, mutating=True: (0, "", ""), connect=fake)
+        k = dict(seen)["cflex.fms.support"]
+        self.assertEqual(k.get("extra_ca"), C + "portal-ca.pem")
+        self.assertEqual(k.get("client"), (C + "device.pem", C + "device.key"))
+        seen.clear()
+        res = verify.run(site, "app", me(site, "app", "app01"), "container", FakeRunner(),
+                         as_cflex=lambda argv, mutating=True: (0, "", ""), connect=fake)
+        self.assertNotIn("client", dict(seen)["cflex.fms.support"])
+        self.assertIn("no device certificate", [r.detail for r in res if "portal" in r.name][0])
+
+    def test_secret_scan_never_puts_the_value_on_a_command_line(self):
+        out = []
+        addf = lambda n, good, d, warn=False: out.append((n, "PASS" if good else ("WARN" if warn else "FAIL"), d))
+        f = "/opt/app/cflex/secrets/db/pg.pass"
+        r = FakeRunner({"sh": (0, "0 0\n", "")}, files={f: "s3cret\n"})
+        verify._secret_scan(addf, r, "db")
+        self.assertEqual(out[-1][1], "PASS")
+        argv = r.calls[-1]
+        self.assertIn(f, argv)
+        self.assertFalse(any("s3cret" in a for a in argv), "the value stays in the file")
+        verify._secret_scan(addf, FakeRunner({"sh": (0, "2 1\n", "")}, files={f: "x"}), "db")
+        self.assertEqual(out[-1][1], "FAIL")
+        self.assertIn("pg.pass: journal 2, logs 1", out[-1][2])
+
+    def test_selinux_enforcing_and_denials_since_boot(self):
+        avc = ('type=AVC msg=audit(1795231282.118:302): avc:  denied  { read } for  pid=7733 comm="node" name="portal-ca.pem" '
+               'scontext=system_u:system_r:container_t:s0:c90,c254 tcontext=unconfined_u:object_r:container_file_t:s0:c541,c644 tclass=file')
+        other = 'type=AVC msg=audit(1:2): avc:  denied  { read } for  pid=1 comm="edr-agent" name="x" scontext=system_u:system_r:edr_t:s0'
+        def got(answers):
+            out = []
+            verify._selinux(lambda n, good, d, warn=False: out.append((n, "PASS" if good else ("WARN" if warn else "FAIL"), d)),
+                            FakeRunner(answers))
+            return out
+        r = got({"getenforce": (0, "Enforcing\n", ""), "ausearch": (1, "", "<no matches>")})
+        self.assertEqual([v for _, v, _ in r], ["PASS", "PASS"])
+        r = got({"getenforce": (0, "Enforcing\n", ""), "ausearch": (0, avc + "\n" + other + "\n", "")})
+        self.assertEqual(r[1][1], "FAIL")
+        self.assertIn("node→portal-ca.pem", r[1][2])
+        r = got({"getenforce": (0, "Enforcing\n", ""), "ausearch": (0, other + "\n", "")})
+        self.assertEqual(r[1][1], "WARN", "another product's denial is recorded, not ours")
+        self.assertEqual(got({"getenforce": (0, "Permissive\n", ""), "ausearch": (1, "", "")})[0][1], "FAIL")
+        runner = FakeRunner({"getenforce": (0, "Enforcing\n", ""), "ausearch": (1, "", "")})
+        verify._selinux(lambda *a, **k: None, runner)
+        self.assertIn("--input-logs", runner.calls[-1], "ausearch reads stdin when it is not a terminal")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -411,6 +411,90 @@
 - 블로커: 없음
 - 다음 세션 계획: PR 검토 반영 → 관리자 지시 순서(Q-16 버그 수정 WO 승인 시 그것, 또는 SAT 준비)
 
+### 2026-11-20 15:30 PST — Claude Code (대화형, 법인장 직접 지시)
+- WO-INT-015(가칭, 사후 번호 부여 요청): **HAEA 미러 랩(Azure)** — 진행 1단계(인프라) 완료 | 브랜치 `wo/INT-015-azure-haea-lab` | 코드 `deploy/azure-haea-lab/`
+  - 지시: "애저에 HAEA 환경을 같이 구성하고 배포해 보면서 HAEA 에 전달할 설치 파일을 구성" — 2개월, 시험 안 할 때는 꺼둔다.
+  - `개발 코드`: create/up/down/status/destroy 스크립트 + README. `실제 배포`: RG-CFLEX-HAEA-LAB(westus2) 6 VM 생성. `격리 시험`·`실제 Probe 연결`: 아직 없음(번들 미설치).
+  - 확인됨: 4 VM 호스트명 haeipfms{cap01,app01,app02,db01}v·IP 10.138.14.66~69 = spec 01 §1 그대로, RHEL 8.10, SELinux Enforcing, firewalld active, `/opt/app` 64G(app01/02)·`/opt/data` 128G(db01) 별도 마운트, 인터넷 직접 차단(000), 프록시 경유 google 403·RHUI 200(Satellite 대용), NMC 대역 UDR → nmcsim 도달(10.112.0.76 ICMP 수신), 6 VM 자동 종료 03:00 UTC.
+  - 랩 사양은 HAEA 보다 작음(4/16 → 2/8) — 기능 시험용. eastus vCPU 한도(10) 소진으로 westus2.
+  - 고친 것(생성 중 발견): macOS bash 3.2 빈 배열 `set -u`, custom-data 비ASCII(az CLI latin-1), NMC 대역 NSG 양방향 명시(VirtualNetwork 태그 밖).
+  - 대신 못 하는 것(SAT 몫): EDR, HAEA 내부 CA, 실 NMC, 실 포털(WO-PTL-001/002 미착수 → 목).
+  - 비용(정가): 24h ~$446/월, 작업시간만 ~$167/월, 꺼둠 ~$47/월.
+- 금지 사항: 기존 VM·운영 서버 변경 0(새 RG 만), 비밀값 0(SSH 키는 ~/.ssh, repo 밖), 포털 코드 0.
+- 부수(랩과 별개, 법인장 지시): vm-cflex-probe-01 NSG SSH 22 → 운영자 Mac 공인 IP /32 로 축소(로그인 실패 8,135건/일). 18GB/일 송신 원인 = Mac Codex 앱 원격 SSH 재접속 루프(약 10초마다) — 앱에서 연결 해제 필요. 그 결과 `deploy-twin.yml` GitHub Actions SSH 배포는 막힘.
+- 블로커: 없음. nmcsim 의 Node 가 v12(우분투 기본) — 시뮬레이터용 Node 20 설치 필요(다음 단계).
+- 다음 세션 계획: ② 번들 빌드(UBI8 이미지 5개, 빌드 장소 결정) → ③ db01→app01→app02→cap01 `cflex-install preflight/install/verify/netcheck` → ④ SAT 8항목 리허설 → ⑤ HAEA 전달물.
+
+### 2026-11-20 17:30 PST — Claude Code (대화형, 같은 세션 이어서)
+- WO-INT-015 ② 번들 빌드 — 진행 중 | 빌드 호스트 = vm-cflex-probe-01(법인장: 운영 서버 아님, Podman 4.9.3)
+  - **랩이 찾은 버그 1**: `podman build` collector·app 실패 — better-sqlite3 ^11 은 `-std=c++20`, UBI8 gcc 8.5 미지원. 빌드 단계에 gcc-toolset-13(UBI8 AppStream) → 성공. 런타임 이미지엔 toolset 없음, `/lib64/libstdc++.so.6` 만으로 로드·ABI 115 확인. 커밋 236ccd3.
+  - **버그 2**: `.containerignore` 가 frontend 전체 제외 → D-16 이후 app 이미지 빌드 실패. 수정 9f4a532.
+  - `개발 코드`·`격리 시험`: collector/app/web 이미지 빌드 OK. redis·postgres 는 registry.redhat.io 로그인 필요 → **블로커: 법인장 Red Hat 계정 로그인**(본인이 probe-01 에서 `podman login`).
+- WO-INT-016(가칭) — D-16 내부 화면 = 기존 /fms: `개발 코드`·`격리 시험` 완료 | 커밋 654a73b
+  - frontend/ 단독 빌드 + internal 프로파일(지도·티켓·리포트·라우팅·제어·CSV 일괄등록 컴파일 제외, 폰트 번들, 외부 참조 0), 콘솔 /fms/ 서빙.
+  - 테스트: console 55 pass / 2 skip(twin 빌드 없음), static 14/14, 설치기 Python 79/79. app 이미지(probe-01) 빌드 OK.
+  - `실제 배포`·화면 육안 확인: 랩 설치 후.
+- 결정: D-16 (DECISIONS.md) — Q-2026-10-25-09 (B) 대체.
+- 다음: Red Hat 로그인 → 전체 번들 → 랩 4노드 설치 → SSH 터널로 /fms 화면 확인.
+
+### 2026-11-20 17:15 PST — Claude Code (대화형, 같은 세션 이어서)
+- WO-INT-015 ③ 설치 — db01 완료, app01 완료, app02·cap01 남음 | 번들 2.0.0-lab.1(2.6 GB, probe-01 빌드, Mac 경유 svc 반입, 4노드 SHA256SUMS OK)
+  - `실제 배포`(랩): db01 verify **PASS 0/0**(postgres healthy, pg_basebackup 실행·base-20261121, WAL archive). app01: web·console·redis **healthy**, DB 접속·스키마 v2·월 파티션·WAL·포털 TLS(프록시 경유) PASS.
+    app01 verify FAIL 4 = 예상분(app02 미설치, SMTP·ServiceNow·Teams 더미 미구성).
+  - **랩이 찾은 설치기 버그(HAEA 에서 그대로 재현됐을 것)** — 커밋 7dd604e + 이번 커밋:
+    1. runuser 가 관리자 cwd 상속 → podman "cannot chdir" (env --chdir)
+    2. RHEL 8 cgroup v1 → Quadlet --cgroups=split 실패 → preflight 감지, `--cgroups=disabled --runtime=crun`
+    3. postgresql-16 ReadOnly 루트에서 $HOME/passwd → /var/lib/pgsql tmpfs
+    4. state 에 cgroups 미저장 → verify/promote 가 v2 로 판단
+    5. crun 1.14.3 + 커널 4.18: netns 공유 컨테이너의 재귀 ro /sys 가 mount_setattr 필요 → 사이드카에 `Volume=/sys:/sys:ro,bind`
+    6. `sudo cp` 한 pg.pass 가 root 소유 → console EACCES → 설치기가 복사된 비밀 파일을 cflex 0600 으로
+    (랩 인프라: Azure RHEL 이미지 /home 1G → rootvg 확장. HAEA VM 의 /home 크기는 preflight 가 안 본다 — 질문으로 남김)
+  - 테스트: 설치기 Python 88/88(+8), static 14/14.
+  - 랩 노드는 수정 파일을 핫패치해 진행(.state/hotpatch.log). **최종 번들은 재빌드 후 4노드 재설치로 다시 검증한다.**
+- WO-INT-016 화면: 랩 app01 에서 SSH 터널로 `/`→`/fms/` 302, `/fms/` 200(C-Flex FMS), `/login` 200, 무세션 API 401,
+  첫 로그인 비밀번호 변경 후 `/v1/fms/{summary,assets,alerts,fleet-live,floor,channels/health}` 전부 200(장비 0대라 빈 값). 관리자 계정 생성(값은 repo 밖).
+- 다음: app02 → cap01 + nmcsim(UPS 41대 시뮬) → 인벤토리 → 화면에 데이터 → SAT 리허설 → 번들 재빌드·재설치.
+
+### 2026-11-20 17:45 PST — Claude Code (대화형, 같은 세션 이어서)
+- WO-INT-015 ③ 설치 **4노드 완료 — verify 전부 PASS 0/0** (db01·app01·app02·cap01)
+  - `실제 Probe 연결`(랩): cap01 `loaded 41 UPS from the Local Console` · `cycle: 41 ok, 0 fail` — UDR 너머 시뮬 NMC 41대(부록 B IP 그대로) 폴링.
+    콘솔 summary: 41 online / 38 normal / 3 warn, 알람 3건(P2 Load 92%). Redis app01→app02 복제 link up.
+  - 랩 시뮬레이터: deploy/azure-haea-lab/sim/ups-fleet.js — 한 프로세스가 41 IP 에 각각 SNMP 에이전트(PowerNet-MIB), HTTP 로 On Battery 토글.
+    probe-agent/sim/lib.js 에 `address` 옵션(하위호환).
+  - **추가로 찾은 설치기 버그 3건**: ⑦ user_sources 설정 시 collector → app 443 누락(FW-7) ⑧ collector.key·console-ca.pem root 소유 → EACCES
+    ⑨ web nginx 가 큰 요청 본문을 /tmp 임시파일로 → 소유자 불일치로 telemetry 500 (본문·응답 메모리 처리로 해결).
+  - 랩 한정(현장 아님): 피어 443 은 자체서명이라 두 노드 console-ca.pem 에 서로의 인증서. svc 에 SMTP 수신 더미(:1025).
+- **D-17**(DECISIONS): 프로브는 ServiceNow·Teams 제외, 로컬 알림은 e-mail 만. verify 는 "해당 없음(D-17)" 통과. SOW D1 테스트 티켓·방화벽 v3 의 해당 행은 법인장/PM 정리 필요.
+- 테스트: 설치기 Python 92/92, static 14/14.
+- 다음: SAT 리허설(P1 On Battery·포털 차단 복구·app01 중지·백업복구·SELinux) → 번들 2.0.0-lab.2 재빌드 → 4노드 재설치 검증 → HAEA 전달물.
+
+### 2026-11-20 19:00 PST — Claude Code (대화형, 같은 세션 이어서)
+- WO-INT-015 ④ **클린 설치 검증 완료** — 번들 **2.0.0-lab.2**(sha256 4e5505fb…, 설치기 수정 9건 포함, probe-01 빌드 130s)
+  - RHEL 4노드를 삭제·재생성 후 `install-lab.sh 2.0.0-lab.2` 한 번으로 설치: **db01·app01·app02·cap01 verify 전부 PASS 0/0, 수작업 0**.
+  - `bootstrap-console.sh`(계정·사이트 3·장비 41) 후 collector 가 5분 주기 재조회로 41대 수신 → `41 ok, 0 fail`, summary 41 online.
+  - SAT 4(P1): 시뮬 On Battery → 콘솔 P1 "Output source: onBattery", summary critical 1. SAT 6: app01 정지 → collector 가 app02 로 전환, 폴링·telemetry 계속(화면 세션은 Redis promote 필요 — 설계대로).
+  - 랩 스크립트: install-lab.sh(현장 MOP 순서, # LAB 단계 표시), bootstrap-console.sh, create.sh cloud-init ASCII 가드·LV 확장.
+  - 남은 SAT: 5(포털 차단 후 무손실), 7(백업 복구·업그레이드/롤백), 8(SELinux denial 0·비밀 평문 0). 포털은 목/실 미가동(WO-PTL-001/002).
+- WO-INT-017(Modbus, KMX용): PR #13 — probe-agent 102/102, Q-2026-11-20-01~04. D-18(정정): 프로브 기본 현장 = HAEA 얼바인(APC UPS 만), Modbus = KMX.
+
+### 2026-11-20 21:20 PST — Claude Code (대화형, 같은 세션 이어서)
+- WO-INT-015 ⑤ **SAT 리허설 완료 + HAEA 전달 후보 2.0.0-rc.2** (sha256 56bc92ad…, probe-01 빌드) | 커밋 666db98…c3d8c3f
+  - 4축: 개발 코드 ✅ / 격리 시험 ✅(install 98/98, console 57+2skip, portal 15/15, probe-agent 파일별 77/77) / 실제 배포 ✅ HAEA 미러 랩(RHEL 8.10×4) / 실제 Probe 연결 ❌(HAEA 설치 전, 포털 API 미가동)
+  - SAT 5 PASS: 프록시 차단 10분 + 송신 노드 재기동 → 64초 만에 outbox 0, 369/369 포인트, 중복 0 (포털 목: nmcsim:443, 계약 스키마·mTLS·멱등키 검증)
+  - SAT 7 PASS: 업그레이드 lab.2→lab.4→rc.1→rc.2(Active 는 --standby-done 없으면 거부), 롤백 rc.1→lab.4(노드당 ≈5초), 데이터 유지;
+    4노드 동시 재부팅 → 자동 기동, 수집 재개 1분47초; 백업/복구 B1~B11 전부 PASS (PITR 표식 복구, 기준 복구 수치 일치, 아카이브 실패 0)
+  - SAT 8 PASS: SELinux Enforcing·거부 0, 비밀값 로그 0 — verify 에 두 점검 추가(4노드 자동)
+  - 랩이 찾아 고친 결함: ① 포털 송신이 프록시를 우회(agent:false) — HAEA 에서 전송 전부 실패했을 것 ② certs 공유 마운트 :Z → nginx 인증서 못 읽음
+    ③ rhel8/postgresql 기동 스크립트 때문에 복구가 끝나지 않음 → install/cflex-pg-recover ④ 그 실패한 ALTER USER 로 pg.pass 가 서버 로그·journal 에 평문
+    → log_min_error_statement=panic ⑤ 문서의 sudo -iu cflex 전부 실패(nologin) → install/cflex-as ⑥ netcheck 가 slirp4netns UDP 폴링 소켓 82개를 리스너로 FAIL
+    ⑦ verify 포털 점검이 portal-ca/device 인증서 미사용 ⑧ ausearch 비터미널 0건 오보 ⑨ 동시 재부팅 후 collector 5분 공백 → 30초 재시도 ⑩ 같은 날 복구 후 백업 건너뜀(문서)
+  - 랩 사고(본인): 수동 점검에서 pg.pass 를 grep 명령줄에 넣어 db01 sudo 로그(journal·audit)에 남김 → 해당 로그·이전 데이터 디렉터리 삭제, 백업 세트·WAL 0 확인. verify 스캔은 grep -f(파일)만 사용.
+  - 전달물(번들 안): docs/HAEA_INSTALL_GUIDE.md(영문 — 준비물 H1~H10, site.yaml 4곳, 노드별 MOP, SAT 표 랩 결과 열), config/haea-inventory.example.csv(41대, 비밀값 없음),
+    install/cflex-pg-recover·cflex-as, PG_BACKUP_RESTORE §3/§4 개정·§6 결과. 랩 스크립트: sat5-portal-outage.sh, sat7-backup.sh, upgrade-lab.sh, sim/setup-portal-mock.sh
+  - 미검증: SAT 3(trap, 랩 미실행), SNMPv3(랩은 v2c 시뮬), EDR(HAEA), 설치 중 네트워크 호출 0 증빙, podman image trust·GPG 서명, 운영 규모 RTO
+- 질문: Q-2026-11-21-01(최종 2.0.0 재빌드·GPG 키), Q-2026-11-21-02(SBOM·취약점 스캔), Q-2026-11-21-03(방화벽 v4 Teams/ServiceNow 행 삭제)
+- 비고: probe-agent 전체를 한 프로세스(node --test test/*.test.js)로 돌리면 77번째 이후 멈춤 — 파일별로는 전부 통과. 별도 확인 필요.
+- 다음: PR(WO-INT-015/016 묶음) 관리자 검토 → Q-01 답 받으면 2.0.0 서명 빌드 → HAEA 전달. 랩은 down.sh 로 정지(0300 UTC 자동 종료도 있음).
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.

@@ -229,7 +229,15 @@ def _nginx(site, me, v, listen_port):
     return fill(template("nginx/cflex-console.conf"), vals, "cflex-console.conf")
 
 
-def render(site, role, me, version, profile="container", podman_version="4.9", ports_mode="forward", home="/home/cflex"):
+def cgroup_args(cgroups):
+    """Quadlet line for the host's cgroup version — v1 (RHEL 8 default) cannot do --cgroups=split rootless."""
+    if cgroups == "v1":
+        return "PodmanArgs=--cgroups=disabled --runtime=crun"
+    return "# cgroup v2: Quadlet default (--cgroups=split)"
+
+
+def render(site, role, me, version, profile="container", podman_version="4.9", ports_mode="forward", home="/home/cflex",
+           cgroups="v2"):
     if role not in siteconf.ROLES:
         raise RenderError("role must be one of %s" % ", ".join(siteconf.ROLES))
     if profile not in ("container", "bare"):
@@ -239,7 +247,8 @@ def render(site, role, me, version, profile="container", podman_version="4.9", p
     if profile == "container":
         net = network_mode(podman_version)
         hp = host_ports(ports_mode)
-        v.update({"NETWORK": net, "TRAP_HOST_PORT": hp["trap"], "HTTPS_HOST_PORT": hp["https"]})
+        v.update({"NETWORK": net, "TRAP_HOST_PORT": hp["trap"], "HTTPS_HOST_PORT": hp["https"],
+                  "CGROUP_ARGS": cgroup_args(cgroups)})
         qd = os.path.join(home, QUADLET_DIR_REL)
         if role == "collector":
             files[os.path.join(qd, "cflex-collector.container")] = (fill(template("quadlet/cflex-collector.container"), v, "collector"), 0o644)
@@ -316,7 +325,10 @@ def _render_app_container(site, me, v, podman_version, qd):
         vv.update({
             "WEB_NETWORK": "Network=%s\n%s" % (v["NETWORK"], "\n".join(pubs)),
             "WEB_UNIT_DEPS": "Wants=%s" % " ".join(s + ".service" for s in sidecars),
-            "SIDECAR_NETWORK": "Network=container:cflex-web",
+            # Joining another container's netns, Podman bind-mounts the host /sys recursively read-only;
+            # crun does that with mount_setattr(2), which RHEL 8's 4.18 kernel lacks ("mount_setattr `/sys`:
+            # Function not implemented" — Azure HAEA lab, WO-INT-015). A plain read-only bind avoids it.
+            "SIDECAR_NETWORK": "Network=container:cflex-web\nVolume=/sys:/sys:ro,bind",
             "SIDECAR_UNIT_DEPS": "BindsTo=cflex-web.service\nAfter=cflex-web.service",
         })
     member = _in_pod if pod else (lambda u: u)

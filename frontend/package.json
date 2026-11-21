@@ -1,0 +1,24 @@
+{
+  "name": "cflex-fms-console",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "FMS 1.x screen (src/pages/Fms.jsx). Internal build = HAEA Local Console UI (D-16), served by apps/console at /fms/.",
+  "scripts": {
+    "build": "vite build",
+    "build:console": "VITE_CONSOLE_PROFILE=internal vite build --outDir dist-console"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.1.0",
+    "@fontsource/ibm-plex-sans": "5.1.0",
+    "lucide-react": "0.460.0",
+    "maplibre-gl": "4.7.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.28.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.3.4",
+    "vite": "5.4.11"
+  }
+}

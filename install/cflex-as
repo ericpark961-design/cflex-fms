@@ -1,0 +1,16 @@
+#!/bin/bash
+# cflex-as — run one command as the cflex service user, with its systemd user session.
+#
+#   sudo install/cflex-as systemctl --user stop cflex-console
+#   sudo install/cflex-as podman exec cflex-postgres psql -d cflex -c 'select 1'
+#   sudo install/cflex-as journalctl --user -u cflex-pg-backup -n 20
+#
+# cflex has no login shell (nologin), so `sudo -iu cflex …` fails with "This account is currently
+# not available", and plain `sudo -u cflex systemctl --user …` cannot find the user bus. This sets
+# what both need. Exit status is the command's; 2 when there is no cflex user (not installed).
+set -u
+U=$(id -u cflex 2>/dev/null) || { echo "cflex-as: no cflex user on this host" >&2; exit 2; }
+[ "$(id -u)" = 0 ] || { echo "cflex-as: run with sudo" >&2; exit 2; }
+[ $# -gt 0 ] || { echo "usage: sudo $0 <command> [args…]" >&2; exit 2; }
+exec runuser -u cflex -- env --chdir="$(getent passwd cflex | cut -d: -f6)" \
+  XDG_RUNTIME_DIR=/run/user/$U DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$U/bus "$@"

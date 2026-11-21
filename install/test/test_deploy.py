@@ -214,3 +214,62 @@ class Promote(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AsCflex(unittest.TestCase):
+    def test_runs_from_cflex_home_not_the_callers_cwd(self):
+        # The bundle sits in an admin's home (0700); runuser keeps the caller's cwd, so podman
+        # failed with "cannot chdir to /home/<admin>/cflex-bundle-…" on the Azure HAEA lab.
+        r = FakeRunner(dry_run=True)
+        c = ctx(example_site(), "db", "db01", r)
+        c.as_cflex(["podman", "secret", "ls"])
+        argv = r.calls[-1]
+        self.assertEqual(argv[:4], ["runuser", "-u", "cflex", "--"])
+        self.assertEqual(argv[4], "env")
+        self.assertEqual(argv[5], "--chdir=%s" % c.home())
+        self.assertEqual(argv[-3:], ["podman", "secret", "ls"])
+
+
+class CopiedSecrets(unittest.TestCase):
+    def test_root_owned_copy_is_handed_to_cflex(self):
+        # `sudo cp pg.pass` leaves it root's 0644; the rootless console then fails EACCES (Azure HAEA lab).
+        site = example_site()
+        r = FakeRunner(files={deploy.BASE + "/secrets/app/pg.pass": "abc123",
+                              deploy.BASE + "/secrets/app/redis.pass": "r", deploy.BASE + "/secrets/app/console.key": "k"})
+        c = ctx(site, "app", "app02", r)
+        c.uid = lambda: 1001
+        deploy._own_secret(c, deploy.BASE + "/secrets/app/pg.pass")
+        p = deploy.BASE + "/secrets/app/pg.pass"
+        self.assertEqual(r.writes[p], ("abc123", 0o600), "same value, 0600")
+        self.assertEqual(r.owners[p], (1001, 1001), "owner cflex")
+
+
+class CollectorReachesConsole(unittest.TestCase):
+    def test_collectors_are_allowed_on_443_when_user_sources_are_set(self):
+        # FW-7 cap01 → app 443. user_sources narrowed 443 to users and the peer only (Azure HAEA lab).
+        site = example_site()
+        site["install"]["user_sources"] = ["10.50.0.0/16"]
+        rules = deploy.firewall_rules(ctx(site, "app", "app01", FakeRunner(dry_run=True)))
+        self.assertIn(("rich-rule", 'rule family="ipv4" source address="10.138.14.66/32" forward-port port="443" protocol="tcp" to-port="8443"'), rules)
+
+
+class CollectorKeyOwner(unittest.TestCase):
+    def test_root_owned_collector_key_is_handed_to_cflex(self):
+        site = example_site()
+        k = deploy.BASE + "/secrets/collector/collector.key"
+        r = FakeRunner(files={k: "abc"})
+        c = ctx(site, "collector", "cap01", r)
+        c.uid = lambda: 1001
+        deploy._secrets(c)
+        self.assertEqual(r.writes[k], ("abc", 0o600))
+        self.assertEqual(r.owners[k], (1001, 1001))
+
+    def test_root_owned_console_ca_is_readable_by_cflex(self):
+        site = example_site()
+        ca = deploy.BASE + "/certs/console-ca.pem"
+        r = FakeRunner(files={ca: "PEM"})
+        c = ctx(site, "collector", "cap01", r)
+        c.uid = lambda: 1001
+        deploy._certs(c)
+        self.assertEqual(r.writes[ca], ("PEM", 0o644))
+        self.assertEqual(r.owners[ca], (1001, 1001))

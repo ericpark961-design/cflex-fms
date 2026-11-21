@@ -1,0 +1,35 @@
+# site.yaml — HAEA 미러 랩(Azure, WO-INT-015) 용. install/site.example.yaml 과 다른 줄에만 # LAB 표시.
+# 호스트·IP·SNMP·보존 기간은 HAEA 와 같다 — 이 파일에서 # LAB 줄만 HAEA 값으로 바꾸면 현장 파일이 된다.
+# site.yaml — C-Flex on-prem install config (docs/spec/01 §3.4).
+# Copy to /opt/app/cflex/config/site.yaml on every VM (same file on all four).
+# No secrets here: passwords, community strings, keys and webhook URLs go in
+# /opt/app/cflex/secrets/* (0600, owner cflex) — see docs/install/CONTAINER_PROFILE.md §5.
+
+tenant: { code: HAEA, timezone: America/Los_Angeles }
+hosts:
+  collectors: [{ id: cap01, ip: 10.138.14.66, sites: [HMA-FV, KUS-IRV, HAEA-HQ] }]
+  app: [{ id: app01, ip: 10.138.14.67, role: active }, { id: app02, ip: 10.138.14.68, role: standby }]
+  db: { ip: 10.138.14.69, port: 5432 }
+snmp: { default_version: 3, poll_interval_sec: 60, min_interval_sec: 10, trap_port: 162 }
+portal: { enabled: true, url: https://cflex.fms.support, ip_pin: 40.114.79.164, mtls_cert: /opt/app/cflex/certs/device.pem, proxy: "http://10.138.15.10:3128", buffer_days: 7 }   # LAB: proxy = svc squid
+notify: { smtp: { host: 10.138.15.10, port: 1025 }, policy: { local_email: false } }   # D-17: Teams·ServiceNow 는 프로브 범위 밖 · LAB
+retention: { raw_years: 3, aggregate_years: 10, events_years: 10 }
+auth: { local: true, saml: { enabled: false } }
+
+# ── installer keys (not in §3.4; defaults shown) ─────────────────────────────
+install:
+  # How rootless Podman gets UDP 162 (trap) and TCP 443 (console):
+  #   forward — firewalld forward-port 162→1162, 443→8443 (default when firewalld runs)
+  #   sysctl  — net.ipv4.ip_unprivileged_port_start=161 (host-wide; any user may then bind 161–1023)
+  #   auto    — forward if firewalld is active, else sysctl
+  privileged_ports: auto
+  firewall_zone: public
+  # The app node that runs Redis 6 (sessions). Default: the active node.
+  redis_host: app01
+  # Source ranges for firewalld rich rules. Empty = port open to the zone.
+  # HAEA to supply (spec 01 §6-3).
+  user_sources: [10.138.15.0/24]        # LAB: svc(점프·SSH 터널) 서브넷. HAEA: 사용자 VLAN/VPN 대역 (FW-5)
+  maintenance_sources: [10.138.15.0/24] # LAB: svc 점프. HAEA: RingOn VPN/점프 대역 (FW-6)
+nmc:
+  # One NMC IP per line (spec 01 부록 B, 41 addresses). netcheck FW-1/FW-3 compares against it.
+  targets_file: /opt/app/cflex/config/nmc-targets.txt

@@ -15,6 +15,10 @@ import {
   Edit3, Upload, X as XIcon, Sliders, CheckCircle2, Menu,
 } from 'lucide-react';
 
+// Internal (HAEA Local Console) build — D-16. Portal-scope features are hidden, not removed:
+// alarm map (external tiles), tickets/RCA, monthly reports, alarm routing, device control.
+const INTERNAL = import.meta.env.VITE_CONSOLE_PROFILE === 'internal';
+
 // ─── Tokens ────────────────────────────────────────────────────────
 const FONT = '"IBM Plex Sans","Helvetica Neue",Arial,sans-serif';
 
@@ -146,6 +150,7 @@ export default function Fms() {
   // Unread P1 ticket badge — poll every 30s
   const [unread, setUnread] = useState(0);
   useEffect(() => {
+    if (INTERNAL) return undefined;
     const fetchUnread = () => api.get('/v1/fms/tickets?status=open')
       .then(d => d?.ok && setUnread((d.tickets || []).filter(t => t.priority === 'P1').length));
     fetchUnread();
@@ -193,7 +198,12 @@ export default function Fms() {
     api.get('/v1/me').then(d => { if (d?.userId || d?.email) setUser(d); else nav('/login'); });
   }, []);
 
-  const logout = () => { localStorage.removeItem('cflex_token'); localStorage.removeItem('token'); nav('/login'); };
+  const logout = () => {
+    localStorage.removeItem('cflex_token'); localStorage.removeItem('token');
+    // Local Console: HttpOnly session cookie, server-rendered /login page.
+    if (INTERNAL) { fetch('/v1/auth/logout', { method: 'POST' }).finally(() => { window.location.href = '/login'; }); return; }
+    nav('/login');
+  };
   const toggleLang = () => { const next = lang() === 'ko' ? 'en' : 'ko'; localStorage.setItem('lang', next); setLang(next); };
 
   const navItems = [
@@ -203,7 +213,7 @@ export default function Fms() {
     { id: 'alarms',    ko: '알람',       en: 'Alarms',       Icon: AlertTriangle },
     { id: 'alarmmap',  ko: '알람 지도',   en: 'Alarm Map',    Icon: Globe },
     { id: 'admin',     ko: '관리',       en: 'Admin',        Icon: SettingsIcon },
-  ];
+  ].filter(n => !(INTERNAL && n.id === 'alarmmap'));
 
   // Mobile: close nav drawer on section change
   const pickSection = (id) => { setSection(id); setSelectedAssetId(null); if (isMobile) setNavOpen(false); };
@@ -301,7 +311,7 @@ export default function Fms() {
             : <DevicesList query={query} onPick={setSelectedAssetId} />
           )}
           {section === 'alarms' && <AlarmsView />}
-          {section === 'alarmmap' && <AlarmMap />}
+          {!INTERNAL && section === 'alarmmap' && <AlarmMap />}
           {section === 'admin' && <Admin user={user} />}
         </main>
       </div>
@@ -309,9 +319,9 @@ export default function Fms() {
     {/* Global modal layer — single instance per kind, mounted at root */}
     {modal?.kind === 'device' && <DeviceDetailModal id={modal.id} onClose={closeModal} />}
     {modal?.kind === 'alarm'  && <AlarmDetailModal alert={modal.alert} onClose={closeModal} />}
-    {modal?.kind === 'ticket' && <TicketDetailModal ticket={modal.ticket} onClose={closeModal} />}
+    {!INTERNAL && modal?.kind === 'ticket' && <TicketDetailModal ticket={modal.ticket} onClose={closeModal} />}
     {modal?.kind === 'devicesByStatus' && <DevicesByStatusModal statusKey={modal.statusKey} title={modal.title} onClose={closeModal} />}
-    {modal?.kind === 'sites' && <SitesListModal onClose={closeModal} />}
+    {!INTERNAL && modal?.kind === 'sites' && <SitesListModal onClose={closeModal} />}
     {modal?.kind === 'notifications' && <NotificationsModal onClose={closeModal} />}
 
     {/* Toast stack — top-right, slide-in. New alarms surface here regardless of section. */}
@@ -1188,7 +1198,7 @@ function DeviceDetail({ id, onBack }) {
           </div>
 
           {/* Device control panel — only renders when the tenant has allow-listed actions */}
-          <DeviceControlPanel deviceId={id} />
+          {!INTERNAL && <DeviceControlPanel deviceId={id} />}
 
           {/* Alarm history */}
           <div style={{ background: C.card, border: `1px solid ${C.hairline}` }}>
@@ -1508,7 +1518,7 @@ function Admin({ user }) {
     { id: 'reports', label: tx('월간 리포트', 'Reports') },
     { id: 'channels', label: tx('알림 채널', 'Channels') },
     { id: 'control', label: tx('장치 제어', 'Device Control') },
-  ];
+  ].filter(t => !INTERNAL || t.id === 'profile' || t.id === 'devices');
   return (
     <div style={{ padding: 24, maxWidth: 1100 }}>
       <h1 style={{ margin: '0 0 14px', fontSize: 22, fontWeight: 700 }}>{tx('관리', 'Admin')}</h1>
@@ -1539,11 +1549,11 @@ function Admin({ user }) {
 
       {tab === 'devices' && <DevicesAdmin />}
 
-      {tab === 'reports' && <ReportsAdmin user={user} />}
+      {!INTERNAL && tab === 'reports' && <ReportsAdmin user={user} />}
 
-      {tab === 'channels' && <ChannelsAdmin />}
+      {!INTERNAL && tab === 'channels' && <ChannelsAdmin />}
 
-      {tab === 'control' && <ControlAdmin />}
+      {!INTERNAL && tab === 'control' && <ControlAdmin />}
     </div>
   );
 }
@@ -1606,7 +1616,7 @@ HAEA-UPS-002,10.0.1.12,public,161,Irvine HQ,Server Room A,Rack 2,production`;
 
   return (
     <>
-      <Section title={tx('CSV 일괄 등록', 'Bulk CSV import')}>
+      {!INTERNAL && <Section title={tx('CSV 일괄 등록', 'Bulk CSV import')}>
         <div style={{ background: C.card, border: `1px solid ${C.hairline}`, padding: 16 }}>
           <div style={{ fontSize: 12, color: C.inkMuted, marginBottom: 10 }}>
             {tx('컬럼: ', 'Columns: ')}
@@ -1652,7 +1662,7 @@ HAEA-UPS-002,10.0.1.12,public,161,Irvine HQ,Server Room A,Rack 2,production`;
             </div>
           )}
         </div>
-      </Section>
+      </Section>}
 
       <Section title={`${tx('등록된 장치', 'Registered devices')} · ${assets.length}`}>
         <div style={{ background: C.card, border: `1px solid ${C.hairline}`, overflowX: 'auto' }}>
@@ -2858,6 +2868,7 @@ function AlarmDetailModal({ alert, onClose }) {
   const [muted, setMuted] = useState(alert.muted_until && alert.muted_until > Date.now());
 
   useEffect(() => {
+    if (INTERNAL) { setLoading(false); return; }
     api.get(`/v1/fms/alerts/${alert.id}/ticket`).then(d => {
       const tk = d?.ticket || null;
       setTicket(tk);
@@ -2909,8 +2920,8 @@ function AlarmDetailModal({ alert, onClose }) {
         <div style={{ fontSize: 11, color: C.inkSubtle, marginTop: 4 }}>{fmtAbs(alert.received_at)}</div>
       </div>
 
-      {/* Ticket section */}
-      <div style={{ background: C.card, border: `1px solid ${C.hairline}`, padding: 14, marginBottom: 14 }}>
+      {/* Ticket section — portal scope, hidden in the Local Console (D-16) */}
+      {!INTERNAL && <div style={{ background: C.card, border: `1px solid ${C.hairline}`, padding: 14, marginBottom: 14 }}>
         <div style={{ ...labelStyle, marginBottom: 8 }}>{tx('연결된 티켓', 'Linked Ticket')}</div>
         {loading ? (
           <div style={{ fontSize: 12, color: C.inkSubtle }}>Loading…</div>
@@ -2951,7 +2962,7 @@ function AlarmDetailModal({ alert, onClose }) {
             </button>
           </>
         )}
-      </div>
+      </div>}
 
       {/* Quick actions */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -3227,7 +3238,7 @@ function NotificationsModal({ onClose }) {
 
   useEffect(() => {
     api.get('/v1/fms/alerts?hours=24').then(d => d?.ok && setAlerts(d.alerts || []));
-    api.get('/v1/fms/tickets?status=open').then(d => d?.ok && setTickets(d.tickets || []));
+    if (!INTERNAL) api.get('/v1/fms/tickets?status=open').then(d => d?.ok && setTickets(d.tickets || []));
   }, []);
 
   const loading = alerts === null || tickets === null;
@@ -3259,7 +3270,7 @@ function NotificationsModal({ onClose }) {
     { id: 'p1',      label: 'P1',                     count: items.filter(i => i.priority === 'P1').length },
     { id: 'tickets', label: tx('티켓', 'Tickets'),    count: p1Tickets.length },
     { id: 'alerts',  label: tx('알람', 'Alerts'),     count: recentAlerts.length },
-  ];
+  ].filter(t => !(INTERNAL && t.id === 'tickets'));
 
   const handleClick = (item) => {
     onClose();

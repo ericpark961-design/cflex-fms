@@ -53,7 +53,7 @@ test.beforeEach(() => {
   if (skip) return;
   Object.assign(portal.state, { received: [], requests: [], faults: [], legacy: [], dateOffsetMs: 0 });
   portal.state.idem.clear();
-  proxy.state.tunnels.length = 0; proxy.state.refused = 0;
+  proxy.state.tunnels.length = 0; proxy.state.refused = 0; proxy.state.bytesUp = 0;
 });
 
 const UUID = () => crypto.randomUUID();
@@ -156,6 +156,7 @@ T('proxy: HTTPS_PROXY with Basic credentials tunnels to the Portal; wrong creden
   const h = await good.p.heartbeat();
   assert.ok(h.ok, JSON.stringify(h));
   assert.deepStrictEqual(proxy.state.tunnels, [`localhost:${portal.port}`]);
+  assert.ok(proxy.state.bytesUp > 0, 'the request went through the tunnel, not around it');
   await new Promise(res => setTimeout(res, 50));
   assert.strictEqual(proxy.openSockets(), 0, 'tunnel closed');
 

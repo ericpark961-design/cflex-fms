@@ -150,6 +150,18 @@ def run(site, role, profile, runner, host_id=None, bundle=None):
             add("podman", "FAIL", "%s < %d.%d (Quadlet keys used: UserNS keep-id:uid, Pull, Health*)" % (facts["podman"], PODMAN_MIN[0], PODMAN_MIN[1]))
         else:
             add("podman", "PASS", "%s — %s" % (facts["podman"], ".pod units" if pv[0] >= 5 else "no .pod in Quadlet 4.x: shared netns via cflex-web"))
+        # RHEL 8 boots cgroup v1 by default. Rootless Podman cannot create cgroups there, so Quadlet's
+        # default --cgroups=split fails ("mkdir /sys/fs/cgroup/blkio/user.slice: permission denied").
+        # The units then run with --cgroups=disabled, which only crun supports (Azure HAEA lab, WO-INT-015).
+        rc_cg, fstype, _ = runner.run(["stat", "-fc", "%T", "/sys/fs/cgroup"])
+        facts["cgroups"] = "v2" if fstype.strip() == "cgroup2fs" else "v1"
+        if facts["cgroups"] == "v1":
+            has_crun = runner.run(["rpm", "-q", "crun"])[0] == 0
+            add("cgroups", "PASS" if has_crun else "FAIL",
+                "v1 — containers run with --cgroups=disabled --runtime=crun" if has_crun
+                else "v1 and crun missing — dnf install crun (AppStream), or boot with cgroup v2")
+        else:
+            add("cgroups", "PASS", "v2 — Quadlet default")
         for spec in PACKAGES["container"][5 if pv and pv[0] >= 5 else 4]:
             names = spec.split("|")
             found = [n for n in names if runner.run(["rpm", "-q", n])[0] == 0]

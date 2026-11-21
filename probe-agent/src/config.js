@@ -48,6 +48,7 @@ const cfg = {
   },
   // How often the inventory and config (thresholds, maintenance windows) are pulled again.
   configReloadMs: parseInt(process.env.CONFIG_RELOAD_MS || String(5 * 60 * 1000), 10),
+  configRetryMs: parseInt(process.env.CONFIG_RETRY_MS || '30000', 10),   // while the console has not answered
 
   // Alarm engine (alarms/engine.js). Defaults are the engine's; only what is set here overrides.
   alarms: Object.fromEntries(Object.entries({

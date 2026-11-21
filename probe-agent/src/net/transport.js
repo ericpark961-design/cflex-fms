@@ -106,8 +106,10 @@ async function request(o) {
       headers: o.headers,
       timeout: timeoutMs,
       ...tlsOpts,
+      // No `agent` with the tunnel: `agent: false` makes node build a fresh Agent, which ignores
+      // createConnection and dials the Portal directly — around the proxy (HAEA lab, SAT 5).
       ...(tunnel
-        ? { agent: false, createConnection: () => tls.connect({ socket: tunnel, ...tlsOpts }) }
+        ? { createConnection: () => tls.connect({ socket: tunnel, ...tlsOpts }) }
         : { agent: false }),
     }, (res) => {
       const chunks = [];

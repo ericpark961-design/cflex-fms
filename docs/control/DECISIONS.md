@@ -486,3 +486,39 @@ Codex TASKS.md WO-PTL-001(헤더 1.2 수락·`collector_id` 저장, E2E 대상 `
 - **WO-INT-014 기간 중 실장비 접속·스캔 금지.** 시뮬레이터로만 개발·테스트. 실장비 적용은 법인장 승인 + 유지보수 창에서 별도 WO.
 - 전송은 SSH CLI(22) 우선. 방화벽 v3 Form A에 collector→NMC 22가 없으므로 기본 실행 위치는 **엔지니어 노트북(사이트 LAN)**, 컬렉터 실행은 방화벽 v4에 "온보딩·PM 기간 한정 TCP 22"를 추가할 때.
 
+
+### D-16 — 내부 Local Console 화면은 기존 `/fms` 화면, twin 은 외부 포털 (Eric 지시, 2026-11-20)
+> Q-2026-10-25-09 (B)("Local Console = `apps/twin` 내부 프로파일")를 **대체**한다.
+법인장: "트윈 화면은 외부에 구성할 거야. 내부 프로브에서는 기존 fms 화면이 좋아 — 간결하고 보기 쉽게."
+- **내부(HAEA Local Console, `cflex/app` 이미지)** = 현재 fms.runless.co.uk/fms 의 화면(`frontend/src/pages/Fms.jsx`, 1.x).
+  Q-09 당시 "package.json 이 없어 빌드되지 않는다"던 문제는 빌드 설정을 새로 만들어 해결한다.
+- **외부(포털, Codex)** = `apps/twin` (3D·NOC·파워체인·지도·Copilot 포함). 내부 이미지에서 twin 빌드는 빠진다(코드는 지우지 않음).
+- 내부 빌드에서 숨기는 `/fms` 기능: 지도(외부 타일 cartocdn — HAEA 인터넷 없음), 티켓·RCA·월간 리포트·알람 라우팅(포털 범위, D-12a),
+  장치 제어(장비 쓰기 금지). 남는 것: 대시보드·플로어·장치·알람(ACK)·관리(장비 등록·임계값).
+- API 는 `apps/console` 의 기존 `/v1/me`·`/v1/fms/*` 를 그대로 쓴다(twin 과 같은 형태로 이미 구현됨). 숨긴 기능용 새 API 는 만들지 않는다.
+- 외부 CDN·폰트·타일 호출 0건(WO-INT-004 기준 유지).
+- 작업: WO-INT-016(가칭) — HAEA 미러 랩(WO-INT-015)에서 설치 후 화면을 직접 열어 확인한다.
+
+### D-17 — 프로브(내부)에서 ServiceNow·Teams 제외 (Eric 지시, 2026-11-20)
+법인장: "서비스나우 연동은 현재 고려 안 하고, 팀즈도 프로브에는 필요 없어."
+- 내부 Local Console 의 로컬 알림은 **e-mail(SMTP 릴레이)만**. `site.yaml` `notify` 에서 `teams`·`itsm` 키를 뺀다
+  (spec 01 §3.4 예시와 달라짐 — 이 결정이 우선). 설정이 없으면 `verify` 는 "해당 없음 (D-17)" 으로 통과.
+- 코드(`packages/notify` 의 ServiceNow/Teams, 콘솔 test-ticket)는 지우지 않는다 — 기본 비활성, 쓰지 않을 뿐.
+  SOW D1 "ServiceNow 테스트 티켓"(SAT 4) 은 이 결정으로 **보류** — 계약상 처리는 법인장이 HAEA 와 정리.
+- 방화벽 요청서 v3 의 app → Teams/ServiceNow 아웃바운드 행은 **필요 없어짐** — 요청서 v4 에서 빼도록 PM 이 반영(Q 로 남김).
+- 외부 포털(Codex)의 Teams/SMS 라우팅(WO-PTL-003)은 이 결정과 무관.
+
+### Q-2026-11-21-01 — HAEA 전달 번들 버전·서명 (WO-INT-015, 답 대기: 법인장/PM)
+랩에서 SAT 1·4·5·6·7·8 을 통과한 후보는 **2.0.0-rc.2**(sha256 `56bc92ad…`, 빌드 probe-01). 남은 것:
+(A) 권고: 같은 커밋으로 `--version 2.0.0` + `--gpg-key <RingOn 릴리스 키>` 재빌드 → 랩에서 rc.2→2.0.0 업그레이드 1회 확인 → 전달.
+    필요: GPG 키(누가 보관·어디서 서명) — 비밀값이라 법인장이 정한다.
+(B) rc.2 를 그대로 HAEA 사전 검토용(Security)으로 먼저 보내고, 설치 창 전에 (A).
+
+### Q-2026-11-21-02 — SBOM·취약점 스캔 도구 (WO-INT-015)
+번들 `sbom/*.cdx.json` 은 스텁, `sbom/VULN-SCAN.txt` 는 "미수행". HAEA Security 사전 제출물(spec 01 §4)이다.
+(A) 권고: 빌드 호스트에서 syft(SBOM) + grype(취약점)로 생성해 번들에 넣는 단계를 build-bundle 에 추가 — 오프라인 DB 갱신은 빌드 호스트(인터넷 있음)에서.
+(B) Red Hat 이미지 기본 제공 정보(rpm -qa + RHSA)만 첨부.
+
+### Q-2026-11-21-03 — 방화벽 요청서 v4 (D-17 연계)
+랩 확인: app → Teams/ServiceNow 행(FW-8 일부)은 쓰이지 않는다. app → SMTP 릴레이, app → 프록시 → cflex.fms.support 443(FW-4)만 필요.
+(A) 권고: v4 에서 Teams·ServiceNow 행 삭제, 그 외 v3 유지. 제출은 PM.

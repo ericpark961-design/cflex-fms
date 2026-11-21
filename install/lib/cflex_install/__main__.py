@@ -168,14 +168,14 @@ def main(argv=None):
         return 0 if rep["ok"] else 1
 
     if a.command == "verify":
-        c = _ctx(site, a, me, profile, runner, None, {"podman": None, "ports_mode": state.get("ports_mode")}, log)
+        c = _ctx(site, a, me, profile, runner, None, {"podman": None, "ports_mode": state.get("ports_mode"), "cgroups": state.get("cgroups")}, log)
         res = verify.run(site, a.role, me, profile, runner, as_cflex=c.as_cflex, send_test=a.send_test)
         log(verify.format_text(res, a.role, me))
         return 1 if any(r.verdict == "FAIL" for r in res) else 0
 
     if a.command == "promote":
         # Redis replica → primary on this app node (DECISIONS Q-2026-10-25-11 (A), docs/install/REDIS_FAILOVER.md).
-        c = _ctx(site, a, me, profile, runner, None, {"podman": None, "ports_mode": state.get("ports_mode")}, log)
+        c = _ctx(site, a, me, profile, runner, None, {"podman": None, "ports_mode": state.get("ports_mode"), "cgroups": state.get("cgroups")}, log)
         rh = siteconf.redis_host(site) or {}
         log("promote: role=%s profile=%s host=%s — Redis primary %s → %s" % (a.role, profile, me[1], rh.get("id"), me[1]))
         for line in deploy.plan_promote(c):
@@ -220,6 +220,7 @@ def main(argv=None):
             msg = deploy.install(c)
             st = deploy.read_state(runner)
             st["ports_mode"] = c.ports_mode
+            st["cgroups"] = c.cgroups  # verify/promote build their context from state, not preflight
             deploy.write_state(c, st)
         elif a.command == "upgrade":
             msg = deploy.upgrade(c, standby_done=a.standby_done)
@@ -237,7 +238,7 @@ def main(argv=None):
 def _ctx(site, a, me, profile, runner, bundle, facts, log):
     return deploy.Ctx(site, a.role, me, profile, runner, bundle=bundle,
                       podman_version=facts.get("podman") or "4.9",
-                      ports_mode=facts.get("ports_mode") or "forward", log=log,
+                      ports_mode=facts.get("ports_mode") or "forward", cgroups=facts.get("cgroups") or "v2", log=log,
                       self_signed=getattr(a, "self_signed_console_cert", False))
 
 

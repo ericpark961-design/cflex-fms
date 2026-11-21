@@ -14,6 +14,8 @@ Pull=never
 # The image runs as postgres (UID 26); map host cflex to it so /opt/data stays owned by cflex.
 UserNS=keep-id:uid=26,gid=26
 ReadOnly=true
+# The image's start script writes $HOME/passwd (nss_wrapper); the data dir below is its own volume.
+Tmpfs=/var/lib/pgsql:rw,mode=1777,size=16m
 NoNewPrivileges=true
 DropCapability=ALL
 Network=@@NETWORK@@
@@ -26,6 +28,7 @@ Volume=/opt/data/backup:/opt/data/backup:Z
 # *.conf here is appended to postgresql.conf by the image (wal_level, archive_mode, archive_command).
 Volume=@@PG_CFG_DIR@@:/opt/app-root/src/postgresql-cfg:ro,Z
 LogDriver=journald
+@@CGROUP_ARGS@@
 HealthCmd=pg_isready -h 127.0.0.1 -p 5432
 HealthInterval=30s
 HealthTimeout=5s
