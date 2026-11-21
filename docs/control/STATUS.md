@@ -455,6 +455,19 @@
   첫 로그인 비밀번호 변경 후 `/v1/fms/{summary,assets,alerts,fleet-live,floor,channels/health}` 전부 200(장비 0대라 빈 값). 관리자 계정 생성(값은 repo 밖).
 - 다음: app02 → cap01 + nmcsim(UPS 41대 시뮬) → 인벤토리 → 화면에 데이터 → SAT 리허설 → 번들 재빌드·재설치.
 
+### 2026-11-20 17:45 PST — Claude Code (대화형, 같은 세션 이어서)
+- WO-INT-015 ③ 설치 **4노드 완료 — verify 전부 PASS 0/0** (db01·app01·app02·cap01)
+  - `실제 Probe 연결`(랩): cap01 `loaded 41 UPS from the Local Console` · `cycle: 41 ok, 0 fail` — UDR 너머 시뮬 NMC 41대(부록 B IP 그대로) 폴링.
+    콘솔 summary: 41 online / 38 normal / 3 warn, 알람 3건(P2 Load 92%). Redis app01→app02 복제 link up.
+  - 랩 시뮬레이터: deploy/azure-haea-lab/sim/ups-fleet.js — 한 프로세스가 41 IP 에 각각 SNMP 에이전트(PowerNet-MIB), HTTP 로 On Battery 토글.
+    probe-agent/sim/lib.js 에 `address` 옵션(하위호환).
+  - **추가로 찾은 설치기 버그 3건**: ⑦ user_sources 설정 시 collector → app 443 누락(FW-7) ⑧ collector.key·console-ca.pem root 소유 → EACCES
+    ⑨ web nginx 가 큰 요청 본문을 /tmp 임시파일로 → 소유자 불일치로 telemetry 500 (본문·응답 메모리 처리로 해결).
+  - 랩 한정(현장 아님): 피어 443 은 자체서명이라 두 노드 console-ca.pem 에 서로의 인증서. svc 에 SMTP 수신 더미(:1025).
+- **D-17**(DECISIONS): 프로브는 ServiceNow·Teams 제외, 로컬 알림은 e-mail 만. verify 는 "해당 없음(D-17)" 통과. SOW D1 테스트 티켓·방화벽 v3 의 해당 행은 법인장/PM 정리 필요.
+- 테스트: 설치기 Python 92/92, static 14/14.
+- 다음: SAT 리허설(P1 On Battery·포털 차단 복구·app01 중지·백업복구·SELinux) → 번들 2.0.0-lab.2 재빌드 → 4노드 재설치 검증 → HAEA 전달물.
+
 ## Codex 블록
 ### 2026-10-25 — 관리자 초기화
 - 기준: cflex-fms-codex/.worktrees/production-data-foundation. WO-PTL-001 배정.

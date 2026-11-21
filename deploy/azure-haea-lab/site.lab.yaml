@@ -12,7 +12,7 @@ hosts:
   db: { ip: 10.138.14.69, port: 5432 }
 snmp: { default_version: 3, poll_interval_sec: 60, min_interval_sec: 10, trap_port: 162 }
 portal: { enabled: true, url: https://cflex.fms.support, ip_pin: 40.114.79.164, mtls_cert: /opt/app/cflex/certs/device.pem, proxy: "http://10.138.15.10:3128", buffer_days: 7 }   # LAB: proxy = svc squid
-notify: { smtp: { host: 10.138.15.10, port: 1025 }, teams: { webhook: "https://teams.lab.invalid/webhook", via_proxy: true }, itsm: { type: servicenow, url: "https://snow.lab.invalid/api/now/table/incident" }, policy: { local_email: false, local_teams: false, local_itsm: false } }   # LAB
+notify: { smtp: { host: 10.138.15.10, port: 1025 }, policy: { local_email: false } }   # D-17: Teams·ServiceNow 는 프로브 범위 밖 · LAB
 retention: { raw_years: 3, aggregate_years: 10, events_years: 10 }
 auth: { local: true, saml: { enabled: false } }
 

@@ -200,3 +200,13 @@ class SidecarSys(unittest.TestCase):
         for name in ("cflex-console.container", "cflex-redis.container"):
             self.assertIn("\nNetwork=container:cflex-web\nVolume=/sys:/sys:ro,bind\n", f[QD + name], name)
         self.assertNotIn("/sys:/sys", f[QD + "cflex-web.container"], "web has its own netns and sysfs")
+
+
+class NginxNoTempFiles(unittest.TestCase):
+    def test_bodies_and_responses_stay_in_memory(self):
+        # Collector telemetry batches overflowed the 16k default into /tmp and failed (500) on the lab.
+        site = example_site()
+        f = render.render(site, "app", me(site, "app", "app01"), "2.0.0")
+        conf = [c for p, (c, _) in f.items() if p.endswith("cflex-console.conf")][0]
+        self.assertIn("client_body_buffer_size 6m;", conf)
+        self.assertIn("proxy_max_temp_file_size 0;", conf)

@@ -15,9 +15,10 @@
 const snmp = require('net-snmp');
 
 /** An agent with one read-only community, ready for providers. */
-function agent({ port, community = 'public' }) {
+function agent({ port, community = 'public', address = null }) {
   const a = snmp.createAgent({
     port,
+    address,                                  // null = all interfaces; one IP per agent for a lab fleet
     disableAuthorization: false,
     accessControlModelType: snmp.AccessControlModelType.Simple,
   });

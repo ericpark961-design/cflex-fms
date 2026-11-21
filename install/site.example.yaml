@@ -10,7 +10,7 @@ hosts:
   db: { ip: 10.138.14.69, port: 5432 }
 snmp: { default_version: 3, poll_interval_sec: 60, min_interval_sec: 10, trap_port: 162 }
 portal: { enabled: true, url: https://cflex.fms.support, ip_pin: 40.114.79.164, mtls_cert: /opt/app/cflex/certs/device.pem, proxy: "http://<haea-proxy>:<port>", buffer_days: 7 }
-notify: { smtp: { host: <relay>, port: 587 }, teams: { webhook: <url>, via_proxy: true }, itsm: { type: servicenow, url: <endpoint> }, policy: { local_email: true, local_teams: true, local_itsm: true } }
+notify: { smtp: { host: <relay>, port: 587 }, policy: { local_email: true } }   # D-17: Teams·ServiceNow 는 프로브 범위 밖
 retention: { raw_years: 3, aggregate_years: 10, events_years: 10 }
 auth: { local: true, saml: { enabled: false } }
 

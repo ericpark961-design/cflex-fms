@@ -498,3 +498,12 @@ Codex TASKS.md WO-PTL-001(헤더 1.2 수락·`collector_id` 저장, E2E 대상 `
 - API 는 `apps/console` 의 기존 `/v1/me`·`/v1/fms/*` 를 그대로 쓴다(twin 과 같은 형태로 이미 구현됨). 숨긴 기능용 새 API 는 만들지 않는다.
 - 외부 CDN·폰트·타일 호출 0건(WO-INT-004 기준 유지).
 - 작업: WO-INT-016(가칭) — HAEA 미러 랩(WO-INT-015)에서 설치 후 화면을 직접 열어 확인한다.
+
+### D-17 — 프로브(내부)에서 ServiceNow·Teams 제외 (Eric 지시, 2026-11-20)
+법인장: "서비스나우 연동은 현재 고려 안 하고, 팀즈도 프로브에는 필요 없어."
+- 내부 Local Console 의 로컬 알림은 **e-mail(SMTP 릴레이)만**. `site.yaml` `notify` 에서 `teams`·`itsm` 키를 뺀다
+  (spec 01 §3.4 예시와 달라짐 — 이 결정이 우선). 설정이 없으면 `verify` 는 "해당 없음 (D-17)" 으로 통과.
+- 코드(`packages/notify` 의 ServiceNow/Teams, 콘솔 test-ticket)는 지우지 않는다 — 기본 비활성, 쓰지 않을 뿐.
+  SOW D1 "ServiceNow 테스트 티켓"(SAT 4) 은 이 결정으로 **보류** — 계약상 처리는 법인장이 HAEA 와 정리.
+- 방화벽 요청서 v3 의 app → Teams/ServiceNow 아웃바운드 행은 **필요 없어짐** — 요청서 v4 에서 빼도록 PM 이 반영(Q 로 남김).
+- 외부 포털(Codex)의 Teams/SMS 라우팅(WO-PTL-003)은 이 결정과 무관.

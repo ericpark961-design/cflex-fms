@@ -246,13 +246,13 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
             good, d = tls_f(sn_h, sn_p or 443, proxy=proxy)
             add("%s → ServiceNow" % role, good, d)
         else:
-            add("%s → ServiceNow" % role, False, "notify.itsm.url not set", warn=True)
+            add("%s → ServiceNow" % role, True, "해당 없음 — 프로브는 ServiceNow 연동을 하지 않는다 (D-17)")
         th, tp = _host(siteconf.get(site, "notify.teams.webhook"))
         if th and "<" not in th:
             good, d = tls_f(th, tp or 443, proxy=proxy if siteconf.get(site, "notify.teams.via_proxy", True) else None)
             add("%s → Teams" % role, good, d)
         else:
-            add("%s → Teams" % role, False, "notify.teams.webhook not set", warn=True)
+            add("%s → Teams" % role, True, "해당 없음 — 프로브는 Teams 로 보내지 않는다 (D-17)")
 
     if send_test:
         if role != "app":

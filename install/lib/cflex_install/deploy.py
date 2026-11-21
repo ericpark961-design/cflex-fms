@@ -229,6 +229,10 @@ def _secrets(c):
             pw = "dry-run"
         if c.runner.write(BASE + "/secrets/redis/auth.conf", "requirepass %s\nmasterauth %s\n" % (pw, pw), mode=0o600, uid=uid, gid=uid):
             made.append("redis auth.conf")
+    if c.role == "collector":
+        # Issued by the console (`cli.js collector-key`) and copied in by the operator — usually as root.
+        if _own_secret(c, BASE + "/secrets/collector/collector.key"):
+            made.append("collector.key owner cflex 0600")
     if c.role == "db":
         for fn, name in (("pg.pass", "cflex-pg-password"), ("pg-admin.pass", "cflex-pg-admin-password")):
             path = BASE + "/secrets/db/" + fn
@@ -274,6 +278,12 @@ def _certs(c):
         return "self-signed (90 days) — replace with the HAEA CA certificate; " + _device_cert(c)
     if c.role == "collector":
         # D-13: the collector talks to the console only (console-ca.pem); no Portal certificate here.
+        # The operator copies console-ca.pem in (as root); the rootless collector must read it.
+        ca = BASE + "/certs/console-ca.pem"
+        if not c.runner.dry_run and c.runner.exists(ca):
+            uid = c.uid()
+            if c.runner.write(ca, c.runner.read(ca) or "", mode=0o644, uid=uid, gid=uid):
+                return "console-ca.pem owner cflex (no Portal link, D-13)"
         return "n/a (collector: no Portal link, D-13)"
     return "n/a"
 
@@ -316,9 +326,12 @@ def firewall_rules(c):
     if c.role == "app":
         apps = siteconf.get(c.site, "hosts.app") or []
         peers = ["%s/32" % a.get("ip") for a in apps if a.get("id") != c.me[1]]
+        # Collectors push telemetry/events to the console on 443 (FW-7 cap01 → app). With user_sources
+        # set they were left out and every collector got "No route to host" (Azure HAEA lab, WO-INT-015).
+        collectors = ["%s/32" % x.get("ip") for x in (siteconf.get(c.site, "hosts.collectors") or [])]
         srcs = list(siteconf.get(c.site, "install.user_sources") or [])
         if srcs:
-            for s in srcs + peers:  # the peer node's fallback hop arrives on 443 too (FW-7)
+            for s in srcs + peers + collectors:  # the peer node's fallback hop arrives on 443 too (FW-7)
                 if fwd:
                     out.append(("rich-rule", (rich % s) + 'forward-port port="443" protocol="tcp" to-port="8443"'))
                 else:

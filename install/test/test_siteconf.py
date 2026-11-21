@@ -15,7 +15,10 @@ class SiteConf(unittest.TestCase):
         self.assertEqual(s["snmp"]["trap_port"], 162)
         self.assertEqual(s["portal"]["proxy"], "http://<haea-proxy>:<port>")
         self.assertEqual(s["portal"]["url"], "https://cflex.fms.support")
-        self.assertIs(s["notify"]["policy"]["local_itsm"], True)
+        self.assertIs(s["notify"]["policy"]["local_email"], True)
+        # D-17: the probe sends e-mail only — no Teams, no ServiceNow (spec 01 §3.4 had both).
+        self.assertNotIn("teams", s["notify"])
+        self.assertNotIn("itsm", s["notify"])
         self.assertIs(s["auth"]["saml"]["enabled"], False)
         self.assertEqual(s["install"]["user_sources"], [])
         self.assertEqual(s["install"]["privileged_ports"], "auto")
