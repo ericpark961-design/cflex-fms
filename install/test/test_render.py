@@ -159,3 +159,30 @@ class Render(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CgroupArgs(unittest.TestCase):
+    def setUp(self):
+        self.site = example_site()
+
+    def all_units(self, cgroups):
+        out = {}
+        for role, hid in (("collector", "cap01"), ("app", "app01"), ("db", "db01")):
+            out.update(units(render.render(self.site, role, me(self.site, role, hid), "2.0.0",
+                                           podman_version="4.9.4", cgroups=cgroups)))
+        return {p: c for p, c in out.items() if p.endswith(".container")}
+
+    def test_v1_every_container_runs_without_cgroups_on_crun(self):
+        cs = self.all_units("v1")
+        self.assertEqual(len(cs), 5)
+        for p, c in cs.items():
+            self.assertIn("\nPodmanArgs=--cgroups=disabled --runtime=crun\n", c, p)
+
+    def test_v2_keeps_the_quadlet_default(self):
+        for p, c in self.all_units("v2").items():
+            self.assertNotIn("PodmanArgs=", c, p)
+
+    def test_postgres_has_a_writable_home_under_a_read_only_root(self):
+        pg = [c for p, c in self.all_units("v1").items() if p.endswith("cflex-postgres.container")][0]
+        self.assertIn("\nReadOnly=true\n", pg)
+        self.assertIn("\nTmpfs=/var/lib/pgsql:rw,mode=1777,size=16m\n", pg)

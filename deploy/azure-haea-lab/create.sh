@@ -80,6 +80,10 @@ runcmd:
   # Satellite stand-in: only dnf reaches RHUI, via the svc proxy. NSG blocks all other egress.
   - grep -q '^proxy=' /etc/dnf/dnf.conf || echo 'proxy=$PROXY' >> /etc/dnf/dnf.conf
   - getenforce > /var/log/lab-selinux.txt
+  # Azure RHEL image leaves ~40G of rootvg unallocated (/ 2G, /home 1G). Rootless podman keeps
+  # cflex's images under /home/cflex and the bundle stages under /opt — grow both like a normal VM.
+  - lvextend -r -L +15G rootvg/rootlv || true
+  - lvextend -r -L +10G rootvg/homelv || true
 EOF
 }
 cat > "$STATE/init-svc.yaml" <<'EOF'

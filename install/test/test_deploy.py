@@ -214,3 +214,17 @@ class Promote(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AsCflex(unittest.TestCase):
+    def test_runs_from_cflex_home_not_the_callers_cwd(self):
+        # The bundle sits in an admin's home (0700); runuser keeps the caller's cwd, so podman
+        # failed with "cannot chdir to /home/<admin>/cflex-bundle-…" on the Azure HAEA lab.
+        r = FakeRunner(dry_run=True)
+        c = ctx(example_site(), "db", "db01", r)
+        c.as_cflex(["podman", "secret", "ls"])
+        argv = r.calls[-1]
+        self.assertEqual(argv[:4], ["runuser", "-u", "cflex", "--"])
+        self.assertEqual(argv[4], "env")
+        self.assertEqual(argv[5], "--chdir=%s" % c.home())
+        self.assertEqual(argv[-3:], ["podman", "secret", "ls"])

@@ -229,7 +229,15 @@ def _nginx(site, me, v, listen_port):
     return fill(template("nginx/cflex-console.conf"), vals, "cflex-console.conf")
 
 
-def render(site, role, me, version, profile="container", podman_version="4.9", ports_mode="forward", home="/home/cflex"):
+def cgroup_args(cgroups):
+    """Quadlet line for the host's cgroup version — v1 (RHEL 8 default) cannot do --cgroups=split rootless."""
+    if cgroups == "v1":
+        return "PodmanArgs=--cgroups=disabled --runtime=crun"
+    return "# cgroup v2: Quadlet default (--cgroups=split)"
+
+
+def render(site, role, me, version, profile="container", podman_version="4.9", ports_mode="forward", home="/home/cflex",
+           cgroups="v2"):
     if role not in siteconf.ROLES:
         raise RenderError("role must be one of %s" % ", ".join(siteconf.ROLES))
     if profile not in ("container", "bare"):
@@ -239,7 +247,8 @@ def render(site, role, me, version, profile="container", podman_version="4.9", p
     if profile == "container":
         net = network_mode(podman_version)
         hp = host_ports(ports_mode)
-        v.update({"NETWORK": net, "TRAP_HOST_PORT": hp["trap"], "HTTPS_HOST_PORT": hp["https"]})
+        v.update({"NETWORK": net, "TRAP_HOST_PORT": hp["trap"], "HTTPS_HOST_PORT": hp["https"],
+                  "CGROUP_ARGS": cgroup_args(cgroups)})
         qd = os.path.join(home, QUADLET_DIR_REL)
         if role == "collector":
             files[os.path.join(qd, "cflex-collector.container")] = (fill(template("quadlet/cflex-collector.container"), v, "collector"), 0o644)

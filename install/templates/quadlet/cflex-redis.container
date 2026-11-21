@@ -19,6 +19,7 @@ Volume=/opt/app/cflex/config/redis:/opt/app/cflex/config:ro,Z
 Volume=/opt/app/cflex/secrets/redis:/opt/app/cflex/secrets:ro,Z
 Volume=/opt/app/cflex/redis:/var/lib/redis/data:Z
 LogDriver=journald
+@@CGROUP_ARGS@@
 # A script, not an inline command: '$' and '%' in a Quadlet value meet systemd's own expansion.
 HealthCmd=/bin/sh /opt/app/cflex/config/healthcheck.sh
 HealthInterval=30s

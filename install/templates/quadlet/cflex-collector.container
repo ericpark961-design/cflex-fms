@@ -26,6 +26,7 @@ Volume=/opt/app/cflex/certs:/opt/app/cflex/certs:ro,Z
 Volume=/opt/app/cflex/secrets/collector:/opt/app/cflex/secrets:ro,Z
 Volume=/opt/app/cflex/queue:/opt/app/cflex/queue:Z
 LogDriver=journald
+@@CGROUP_ARGS@@
 HealthCmd=node /opt/cflex/probe-agent/bin/cflex-healthcheck.js
 HealthInterval=60s
 HealthTimeout=10s

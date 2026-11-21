@@ -4,7 +4,7 @@
 set -euo pipefail
 . "$(cd "$(dirname "$0")" && pwd)/lab.env"
 az() { command az "$@" --subscription "$SUB" --only-show-errors; }
-all=$(echo "$NODES" | awk 'NF{print $1}')
+all=$(echo "$NODES" | awk 'NF{printf "%s ", $1}')
 want=${*:-$all}
 case " $want " in *" svc "*) az vm start -g "$RG" -n svc -o none; echo "svc started";; esac
 for n in $want; do [ "$n" = svc ] && continue; az vm start -g "$RG" -n "$n" --no-wait -o none; echo "$n starting"; done

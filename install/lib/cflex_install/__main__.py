@@ -237,7 +237,7 @@ def main(argv=None):
 def _ctx(site, a, me, profile, runner, bundle, facts, log):
     return deploy.Ctx(site, a.role, me, profile, runner, bundle=bundle,
                       podman_version=facts.get("podman") or "4.9",
-                      ports_mode=facts.get("ports_mode") or "forward", log=log,
+                      ports_mode=facts.get("ports_mode") or "forward", cgroups=facts.get("cgroups") or "v2", log=log,
                       self_signed=getattr(a, "self_signed_console_cert", False))
 
 

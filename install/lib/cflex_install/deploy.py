@@ -48,10 +48,11 @@ class Ctx(object):
     """Everything a step needs: site, this host, bundle, runner, mode."""
 
     def __init__(self, site, role, me, profile, runner, bundle=None, podman_version="4.9",
-                 ports_mode="forward", log=print, self_signed=False):
+                 ports_mode="forward", log=print, self_signed=False, cgroups="v2"):
         self.site, self.role, self.me, self.profile = site, role, me, profile
         self.runner, self.bundle, self.podman_version = runner, bundle, podman_version
         self.ports_mode, self.log, self.self_signed = ports_mode, log, self_signed
+        self.cgroups = cgroups
         self.zone = siteconf.get(site, "install.firewall_zone", "public")
 
     # rootless helpers
@@ -69,7 +70,10 @@ class Ctx(object):
 
     def as_cflex(self, argv, mutating=True, timeout=600):
         uid = self.uid()
-        env = ["env", "XDG_RUNTIME_DIR=/run/user/%s" % uid, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%s/bus" % uid]
+        # --chdir: the installer usually runs from the bundle in an admin's home, which cflex cannot
+        # enter; podman then fails with "cannot chdir" (found on the Azure HAEA lab, WO-INT-015).
+        env = ["env", "--chdir=%s" % self.home(),
+               "XDG_RUNTIME_DIR=/run/user/%s" % uid, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%s/bus" % uid]
         return self.runner.run(["runuser", "-u", "cflex", "--"] + env + argv, mutating=mutating, timeout=timeout)
 
     def must(self, res, what):
@@ -263,7 +267,7 @@ def _certs(c):
 
 def _render_files(c, version):
     files = render.render(c.site, c.role, c.me, version, profile=c.profile,
-                          podman_version=c.podman_version, ports_mode=c.ports_mode, home=c.home())
+                          podman_version=c.podman_version, ports_mode=c.ports_mode, home=c.home(), cgroups=c.cgroups)
     uid = c.uid()
     changed = []
     for path in sorted(files):
@@ -734,7 +738,7 @@ def promote(c, force=False, probe=None):
     site2 = json.loads(json.dumps(c.site))
     site2.setdefault("install", {})["redis_host"] = c.me[1]
     files = render.render(site2, "app", c.me, st.get("version") or "0.0.0-dev", profile=c.profile,
-                          podman_version=c.podman_version, ports_mode=c.ports_mode, home=c.home())
+                          podman_version=c.podman_version, ports_mode=c.ports_mode, home=c.home(), cgroups=c.cgroups)
     uid = c.uid()
     for path in (render.CONFIG + "/redis/redis.conf", render.CONFIG + "/app/app.env"):
         content, mode = files[path]
