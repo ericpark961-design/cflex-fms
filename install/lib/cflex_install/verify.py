@@ -10,6 +10,7 @@ Proxy credentials come from the URL and are never printed.
 import base64
 import calendar
 import json
+import re
 import socket
 import ssl
 import time
@@ -144,6 +145,36 @@ def last_backup(runner, now):
     return best, int((now - day) // 86400)
 
 
+CFLEX_COMMS = ("node", "nginx", "redis-server", "postgres", "pg_basebackup", "conmon", "podman", "crun")
+
+
+def _selinux(add, runner):
+    """SAT 8: Enforcing, and no denial since boot for C-Flex. A denial for another process is HAEA's — WARN, for the record."""
+    r = runner.run(["getenforce"])
+    mode = (r[1] or "").strip()
+    if not ok(r) or not mode:
+        add("selinux", False, "getenforce: %s" % (r[2] or "no answer").strip()[:100], warn=True)
+        return
+    add("selinux", mode == "Enforcing", mode + ("" if mode == "Enforcing" else " — HAEA requires Enforcing"))
+    # --input-logs: without it ausearch reads stdin whenever stdin is not a terminal (ssh, cron, this
+    # installer) and finds nothing — the lab's first count was 0 with 9 denials in audit.log.
+    r = runner.run(["ausearch", "--input-logs", "-m", "AVC,USER_AVC", "-ts", "boot"])
+    denials = [l for l in (r[1] or "").splitlines() if re.match(r"type=(USER_)?AVC ", l) and " denied " in l]
+    ours = [l for l in denials if "container_t" in l or any('comm="%s"' % c in l for c in CFLEX_COMMS)]
+    def top(lines):
+        names = {}
+        for l in lines:
+            m = re.search(r'comm="([^"]*)".*?name="([^"]*)"', l)
+            k = "%s→%s" % m.groups() if m else "?"
+            names[k] = names.get(k, 0) + 1
+        return ", ".join("%s ×%d" % kv for kv in sorted(names.items(), key=lambda kv: -kv[1])[:3])
+    if ours:
+        add("selinux denials (since boot)", False, "%d C-Flex: %s" % (len(ours), top(ours)))
+    else:
+        add("selinux denials (since boot)", not denials, "0" if not denials else "0 C-Flex; %d other: %s" % (len(denials), top(denials)),
+            warn=True)
+
+
 def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect=None, now=None):
     """→ [Result]. `connect` lets tests replace tcp/tls."""
     now = time.time() if now is None else now
@@ -162,6 +193,8 @@ def run(site, role, me, profile, runner, as_cflex=None, send_test=False, connect
         for n in BARE_UNITS[role]:
             r = runner.run(["systemctl", "is-active", n + ".service"])
             add("service " + n, ok(r), r[1].strip() or r[2].strip())
+
+    _selinux(add, runner)
 
     proxy = _parse_proxy(siteconf.get(site, "portal.proxy"))
     apps = siteconf.get(site, "hosts.app") or []

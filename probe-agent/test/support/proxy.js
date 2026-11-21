@@ -4,7 +4,7 @@ const http = require('http');
 const net = require('net');
 
 function startProxy({ user = 'probe', pass = 'test-only' } = {}) {
-  const state = { tunnels: [], refused: 0 };
+  const state = { tunnels: [], refused: 0, bytesUp: 0 };  // bytesUp: client → upstream through a tunnel
   const sockets = new Set();
   const track = (s) => { sockets.add(s); s.on('close', () => sockets.delete(s)); };
   const expected = `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
@@ -21,11 +21,15 @@ function startProxy({ user = 'probe', pass = 'test-only' } = {}) {
     const up = net.connect(Number(port), host === 'localhost' ? '127.0.0.1' : host, () => {
       client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
       if (head && head.length) up.write(head);
+      client.on('data', (c) => { state.bytesUp += c.length; });
       up.pipe(client); client.pipe(up);
     });
     track(up);
     up.on('error', () => client.destroy());
     client.on('error', () => up.destroy());
+    // Like squid: when either side of a tunnel goes, the other is closed too.
+    up.on('close', () => client.destroy());
+    client.on('close', () => up.destroy());
   });
   return new Promise((resolve) => srv.listen(0, '127.0.0.1', () => {
     const { port } = srv.address();

@@ -82,6 +82,27 @@ class Verify(unittest.TestCase):
                          as_cflex=lambda argv, mutating=True: (0, "", ""), send_test=True, connect=fake)
         self.assertEqual([r.verdict for r in col if r.name == "send-test"], ["WARN"], "the collector has no test ticket to send")
 
+    def test_selinux_enforcing_and_denials_since_boot(self):
+        avc = ('type=AVC msg=audit(1795231282.118:302): avc:  denied  { read } for  pid=7733 comm="node" name="portal-ca.pem" '
+               'scontext=system_u:system_r:container_t:s0:c90,c254 tcontext=unconfined_u:object_r:container_file_t:s0:c541,c644 tclass=file')
+        other = 'type=AVC msg=audit(1:2): avc:  denied  { read } for  pid=1 comm="edr-agent" name="x" scontext=system_u:system_r:edr_t:s0'
+        def got(answers):
+            out = []
+            verify._selinux(lambda n, good, d, warn=False: out.append((n, "PASS" if good else ("WARN" if warn else "FAIL"), d)),
+                            FakeRunner(answers))
+            return out
+        r = got({"getenforce": (0, "Enforcing\n", ""), "ausearch": (1, "", "<no matches>")})
+        self.assertEqual([v for _, v, _ in r], ["PASS", "PASS"])
+        r = got({"getenforce": (0, "Enforcing\n", ""), "ausearch": (0, avc + "\n" + other + "\n", "")})
+        self.assertEqual(r[1][1], "FAIL")
+        self.assertIn("node→portal-ca.pem", r[1][2])
+        r = got({"getenforce": (0, "Enforcing\n", ""), "ausearch": (0, other + "\n", "")})
+        self.assertEqual(r[1][1], "WARN", "another product's denial is recorded, not ours")
+        self.assertEqual(got({"getenforce": (0, "Permissive\n", ""), "ausearch": (1, "", "")})[0][1], "FAIL")
+        runner = FakeRunner({"getenforce": (0, "Enforcing\n", ""), "ausearch": (1, "", "")})
+        verify._selinux(lambda *a, **k: None, runner)
+        self.assertIn("--input-logs", runner.calls[-1], "ausearch reads stdin when it is not a terminal")
+
 
 if __name__ == "__main__":
     unittest.main()
