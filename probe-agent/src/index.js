@@ -13,6 +13,7 @@ const buffer = require('./buffer');
 const forwarder = require('./forwarder');
 const upsPoller = require('./pollers/ups');
 const collectors = require('./pollers');
+const { createModbusPool } = require('./services/modbus-read');
 const health = require('./health');
 const { createTrapHandler } = require('./trap/handler');
 const { createTrapListener } = require('./trap/listener');
@@ -72,6 +73,11 @@ async function pollAll() {
   // and writes ups_metrics), everything else goes through the collector
   // registry and reports narrow metrics.
   const queue = [...devices.map(d => ({ d, ups: true })), ...objects.map(d => ({ d, ups: false }))];
+  // Modbus connections live for one cycle: one per host:port, shared by the
+  // unit IDs behind it, one request at a time however many workers run, and
+  // closed when the cycle ends (services/modbus-read.js). Opens nothing until
+  // a Modbus device is polled.
+  const modbusPool = createModbusPool(cfg.modbus);
   const worker = async () => {
     for (;;) {
       const item = queue.shift();
@@ -89,6 +95,7 @@ async function pollAll() {
         }
         const r = await collectors.pollOne(d, {
           timeoutMs: cfg.snmp.timeoutMs, retries: cfg.snmp.retries,
+          modbus: cfg.modbus, modbusPool,
         });
         if (r.skipped) { skipped++; continue; }
         if (r.unsupported) { unsupported++; lastError = r.error || lastError; continue; }
@@ -112,7 +119,11 @@ async function pollAll() {
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(cfg.pollConcurrency, Math.max(1, queue.length)) }, worker));
+  try {
+    await Promise.all(Array.from({ length: Math.min(cfg.pollConcurrency, Math.max(1, queue.length)) }, worker));
+  } finally {
+    modbusPool.close();
+  }
   const took = Date.now() - t0;
   lastCycle = { ok, fail, took, error: lastError, at: Date.now(), metrics: metricsSent, skipped, unsupported };
   health.mark(lastCycle);

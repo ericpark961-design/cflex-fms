@@ -14,6 +14,7 @@ const { pollPdu } = require('./pdu');
 const { pollNetbotz } = require('./netbotz');
 const { pollNetwork } = require('./network');
 const { pollCrac } = require('./crac');
+const { pollDio } = require('./dio');
 
 // `ups` is deliberately absent, and not even imported: a UPS goes down its own
 // path, which evaluates thresholds and forwards telemetry in the shape the
@@ -23,7 +24,8 @@ const { pollCrac } = require('./crac');
 const COLLECTORS = {
   pdu: pollPdu,
   netbotz: pollNetbotz,
-  crac: pollCrac,
+  crac: pollCrac,          // iCOM SNMP, or Modbus TCP by attrs.protocol (crac-modbus.js)
+  dio: pollDio,            // contact inputs on a Modbus TCP I/O module (WO-INT-017)
   switch: pollNetwork,
   router: pollNetwork,
   sbc: pollNetwork,

@@ -81,6 +81,16 @@ const cfg = {
     // NMC agents answer on 161; another port only for a simulator on a test host.
     port: parseInt(process.env.SNMP_PORT || '161', 10),
   },
+
+  // Modbus TCP, read only (WO-INT-017, services/modbus-read.js). Only for
+  // devices the ledger marks modbus / modbus-tcp; a site without them never
+  // opens a connection. The port is the default when the device row does not
+  // give one (attrs.modbus.port) — 502, or a simulator's on a test host.
+  modbus: {
+    timeoutMs: parseInt(process.env.MODBUS_TIMEOUT_MS || '3000', 10),
+    retries: parseInt(process.env.MODBUS_RETRIES || '1', 10),
+    port: parseInt(process.env.MODBUS_PORT || '502', 10),
+  },
 };
 
 if (cfg.console.url && !cfg.console.keyPath) {

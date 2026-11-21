@@ -31,3 +31,8 @@ install:
 nmc:
   # One NMC IP per line (spec 01 부록 B, 41 addresses). netcheck FW-1/FW-3 compares against it.
   targets_file: /opt/app/cflex/config/nmc-targets.txt
+
+# Modbus TCP devices (WO-INT-017) — only for a site whose ledger has them (e.g. KMX CCR); HAEA has none.
+# One device IP per line. netcheck MB-1 (TCP 502, not in firewall request v3) is N/A while this is unset.
+# modbus:
+#   targets_file: /opt/app/cflex/config/modbus-targets.txt

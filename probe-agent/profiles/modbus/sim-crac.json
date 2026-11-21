@@ -1,0 +1,26 @@
+{
+  "id": "sim-crac",
+  "vendor": "C-Flex simulator",
+  "model_scope": "probe-agent/sim/sim-modbus.js default CRAC table (unit 1) only. Not a real controller — do not attach to a real device.",
+  "simulator": true,
+  "source_doc": {
+    "title": "probe-agent/sim/sim-modbus.js — default CRAC register table (simulator, not a vendor document)",
+    "revision": "WO-INT-017",
+    "page": "file header"
+  },
+  "address_base": 0,
+  "points": [
+    { "metric": "supply_temp_c", "type": "input", "address": 0, "data": "int16", "scale": 0.1, "unit": "°C", "confidence": "documented" },
+    { "metric": "return_temp_c", "type": "input", "address": 1, "data": "int16", "scale": 0.1, "unit": "°C", "confidence": "documented" },
+    { "metric": "humidity_pct", "type": "input", "address": 2, "data": "uint16", "scale": 0.1, "unit": "%RH", "confidence": "documented" },
+    { "metric": "setpoint_c", "type": "input", "address": 10, "data": "float32", "word_order": "ABCD", "scale": 1, "unit": "°C", "confidence": "documented" },
+    { "metric": "state_system", "type": "holding", "address": 0, "data": "uint16", "scale": 1, "unit": "state",
+      "enum": { "1": "on", "2": "standby", "3": "off" }, "confidence": "documented" },
+    { "metric": "state_cooling", "type": "holding", "address": 1, "data": "uint16", "scale": 1, "unit": "state",
+      "enum": { "1": "on", "2": "standby", "3": "off" }, "confidence": "documented" },
+    { "metric": "alarm_count", "type": "holding", "address": 2, "data": "uint16", "scale": 1, "unit": "count", "confidence": "documented" },
+    { "metric": "fan_pct", "type": "holding", "address": 3, "data": "uint16", "scale": 1, "unit": "%", "confidence": "documented" },
+    { "metric": "alarm_filter", "type": "discrete", "address": 0, "data": "bit", "scale": 1, "unit": "state",
+      "enum": { "0": "normal", "1": "active" }, "confidence": "documented" }
+  ]
+}

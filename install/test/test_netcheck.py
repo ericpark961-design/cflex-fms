@@ -113,6 +113,30 @@ class NetCheck(unittest.TestCase):
         self.assertEqual(netcheck.parse_forward_rules("port=162:proto=udp:toport=1162", rr),
                          {("udp", 162, 1162), ("tcp", 443, 8443)})
 
+    def test_site_row_mb1_modbus(self):
+        # WO-INT-017: TCP 502 is not in request v3. Without Modbus targets (HAEA) the row is N/A
+        # and changes nothing; with them, the collector's 502 connections belong to MB-1, not to extras.
+        self.assertEqual([r["id"] for r in self.matrix.get("site_rows", [])], ["MB-1"])
+        self.assertNotIn("MB-1", [r["id"] for r in self.matrix["rows"]], "v3 rows stay v3")
+        rep = self.evaluate()
+        mb1 = [r for r in rep["rows"] if r["id"] == "MB-1"][0]
+        self.assertEqual(mb1["verdict"], "N/A")
+        self.assertIn("Modbus 장비 없음", mb1["checks"][0]["observed"])
+        site = example_site()
+        site["modbus"] = {"targets_file": "/opt/app/cflex/config/modbus-targets.txt"}
+        files = dict(FILES, **{"/opt/app/cflex/config/modbus-targets.txt": "# doc range\n192.0.2.21\n192.0.2.22\n"})
+        est = netcheck.parse_ss(SS_EST_COLLECTOR + "0      0      10.138.14.66:41500   192.0.2.21:502      users:((\"slirp4netns\",pid=2201,fd=23))\n", "tcp")
+        rep = netcheck.evaluate(self.matrix, site, "collector", me(site, "collector", "cap01"),
+                                netcheck.parse_ss(SS_LISTEN_COLLECTOR), est, FakeRunner(files=files),
+                                forward_mode=True, forward_rules=frozenset([("udp", 162, 1162)]))
+        mb1 = [r for r in rep["rows"] if r["id"] == "MB-1"][0]
+        self.assertEqual(mb1["verdict"], "PASS")
+        self.assertIn("Modbus 장비 2대", mb1["checks"][0]["observed"])
+        self.assertIn("192.0.2.21:502", mb1["checks"][0]["observed"])
+        self.assertFalse(any(e["addr"].endswith(":502") for e in rep["extras"]))
+        app = netcheck.evaluate(self.matrix, site, "app", me(site, "app", "app01"), [], [], FakeRunner(files=files))
+        self.assertEqual([r for r in app["rows"] if r["id"] == "MB-1"][0]["verdict"], "N/A")
+
     def test_text_output_has_spec_columns(self):
         out = netcheck.format_text(self.evaluate())
         self.assertIn("| ID | 방향 | 포트 | 용도 | 판정 |", out)
