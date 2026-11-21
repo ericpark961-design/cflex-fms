@@ -280,7 +280,7 @@ def build(repo, out_dir, version, runner=None, podman="podman", git="git", git_r
 
         # Installer, config examples, docs.
         _copytree(os.path.join(src, "install"), os.path.join(root, "install"), skip=("test", "__pycache__"))
-        for fn in ("site.example.yaml", "nmc-targets.example.txt"):
+        for fn in ("site.example.yaml", "nmc-targets.example.txt", "haea-inventory.example.csv"):
             shutil.copy2(os.path.join(src, "install", fn), os.path.join(root, "config", fn))
         if os.path.isdir(os.path.join(src, "docs", "install")):
             _copytree(os.path.join(src, "docs", "install"), os.path.join(root, "docs"))
